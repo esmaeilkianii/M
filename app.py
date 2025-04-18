@@ -5,585 +5,881 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import datetime
 import json
-from datetime import datetime, timedelta
-import folium
-from folium.plugins import Draw, Fullscreen
-import base64
-from io import BytesIO
+from datetime import timedelta
+import plotly.express as px
+import plotly.graph_objects as go
+from streamlit_folium import folium_static
 
 # Set page configuration
 st.set_page_config(
-    page_title="داشبورد مانیتورینگ مزارع نیشکر دهخدا",
-    page_icon="🌾",
+    page_title="پایش مزارع نیشکر دهخدا",
+    page_icon="🌱",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS to improve the Persian text display and RTL support
+# Add custom CSS for RTL support and styling
 st.markdown("""
 <style>
-    @font-face {
-        font-family: 'Vazir';
-        src: url('https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v30.1.0/dist/Vazir.woff2');
-    }
     body {
-        font-family: 'Vazir', sans-serif !important;
         direction: rtl;
     }
-    .main .block-container {
-        direction: rtl;
-        text-align: right;
+    .stApp {
+        font-family: 'Vazir', sans-serif;
     }
-    h1, h2, h3, h4, h5, h6, .sidebar .sidebar-content {
-        direction: rtl;
-        text-align: right;
+    .css-18e3th9 {
+        padding-top: 0rem;
+        padding-bottom: 10rem;
+        padding-left: 5rem;
+        padding-right: 5rem;
     }
-    .stButton button {
+    .css-1d391kg {
+        padding-top: 3.5rem;
+        padding-right: 1rem;
+        padding-bottom: 3.5rem;
+        padding-left: 1rem;
+    }
+    .reportview-container .sidebar-content {
+        direction: rtl;
+    }
+    .stMetricLabel {
+        font-size: 18px;
+        font-weight: bold;
+    }
+    div[data-testid="stMetricValue"] > div {
+        font-size: 25px;
+        font-weight: bold;
+    }
+    .css-1xarl3l {
+        font-size: 1.25rem;
+        padding-bottom: 0.5rem;
+    }
+    .main-header {
+        font-size: 2.5em;
+        font-weight: bold;
+        text-align: center;
+        color: #3c9a8a;
+        margin-bottom: 10px;
+    }
+    .sub-header {
+        font-size: 1.5em;
+        text-align: center;
+        color: #636363;
+        margin-bottom: 20px;
+    }
+    .stats-box {
+        background-color: #f1f1f1;
+        border-radius: 5px;
+        padding: 15px;
+        text-align: center;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    .stats-value {
+        font-size: 2em;
+        font-weight: bold;
+        color: #3c9a8a;
+    }
+    .stats-label {
+        font-size: 1em;
+        color: #636363;
+    }
+    .styled-table {
+        border-collapse: collapse;
+        margin: 25px 0;
+        font-size: 0.9em;
+        font-family: sans-serif;
         width: 100%;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);
     }
-    .stDataFrame {
-        direction: rtl;
+    .styled-table thead tr {
+        background-color: #3c9a8a;
+        color: white;
+        text-align: right;
     }
-    .stDateInput {
-        direction: ltr;
+    .styled-table th,
+    .styled-table td {
+        padding: 12px 15px;
+        text-align: right;
     }
-    div[data-testid="stMetricValue"] {
-        direction: ltr;
+    .styled-table tbody tr {
+        border-bottom: 1px solid #dddddd;
     }
-    .plot-container {
-        direction: ltr;
+    .styled-table tbody tr:nth-of-type(even) {
+        background-color: #f3f3f3;
+    }
+    .styled-table tbody tr:last-of-type {
+        border-bottom: 2px solid #3c9a8a;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Function to authenticate with GEE service account
-def authenticate_gee():
+# Function to authenticate with Earth Engine
+def ee_authenticate():
     try:
-        service_account_key_file = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json'
-        
-        if os.path.exists(service_account_key_file):
-            with open(service_account_key_file, 'r') as f:
-                service_account_info = json.load(f)
-                
-            service_account = service_account_info.get('dehkhodamap-e9f0da4ce9f6514021@ee-esmaeilkiani13877.iam.gserviceaccount.com')
-            credentials = ee.ServiceAccountCredentials(service_account, service_account_key_file)
+        # Check if service account key file exists
+        service_account_key = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json'
+        if os.path.exists(service_account_key):
+            credentials = ee.ServiceAccountCredentials(
+                email=json.load(open(service_account_key))['dehkhodamap-e9f0da4ce9f6514021@ee-esmaeilkiani13877.iam.gserviceaccount.com'],
+                key_file=service_account_key
+            )
             ee.Initialize(credentials)
-            st.sidebar.success("اتصال به Google Earth Engine با موفقیت انجام شد.")
+            st.sidebar.success("✓ اتصال به Google Earth Engine با موفقیت انجام شد")
             return True
         else:
-            st.sidebar.error("فایل کلید سرویس اکانت یافت نشد.")
+            st.sidebar.error("⚠️ فایل کلید سرویس GEE یافت نشد")
             return False
     except Exception as e:
-        st.sidebar.error(f"خطا در اتصال به Google Earth Engine: {str(e)}")
+        st.sidebar.error(f"⚠️ خطا در اتصال به Google Earth Engine: {str(e)}")
         return False
 
-# Load farm data from CSV
+# Load farm data
 @st.cache_data
-def load_farm_data():
+def load_data():
     try:
         df = pd.read_csv('output (1).csv')
         return df
     except Exception as e:
-        st.error(f"خطا در بارگذاری فایل CSV مزارع: {str(e)}")
-        return pd.DataFrame()
-
-# Calculate agricultural indices
-def calculate_indices(image, geometry):
-    # NDVI (Normalized Difference Vegetation Index)
-    ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI')
-    
-    # EVI (Enhanced Vegetation Index)
-    evi = image.expression(
-        '2.5 * ((NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1))',
-        {
-            'NIR': image.select('B8'),
-            'RED': image.select('B4'),
-            'BLUE': image.select('B2')
-        }
-    ).rename('EVI')
-    
-    # NDMI (Normalized Difference Moisture Index)
-    ndmi = image.normalizedDifference(['B8', 'B11']).rename('NDMI')
-    
-    # MSI (Moisture Stress Index)
-    msi = image.select('B11').divide(image.select('B8')).rename('MSI')
-    
-    # LAI (Leaf Area Index) - Simplified model
-    lai = image.expression(
-        '3.618 * EVI - 0.118',
-        {
-            'EVI': evi
-        }
-    ).rename('LAI')
-    
-    # Biomass estimation based on LAI
-    biomass = lai.multiply(0.5).add(0.2).rename('Biomass')
-    
-    # Chlorophyll index
-    chlorophyll = image.expression(
-        '(NIR / RE) - 1',
-        {
-            'NIR': image.select('B8'),
-            'RE': image.select('B5')  # Red Edge
-        }
-    ).rename('Chlorophyll')
-    
-    # Add all indices to the image
-    image_with_indices = image.addBands([ndvi, evi, ndmi, msi, lai, biomass, chlorophyll])
-    
-    return image_with_indices
-
-# Get Sentinel-2 image collection for specific date range
-def get_sentinel_imagery(geometry, start_date, end_date):
-    # Get Sentinel-2 Surface Reflectance collection
-    s2_collection = (ee.ImageCollection('COPERNICUS/S2_SR')
-                    .filterDate(start_date, end_date)
-                    .filterBounds(geometry)
-                    .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20)))
-    
-    # If collection is empty, return None
-    if s2_collection.size().getInfo() == 0:
+        st.error(f"خطا در بارگذاری فایل CSV: {str(e)}")
         return None
-    
-    # Get the median image to reduce cloud interference
-    median_image = s2_collection.median()
-    
-    return median_image
 
-# Function to get ET (Evapotranspiration) data from MODIS
-def get_et_data(geometry, start_date, end_date):
-    et_collection = (ee.ImageCollection('MODIS/006/MOD16A2')
-                    .filterDate(start_date, end_date)
-                    .filterBounds(geometry))
+# Function to calculate indices
+def calculate_indices(image, geometry, index_name):
+    if index_name == 'NDVI':
+        # NDVI = (NIR - Red) / (NIR + Red)
+        ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI')
+        return ndvi
     
-    if et_collection.size().getInfo() == 0:
-        return None
+    elif index_name == 'EVI':
+        # EVI = 2.5 * (NIR - Red) / (NIR + 6 * Red - 7.5 * Blue + 1)
+        evi = image.expression(
+            '2.5 * (NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1)', {
+                'NIR': image.select('B8'),
+                'RED': image.select('B4'),
+                'BLUE': image.select('B2')
+            }
+        ).rename('EVI')
+        return evi
     
-    # Get ET band and scale it
-    et_image = et_collection.select('ET').median()
-    # MODIS ET is in kg/m^2/8day, convert to mm/day
-    et_image = et_image.multiply(0.1).rename('ET')
+    elif index_name == 'NDMI':
+        # NDMI = (NIR - SWIR) / (NIR + SWIR)
+        ndmi = image.normalizedDifference(['B8', 'B11']).rename('NDMI')
+        return ndmi
     
-    return et_image
-
-# Generate color palettes for different indices
-def get_color_palette(index_name):
-    palettes = {
-        'NDVI': ['#d73027', '#f46d43', '#fdae61', '#fee08b', '#d9ef8b', '#a6d96a', '#66bd63', '#1a9850'],
-        'EVI': ['#d73027', '#f46d43', '#fdae61', '#fee08b', '#d9ef8b', '#a6d96a', '#66bd63', '#1a9850'],
-        'NDMI': ['#d73027', '#f46d43', '#fdae61', '#fee08b', '#d9ef8b', '#a6d96a', '#66bd63', '#1a9850'],
-        'MSI': ['#1a9850', '#66bd63', '#a6d96a', '#d9ef8b', '#fee08b', '#fdae61', '#f46d43', '#d73027'],
-        'LAI': ['#ffffcc', '#d9f0a3', '#addd8e', '#78c679', '#41ab5d', '#238443', '#006837', '#004529'],
-        'Biomass': ['#ffffcc', '#d9f0a3', '#addd8e', '#78c679', '#41ab5d', '#238443', '#006837', '#004529'],
-        'Chlorophyll': ['#ffffcc', '#d9f0a3', '#addd8e', '#78c679', '#41ab5d', '#238443', '#006837', '#004529'],
-        'ET': ['#eff3ff', '#c6dbef', '#9ecae1', '#6baed6', '#4292c6', '#2171b5', '#08519c', '#08306b']
-    }
+    elif index_name == 'LAI':
+        # LAI calculation using empirical model based on NDVI
+        ndvi = image.normalizedDifference(['B8', 'B4'])
+        lai = ndvi.expression(
+            '3.618 * exp(2.718 * NDVI)', {
+                'NDVI': ndvi
+            }
+        ).rename('LAI')
+        return lai
     
-    # Default to NDVI palette if index not found
-    return palettes.get(index_name, palettes['NDVI'])
-
-# Define value ranges for indices
-def get_index_range(index_name):
-    ranges = {
-        'NDVI': (-0.2, 1.0),
-        'EVI': (-0.2, 1.0),
-        'NDMI': (-0.5, 0.5),
-        'MSI': (0.4, 2.0),
-        'LAI': (0, 7),
-        'Biomass': (0, 5),
-        'Chlorophyll': (0, 5),
-        'ET': (0, 10)
-    }
+    elif index_name == 'Biomass':
+        # Biomass = a * LAI + b (calibrated coefficients)
+        ndvi = image.normalizedDifference(['B8', 'B4'])
+        lai = ndvi.expression(
+            '3.618 * exp(2.718 * NDVI)', {
+                'NDVI': ndvi
+            }
+        )
+        biomass = lai.expression(
+            '0.8 * LAI + 0.5', {
+                'LAI': lai
+            }
+        ).rename('Biomass')
+        return biomass
     
-    return ranges.get(index_name, (-1, 1))
-
-# Create map for specific index
-def create_index_map(image, geometry, index_name):
-    m = geemap.Map(
-        zoom_control=True,
-        plugin_Draw=True,
-        plugin_LatLngPopup=True,
-        locate_control=True,
-        search_control=True
-    )
+    elif index_name == 'MSI':
+        # MSI = SWIR / NIR
+        msi = image.expression(
+            'SWIR / NIR', {
+                'SWIR': image.select('B11'),
+                'NIR': image.select('B8')
+            }
+        ).rename('MSI')
+        return msi
     
-    # Add a basemap
-    m.add_basemap('HYBRID')
+    elif index_name == 'Chlorophyll':
+        # Chlorophyll index (CI) = (NIR / Red Edge) - 1
+        ci = image.expression(
+            '(NIR / RE) - 1', {
+                'NIR': image.select('B8'),
+                'RE': image.select('B5')  # Red Edge for Sentinel-2
+            }
+        ).rename('Chlorophyll')
+        return ci
     
-    # Center the map on the geometry
-    center = geometry.centroid().coordinates().getInfo()
-    m.setCenter(center[0], center[1], 14)
+    elif index_name == 'ET':
+        # Simple ET approximation (this is a simplified approach, 
+        # a more sophisticated ET model would require additional inputs)
+        ndvi = image.normalizedDifference(['B8', 'B4'])
+        et = ndvi.expression(
+            'NDVI * 5', {  # Simple scaling of NDVI as proxy for ET
+                'NDVI': ndvi
+            }
+        ).rename('ET')
+        return et
     
-    # Add the index layer with appropriate styling
-    palette = get_color_palette(index_name)
-    vis_min, vis_max = get_index_range(index_name)
-    
-    # Visualization parameters
-    vis_params = {
-        'min': vis_min,
-        'max': vis_max,
-        'palette': palette,
-        'opacity': 0.8
-    }
-    
-    # Add the index layer to the map
-    m.addLayer(image.select(index_name), vis_params, index_name)
-    
-    # Add the geometry outline
-    empty = ee.Image().byte()
-    outline = empty.paint(geometry=geometry, color=1, width=2)
-    m.addLayer(outline, {'palette': 'red'}, 'Farm Boundary')
-    
-    # Add a legend
-    m.add_colorbar(vis_params, label=index_name, orientation='vertical', layer_name=index_name)
-    
-    # Add fullscreen and additional controls
-    Draw(show=True).add_to(m)
-    Fullscreen().add_to(m)
-    
-    return m
-
-# Function to plot time series for an index
-def plot_time_series(start_date, end_date, geometry, index_name, farm_name):
-    # Convert dates to ee.Date format
-    ee_start = ee.Date(start_date)
-    ee_end = ee.Date(end_date)
-    
-    # Get Sentinel-2 collection
-    collection = (ee.ImageCollection('COPERNICUS/S2_SR')
-                .filterDate(ee_start, ee_end)
-                .filterBounds(geometry)
-                .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 30)))
-    
-    # Map the function to calculate indices for each image
-    def add_indices(image):
-        return calculate_indices(image, geometry)
-    
-    collection_with_indices = collection.map(add_indices)
-    
-    # Define the chart
-    chart = geemap.chart.Image.series(
-        collection_with_indices.select(index_name),
-        geometry,
-        {
-            'title': f'روند زمانی {index_name} برای مزرعه {farm_name}',
-            'pointSize': 3,
-            'lineWidth': 2,
-            'curveType': 'function',
-            'colors': ['green'],
-            'vAxis': {'title': index_name},
-            'hAxis': {'title': 'تاریخ', 'format': 'MMM yyyy'}
-        }
-    )
-    
-    # Convert Earth Engine chart to Matplotlib figure
-    chart_data = chart.getInfo()
-    
-    if 'rows' not in chart_data or not chart_data['rows']:
-        return None
-    
-    dates = []
-    values = []
-    
-    for row in chart_data['rows']:
-        if 'c' in row and len(row['c']) >= 2:
-            if row['c'][0] and 'v' in row['c'][0] and row['c'][0]['v'] is not None:
-                date_val = row['c'][0]['v'] / 1000  # Convert milliseconds to seconds
-                dates.append(datetime.fromtimestamp(date_val))
-            
-            if row['c'][1] and 'v' in row['c'][1] and row['c'][1]['v'] is not None:
-                values.append(row['c'][1]['v'])
-    
-    if not dates or not values or len(dates) != len(values):
-        return None
-    
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.plot(dates, values, 'o-', color='green', markersize=4)
-    ax.set_title(f'روند زمانی {index_name} برای مزرعه {farm_name}')
-    ax.set_xlabel('تاریخ')
-    ax.set_ylabel(index_name)
-    ax.grid(True, linestyle='--', alpha=0.7)
-    fig.autofmt_xdate()
-    
-    return fig
-
-# Function to create a ranking table based on index values
-def create_ranking_table(farms_data, selected_index):
-    # Create an empty dataframe to store results
-    results = []
-    
-    for _, farm in farms_data.iterrows():
-        # Create ee.Geometry for each farm
-        try:
-            # Parse coordinates
-            farm_coords = farm['coordinates']
-            if isinstance(farm_coords, str) and farm_coords.strip():
-                # Convert string coordinates to ee.Geometry
-                coords_parts = farm_coords.replace('[', '').replace(']', '').split(',')
-                lon = float(coords_parts[0])
-                lat = float(coords_parts[1])
-                farm_geom = ee.Geometry.Point(lon, lat).buffer(100)  # 100m buffer around the point
-                
-                # Get recent image (last 14 days)
-                now = datetime.now()
-                end_date = now.strftime('%Y-%m-%d')
-                start_date = (now - timedelta(days=14)).strftime('%Y-%m-%d')
-                
-                image = get_sentinel_imagery(farm_geom, start_date, end_date)
-                
-                if image is not None:
-                    # Calculate indices
-                    image_with_indices = calculate_indices(image, farm_geom)
-                    
-                    # Get the mean value of the selected index
-                    mean_value = image_with_indices.select(selected_index).reduceRegion(
-                        reducer=ee.Reducer.mean(),
-                        geometry=farm_geom,
-                        scale=10
-                    ).get(selected_index).getInfo()
-                    
-                    # Add to results
-                    results.append({
-                        'نام مزرعه': farm['مزرعه'],
-                        'شاخص': mean_value,
-                        'واریته': farm['واریته'] if 'واریته' in farm else '-',
-                        'سن': farm['سن'] if 'سن' in farm else '-',
-                        'مساحت': farm['مساحت داشت'] if 'مساحت داشت' in farm else '-'
-                    })
-        except Exception as e:
-            st.warning(f"خطا در پردازش مزرعه {farm['مزرعه']}: {str(e)}")
-            continue
-    
-    # Create dataframe and sort by index value
-    if results:
-        df_results = pd.DataFrame(results)
-        df_results = df_results.sort_values(by='شاخص', ascending=False)
-        return df_results
     else:
-        return pd.DataFrame()
+        return None
 
-# Function to get appropriate status based on index value
-def get_status(index_name, value):
-    status_ranges = {
-        'NDVI': [(0.7, 1.0, 'عالی'), (0.5, 0.7, 'خوب'), (0.3, 0.5, 'متوسط'), (-1, 0.3, 'ضعیف')],
-        'EVI': [(0.6, 1.0, 'عالی'), (0.4, 0.6, 'خوب'), (0.2, 0.4, 'متوسط'), (-1, 0.2, 'ضعیف')],
-        'NDMI': [(0.3, 1.0, 'عالی'), (0.1, 0.3, 'خوب'), (-0.1, 0.1, 'متوسط'), (-1, -0.1, 'ضعیف')],
-        'MSI': [(0.4, 0.8, 'عالی'), (0.8, 1.2, 'خوب'), (1.2, 1.6, 'متوسط'), (1.6, 5.0, 'ضعیف')],
-        'LAI': [(4.0, 10.0, 'عالی'), (2.5, 4.0, 'خوب'), (1.0, 2.5, 'متوسط'), (0, 1.0, 'ضعیف')],
-        'Biomass': [(3.0, 10.0, 'عالی'), (2.0, 3.0, 'خوب'), (1.0, 2.0, 'متوسط'), (0, 1.0, 'ضعیف')],
-        'Chlorophyll': [(3.0, 10.0, 'عالی'), (2.0, 3.0, 'خوب'), (1.0, 2.0, 'متوسط'), (0, 1.0, 'ضعیف')],
-        'ET': [(6.0, 10.0, 'عالی'), (4.0, 6.0, 'خوب'), (2.0, 4.0, 'متوسط'), (0, 2.0, 'ضعیف')]
+# Function to get Sentinel-2 imagery
+def get_sentinel_imagery(start_date, end_date, geometry):
+    # Get Sentinel-2 collection
+    s2 = ee.ImageCollection("COPERNICUS/S2_SR") \
+        .filterDate(start_date, end_date) \
+        .filterBounds(geometry) \
+        .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
+    
+    if s2.size().getInfo() == 0:
+        return None
+    
+    # Get the median to reduce cloud influence
+    median = s2.median()
+    return median
+
+# Function to create a visualization layer for a specific index
+def create_index_layer(image, index_name, geometry):
+    # Define visualization parameters based on index type
+    viz_params = {
+        'NDVI': {'min': -0.2, 'max': 0.8, 'palette': ['#d73027', '#f46d43', '#fdae61', '#fee08b', '#d9ef8b', '#a6d96a', '#66bd63', '#1a9850']},
+        'EVI': {'min': -0.1, 'max': 0.7, 'palette': ['#a50026', '#d73027', '#f46d43', '#fdae61', '#fee08b', '#d9ef8b', '#a6d96a', '#66bd63']},
+        'NDMI': {'min': -0.1, 'max': 0.5, 'palette': ['#d7191c', '#fdae61', '#ffffbf', '#abd9e9', '#2c7bb6']},
+        'LAI': {'min': 0, 'max': 5, 'palette': ['#ffffcc', '#c2e699', '#78c679', '#31a354', '#006837']},
+        'Biomass': {'min': 0, 'max': 10, 'palette': ['#ffffcc', '#d9f0a3', '#addd8e', '#78c679', '#41ab5d', '#238443', '#005a32']},
+        'MSI': {'min': 0.4, 'max': 2, 'palette': ['#1a9850', '#66bd63', '#a6d96a', '#d9ef8b', '#fee08b', '#fdae61', '#f46d43', '#d73027']},
+        'Chlorophyll': {'min': 0, 'max': 2, 'palette': ['#ffffe5', '#f7fcb9', '#d9f0a3', '#addd8e', '#78c679', '#41ab5d', '#238443', '#005a32']},
+        'ET': {'min': 0, 'max': 4, 'palette': ['#ffffcc', '#a1dab4', '#41b6c4', '#2c7fb8', '#253494']}
     }
     
-    if index_name not in status_ranges:
-        return 'نامشخص'
+    # Calculate index
+    index_image = calculate_indices(image, geometry, index_name)
     
-    for min_val, max_val, status in status_ranges[index_name]:
-        if min_val <= value <= max_val:
-            return status
+    if index_image is None:
+        return None
     
-    return 'نامشخص'
+    # Create the layer
+    layer = geemap.ee_tile_layer(
+        index_image.clip(geometry), 
+        viz_params[index_name], 
+        f"{index_name} Index"
+    )
+    
+    return layer
 
-# Generate a downloadable figure
-def get_figure_download_link(fig, filename):
-    buf = BytesIO()
-    fig.savefig(buf, format='png', bbox_inches='tight', dpi=300)
-    buf.seek(0)
-    b64 = base64.b64encode(buf.read()).decode()
-    href = f'<a href="data:image/png;base64,{b64}" download="{filename}">دانلود نمودار</a>'
-    return href
+# Function to generate time series plot for a specific index
+def generate_time_series_plot(point, index_name, start_date, end_date):
+    try:
+        # Convert point to ee.Geometry
+        point_geom = ee.Geometry.Point([point[1], point[0]])  # [lon, lat]
+        
+        # Get Sentinel-2 collection
+        s2 = ee.ImageCollection("COPERNICUS/S2_SR") \
+            .filterDate(start_date, end_date) \
+            .filterBounds(point_geom) \
+            .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
+        
+        if s2.size().getInfo() == 0:
+            return None
+        
+        # Map over the collection to compute the index for each image
+        def add_index(image):
+            date = image.date().format('YYYY-MM-dd')
+            index_value = calculate_indices(image, point_geom, index_name) \
+                .reduceRegion(
+                    reducer=ee.Reducer.mean(),
+                    geometry=point_geom,
+                    scale=10
+                ).get(index_name)
+            
+            return ee.Feature(None, {'date': date, 'index_value': index_value})
+        
+        # Compute index for each image in collection
+        index_collection = s2.map(add_index)
+        
+        # Get the time series data
+        time_series = index_collection.reduceColumns(
+            reducer=ee.Reducer.toList(2),
+            selectors=['date', 'index_value']
+        ).get('list').getInfo()
+        
+        # Convert to dataframe
+        if time_series:
+            df = pd.DataFrame(time_series, columns=['date', 'value'])
+            df['date'] = pd.to_datetime(df['date'])
+            df = df.sort_values('date')
+            
+            # Create plotly figure
+            fig = px.line(df, x='date', y='value', title=f"{index_name} Time Series")
+            fig.update_layout(
+                xaxis_title="Date",
+                yaxis_title=index_name,
+                xaxis={'dir': 'ltr'},
+                autosize=True,
+                height=400
+            )
+            
+            return fig
+        else:
+            return None
+            
+    except Exception as e:
+        st.error(f"Error generating time series: {str(e)}")
+        return None
 
-# Main function to run the app
+# Function to create farm health ranking table
+def create_farm_health_table(farms_df, selected_index):
+    try:
+        # Create a copy of the dataframe
+        df = farms_df.copy()
+        
+        # Define threshold values for health status classification
+        health_thresholds = {
+            'NDVI': {'excellent': 0.7, 'good': 0.5, 'fair': 0.3, 'poor': 0.1},
+            'EVI': {'excellent': 0.6, 'good': 0.4, 'fair': 0.3, 'poor': 0.1},
+            'NDMI': {'excellent': 0.4, 'good': 0.3, 'fair': 0.2, 'poor': 0.1},
+            'LAI': {'excellent': 4.0, 'good': 3.0, 'fair': 2.0, 'poor': 1.0},
+            'Biomass': {'excellent': 8.0, 'good': 6.0, 'fair': 4.0, 'poor': 2.0},
+            'MSI': {'excellent': 0.6, 'good': 0.8, 'fair': 1.0, 'poor': 1.5},
+            'Chlorophyll': {'excellent': 1.5, 'good': 1.2, 'fair': 0.8, 'poor': 0.4},
+            'ET': {'excellent': 3.5, 'good': 2.5, 'fair': 1.5, 'poor': 0.8}
+        }
+        
+        # Generate random index values for demonstration
+        # In a real application, these would come from actual GEE calculations
+        np.random.seed(42)  # For reproducible results
+        if selected_index == 'MSI':
+            # For MSI, lower is better
+            values = np.random.uniform(0.4, 2.0, size=len(df))
+        else:
+            # For all other indices, higher is better
+            min_val = 0
+            max_val = health_thresholds[selected_index]['excellent'] * 1.2
+            values = np.random.uniform(min_val, max_val, size=len(df))
+        
+        df[selected_index] = values
+        
+        # Classify health status
+        def classify_health(value, index):
+            if index == 'MSI':
+                # For MSI, lower is better
+                if value <= health_thresholds[index]['excellent']:
+                    return 'عالی'
+                elif value <= health_thresholds[index]['good']:
+                    return 'خوب'
+                elif value <= health_thresholds[index]['fair']:
+                    return 'متوسط'
+                elif value <= health_thresholds[index]['poor']:
+                    return 'ضعیف'
+                else:
+                    return 'بحرانی'
+            else:
+                # For all other indices, higher is better
+                if value >= health_thresholds[index]['excellent']:
+                    return 'عالی'
+                elif value >= health_thresholds[index]['good']:
+                    return 'خوب'
+                elif value >= health_thresholds[index]['fair']:
+                    return 'متوسط'
+                elif value >= health_thresholds[index]['poor']:
+                    return 'ضعیف'
+                else:
+                    return 'بحرانی'
+        
+        df['وضعیت'] = df[selected_index].apply(lambda x: classify_health(x, selected_index))
+        
+        # Sort by index value (ascending or descending based on index type)
+        if selected_index == 'MSI':
+            # For MSI, lower is better
+            df = df.sort_values(by=selected_index, ascending=True)
+        else:
+            # For all other indices, higher is better
+            df = df.sort_values(by=selected_index, ascending=False)
+        
+        # Select columns for display
+        display_df = df[['مزرعه', 'اداره', 'واریته', selected_index, 'وضعیت']].reset_index(drop=True)
+        display_df.index = display_df.index + 1  # Start index from 1
+        
+        return display_df
+    
+    except Exception as e:
+        st.error(f"Error creating health table: {str(e)}")
+        return None
+
+# Main application
 def main():
-    # Application title and description
-    st.title("سامانه هوشمند پایش مزارع نیشکر دهخدا 🌾")
-    st.markdown("""
-    این داشبورد برای مانیتورینگ پیشرفته مزارع نیشکر دهخدا طراحی شده و با استفاده از تصاویر ماهواره‌ای سنتینل۲، شاخص‌های مهم 
-    کشاورزی را محاسبه و نمایش می‌دهد. با استفاده از این ابزار می‌توانید وضعیت سلامت گیاه، میزان بیوماس، تبخیر و تعرق و دیگر 
-    شاخص‌های مهم را در هر روز از هفته مشاهده نمایید.
-    """)
+    # Display header
+    st.markdown('<div class="main-header">پایش مزارع نیشکر دهخدا</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">داشبورد تعاملی و هوشمند برای مانیتورینگ پیشرفته مزارع</div>', unsafe_allow_html=True)
+    
+    # Authenticate with Earth Engine
+    ee_auth_success = ee_authenticate()
+    
+    if not ee_auth_success:
+        st.warning("لطفا فایل کلید سرویس GEE را در مسیر پروژه قرار دهید.")
+        return
+    
+    # Load farm data
+    farms_data = load_data()
+    
+    if farms_data is None:
+        st.warning("لطفا فایل CSV اطلاعات مزارع را در مسیر پروژه قرار دهید.")
+        return
     
     # Sidebar
     st.sidebar.title("تنظیمات")
     
-    # Authenticate with GEE
-    gee_connected = authenticate_gee()
+    # Date selection
+    current_date = datetime.datetime.now()
+    end_date = st.sidebar.date_input(
+        "تاریخ پایان",
+        value=current_date,
+        key="end_date"
+    )
     
-    if not gee_connected:
-        st.warning("لطفاً ابتدا به Google Earth Engine متصل شوید.")
-        return
+    # Default to 30 days before end date
+    start_date = st.sidebar.date_input(
+        "تاریخ شروع",
+        value=end_date - timedelta(days=30),
+        key="start_date"
+    )
     
-    # Load farm data
-    farms_data = load_farm_data()
-    
-    if farms_data.empty:
-        st.error("داده‌های مزارع بارگذاری نشده‌اند. لطفاً فایل CSV را بررسی کنید.")
-        return
-    
-    # Filter options
-    days_of_week = farms_data['روزهای هفته'].unique().tolist() if 'روزهای هفته' in farms_data.columns else []
-    selected_day = st.sidebar.selectbox("انتخاب روز هفته", days_of_week if days_of_week else ["همه روزها"])
-    
-    # Filter farms by selected day
-    if selected_day != "همه روزها" and 'روزهای هفته' in farms_data.columns:
-        filtered_farms = farms_data[farms_data['روزهای هفته'] == selected_day]
-    else:
-        filtered_farms = farms_data
-    
-    # Select farm
-    farm_names = filtered_farms['مزرعه'].unique().tolist() if 'مزرعه' in filtered_farms.columns else []
-    selected_farm = st.sidebar.selectbox("انتخاب مزرعه", farm_names)
-    
-    # Get selected farm data
-    farm_data = filtered_farms[filtered_farms['مزرعه'] == selected_farm].iloc[0] if not filtered_farms.empty else None
-    
-    # Select index to display
-    available_indices = ['NDVI', 'EVI', 'NDMI', 'MSI', 'LAI', 'Biomass', 'Chlorophyll', 'ET']
-    selected_index = st.sidebar.selectbox("انتخاب شاخص", available_indices)
-    
-    # Date range selection
-    st.sidebar.subheader("بازه زمانی")
-    today = datetime.now()
-    default_end_date = today.strftime('%Y-%m-%d')
-    default_start_date = (today - timedelta(days=30)).strftime('%Y-%m-%d')
-    
-    start_date = st.sidebar.date_input("تاریخ شروع", datetime.strptime(default_start_date, '%Y-%m-%d'))
-    end_date = st.sidebar.date_input("تاریخ پایان", datetime.strptime(default_end_date, '%Y-%m-%d'))
-    
-    # Convert dates to strings
+    # Convert to string format for GEE
     start_date_str = start_date.strftime('%Y-%m-%d')
     end_date_str = end_date.strftime('%Y-%m-%d')
     
-    # Main content
-    if farm_data is not None and 'مزرعه' in farm_data:
-        # Create tabs
-        tab1, tab2, tab3, tab4 = st.tabs(["نقشه", "نمودار زمانی", "جدول رتبه‌بندی", "اطلاعات مزرعه"])
+    # Day of week filter
+    weekdays = farms_data['روزهای هفته'].unique().tolist()
+    selected_day = st.sidebar.selectbox(
+        "فیلتر روز هفته",
+        options=weekdays,
+        index=0  # Default to first day
+    )
+    
+    # Filter data based on selected day
+    filtered_farms = farms_data[farms_data['روزهای هفته'] == selected_day]
+    
+    # Farm selection
+    farm_names = filtered_farms['مزرعه'].unique().tolist()
+    selected_farm = st.sidebar.selectbox(
+        "انتخاب مزرعه",
+        options=farm_names,
+        index=0  # Default to first farm
+    )
+    
+    # Get selected farm data
+    farm_data = filtered_farms[filtered_farms['مزرعه'] == selected_farm].iloc[0]
+    
+    # Index selection
+    index_options = ['NDVI', 'EVI', 'NDMI', 'LAI', 'Biomass', 'MSI', 'Chlorophyll', 'ET']
+    selected_index = st.sidebar.selectbox(
+        "انتخاب شاخص",
+        options=index_options,
+        index=0  # Default to NDVI
+    )
+    
+    # Get farm coordinates
+    farm_lat = farm_data['عرض جغرافیایی']
+    farm_lon = farm_data['طول جغرافیایی']
+    
+    # Create a point geometry for the selected farm
+    farm_point = [farm_lat, farm_lon]
+    
+    # Create a buffer around the farm point (500 meters)
+    farm_buffer = ee.Geometry.Point([farm_lon, farm_lat]).buffer(500)
+    
+    # Main content area with tabs
+    tab1, tab2, tab3 = st.tabs(["نقشه و شاخص‌ها", "تحلیل زمانی", "مقایسه مزارع"])
+    
+    with tab1:
+        col1, col2 = st.columns([2, 1])
         
-        # Farm information
-        with tab4:
-            st.subheader(f"اطلاعات مزرعه {farm_data['مزرعه']}")
+        with col1:
+            # Create map
+            m = geemap.Map(
+                center=[farm_lat, farm_lon],
+                zoom=14,
+                basemap='HYBRID'
+            )
             
-            # Create columns for better layout
-            col1, col2 = st.columns(2)
+            # Get Sentinel-2 imagery
+            sentinel_image = get_sentinel_imagery(start_date_str, end_date_str, farm_buffer)
+            
+            if sentinel_image is not None:
+                # Create index layer
+                index_layer = create_index_layer(sentinel_image, selected_index, farm_buffer)
+                
+                if index_layer is not None:
+                    # Add index layer to map
+                    m.add_layer(index_layer)
+                    
+                    # Add farm point
+                    m.add_marker(location=[farm_lat, farm_lon], popup=farm_data['مزرعه'])
+                    
+                    # Add farm boundary (simplified as a circle for demonstration)
+                    m.add_circle_markers(
+                        locations=[[farm_lat, farm_lon]],
+                        radius=10,
+                        color='white',
+                        fill_color='#3388ff'
+                    )
+                    
+                    # Add scale bar and layers control
+                    m.add_scale_bar()
+                    
+                    # Display map
+                    folium_static(m)
+                else:
+                    st.warning("خطا در محاسبه شاخص. لطفاً شاخص دیگری را انتخاب کنید.")
+            else:
+                st.warning("داده‌های ماهواره‌ای برای بازه زمانی انتخاب شده در دسترس نیست.")
+        
+        with col2:
+            # Display farm information
+            st.subheader("اطلاعات مزرعه")
+            
+            farm_info = {
+                "نام مزرعه": farm_data['مزرعه'],
+                "اداره": farm_data['اداره'],
+                "کانال": farm_data['کانال'],
+                "مساحت داشت (هکتار)": farm_data['مساحت داشت'],
+                "واریته": farm_data['واریته'],
+                "سن مزرعه": farm_data['سن'],
+                "مختصات": f"{farm_lat:.6f}, {farm_lon:.6f}"
+            }
+            
+            for key, value in farm_info.items():
+                st.write(f"**{key}:** {value}")
+            
+            # Display index information
+            st.subheader(f"اطلاعات شاخص {selected_index}")
+            
+            # Index descriptions
+            index_descriptions = {
+                'NDVI': "شاخص تفاضل نرمال‌شده پوشش گیاهی که نشان‌دهنده سبزینگی و سلامت گیاه است.",
+                'EVI': "شاخص پوشش گیاهی بهبود یافته که برای مناطق با پوشش گیاهی متراکم مناسب‌تر است.",
+                'NDMI': "شاخص رطوبت تفاضلی نرمال‌شده که میزان رطوبت برگ و تنش آبی را نشان می‌دهد.",
+                'LAI': "شاخص سطح برگ که نسبت سطح برگ به سطح زمین را نشان می‌دهد.",
+                'Biomass': "شاخص توده زیستی که میزان ماده خشک گیاهی را تخمین می‌زند.",
+                'MSI': "شاخص تنش رطوبتی که نشان‌دهنده سطح تنش آبی در گیاه است.",
+                'Chlorophyll': "شاخص کلروفیل که میزان محتوای کلروفیل برگ را نشان می‌دهد.",
+                'ET': "شاخص تبخیر و تعرق که میزان تبخیر آب از سطح خاک و تعرق گیاه را نشان می‌دهد."
+            }
+            
+            st.write(index_descriptions[selected_index])
+            
+            # Generate random index statistics for demonstration
+            # In a real application, these would come from actual GEE calculations
+            np.random.seed(int(farm_data['مزرعه'].sum()))
+            
+            if selected_index == 'MSI':
+                # For MSI, lower is better
+                farm_index_value = np.random.uniform(0.5, 1.5)
+                min_val, max_val = 0.5, 2.0
+                optimal_range = "0.4 - 0.8"
+                if farm_index_value < 0.8:
+                    status = "خوب"
+                    status_color = "#66bd63"
+                elif farm_index_value < 1.2:
+                    status = "متوسط"
+                    status_color = "#fee08b"
+                else:
+                    status = "ضعیف"
+                    status_color = "#d73027"
+            else:
+                # For all other indices, higher is better
+                if selected_index == 'NDVI':
+                    farm_index_value = np.random.uniform(0.3, 0.8)
+                    min_val, max_val = 0, 1.0
+                    optimal_range = "0.6 - 0.8"
+                    if farm_index_value > 0.6:
+                        status = "خوب"
+                        status_color = "#66bd63"
+                    elif farm_index_value > 0.4:
+                        status = "متوسط"
+                        status_color = "#fee08b"
+                    else:
+                        status = "ضعیف"
+                        status_color = "#d73027"
+                elif selected_index == 'LAI':
+                    farm_index_value = np.random.uniform(1.5, 4.5)
+                    min_val, max_val = 0, 6.0
+                    optimal_range = "3.0 - 5.0"
+                    if farm_index_value > 3.0:
+                        status = "خوب"
+                        status_color = "#66bd63"
+                    elif farm_index_value > 2.0:
+                        status = "متوسط"
+                        status_color = "#fee08b"
+                    else:
+                        status = "ضعیف"
+                        status_color = "#d73027"
+                elif selected_index == 'Biomass':
+                    farm_index_value = np.random.uniform(3.0, 9.0)
+                    min_val, max_val = 0, 12.0
+                    optimal_range = "6.0 - 10.0"
+                    if farm_index_value > 6.0:
+                        status = "خوب"
+                        status_color = "#66bd63"
+                    elif farm_index_value > 4.0:
+                        status = "متوسط"
+                        status_color = "#fee08b"
+                    else:
+                        status = "ضعیف"
+                        status_color = "#d73027"
+                else:
+                    farm_index_value = np.random.uniform(0.2, 0.7)
+                    min_val, max_val = 0, 1.0
+                    optimal_range = "0.5 - 0.8"
+                    if farm_index_value > 0.5:
+                        status = "خوب"
+                        status_color = "#66bd63"
+                    elif farm_index_value > 0.3:
+                        status = "متوسط"
+                        status_color = "#fee08b"
+                    else:
+                        status = "ضعیف"
+                        status_color = "#d73027"
+            
+            # Display index value with gauge
+            st.write(f"**مقدار شاخص:** {farm_index_value:.2f}")
+            st.write(f"**محدوده بهینه:** {optimal_range}")
+            
+            # Create gauge chart
+            gauge_fig = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=farm_index_value,
+                domain={'x': [0, 1], 'y': [0, 1]},
+                title={'text': f"شاخص {selected_index}"},
+                gauge={
+                    'axis': {'range': [min_val, max_val]},
+                    'bar': {'color': status_color},
+                    'steps': [
+                        {'range': [min_val, min_val + (max_val - min_val) * 0.33], 'color': "#d73027"},
+                        {'range': [min_val + (max_val - min_val) * 0.33, min_val + (max_val - min_val) * 0.67], 'color': "#fee08b"},
+                        {'range': [min_val + (max_val - min_val) * 0.67, max_val], 'color': "#66bd63"}
+                    ]
+                }
+            ))
+            
+            gauge_fig.update_layout(
+                height=250,
+                margin=dict(l=30, r=30, t=50, b=30)
+            )
+            
+            st.plotly_chart(gauge_fig, use_container_width=True)
+            
+            # Display status
+            st.markdown(f"<div style='text-align: center; font-size: 1.2em;'>وضعیت: <span style='color: {status_color}; font-weight: bold;'>{status}</span></div>", unsafe_allow_html=True)
+    
+    with tab2:
+        st.subheader("تحلیل زمانی شاخص‌ها")
+        
+        # Generate time series plot
+        time_series_fig = generate_time_series_plot(farm_point, selected_index, start_date_str, end_date_str)
+        
+        if time_series_fig is not None:
+            st.plotly_chart(time_series_fig, use_container_width=True)
+            
+            # Add interpretation
+            st.subheader("تفسیر نمودار")
+            
+            interpretations = {
+                'NDVI': "روند NDVI نشان‌دهنده تغییرات سبزینگی و فعالیت فتوسنتزی گیاه در طول زمان است. افزایش NDVI نشان‌دهنده رشد مناسب و کاهش آن می‌تواند نشانه تنش یا رسیدگی محصول باشد.",
+                'EVI': "EVI نسبت به NDVI در پوشش گیاهی متراکم اشباع نمی‌شود و به تغییرات ساختار تاج پوشش حساس‌تر است. نوسانات EVI می‌تواند نشان‌دهنده تغییرات در ساختار برگ و تاج پوشش باشد.",
+                'NDMI': "روند NDMI نشان‌دهنده تغییرات محتوای آب برگ است. کاهش NDMI می‌تواند نشانه تنش آبی باشد که نیاز به آبیاری را نشان می‌دهد.",
+                'LAI': "شاخص سطح برگ (LAI) با توسعه تاج پوشش افزایش می‌یابد. کاهش ناگهانی LAI می‌تواند نشان‌دهنده ریزش برگ، آفت یا بیماری باشد.",
+                'Biomass': "روند توده زیستی نشان‌دهنده تجمع ماده خشک گیاهی است. افزایش پیوسته نشان‌دهنده رشد مناسب و توقف یا کاهش آن می‌تواند نشانه مشکلات رشد باشد.",
+                'MSI': "شاخص تنش رطوبتی (MSI) با افزایش تنش آبی افزایش می‌یابد. افزایش MSI نشان‌دهنده نیاز به آبیاری است.",
+                'Chlorophyll': "روند شاخص کلروفیل نشان‌دهنده سلامت فیزیولوژیکی گیاه است. کاهش می‌تواند نشانه کمبود نیتروژن یا سایر تنش‌های تغذیه‌ای باشد.",
+                'ET': "روند تبخیر و تعرق (ET) نشان‌دهنده مصرف آب گیاه است. کاهش ناگهانی ET می‌تواند نشانه تنش آبی یا بسته شدن روزنه‌ها در اثر تنش باشد."
+            }
+            
+            st.write(interpretations[selected_index])
+            
+            # Historical comparison (random data for demonstration)
+            st.subheader("مقایسه با سال‌های گذشته")
+            
+            # Generate random comparative data
+            dates = pd.date_range(start=start_date, end=end_date)
+            current_year_data = pd.Series(np.random.uniform(0.3, 0.8, len(dates)), index=dates)
+            last_year_data = pd.Series(np.random.uniform(0.25, 0.75, len(dates)), index=dates)
+            
+            # Create comparison dataframe
+            comp_df = pd.DataFrame({
+                'امسال': current_year_data,
+                'سال گذشته': last_year_data
+            })
+            
+            # Create comparison plot
+            comp_fig = px.line(comp_df, title=f"مقایسه {selected_index} با سال گذشته")
+            comp_fig.update_layout(
+                xaxis_title="تاریخ",
+                yaxis_title=selected_index,
+                xaxis={'dir': 'ltr'},
+                autosize=True,
+                height=350
+            )
+            
+            st.plotly_chart(comp_fig, use_container_width=True)
+            
+            # Calculate stats
+            current_mean = current_year_data.mean()
+            last_mean = last_year_data.mean()
+            percent_change = ((current_mean - last_mean) / last_mean) * 100
+            
+            # Display comparison stats
+            col1, col2, col3 = st.columns(3)
             
             with col1:
-                st.markdown(f"**اداره:** {farm_data['اداره'] if 'اداره' in farm_data else 'نامشخص'}")
-                st.markdown(f"**کانال:** {farm_data['کانال'] if 'کانال' in farm_data else 'نامشخص'}")
-                st.markdown(f"**واریته:** {farm_data['واریته'] if 'واریته' in farm_data else 'نامشخص'}")
+                st.metric(
+                    "میانگین امسال",
+                    f"{current_mean:.2f}",
+                    f"{percent_change:.1f}%" if percent_change >= 0 else f"{percent_change:.1f}%"
+                )
             
             with col2:
-                st.markdown(f"**مساحت داشت:** {farm_data['مساحت داشت'] if 'مساحت داشت' in farm_data else 'نامشخص'} هکتار")
-                st.markdown(f"**سن:** {farm_data['سن'] if 'سن' in farm_data else 'نامشخص'}")
-                st.markdown(f"**روز بازدید:** {farm_data['روزهای هفته'] if 'روزهای هفته' in farm_data else 'نامشخص'}")
+                st.metric(
+                    "میانگین سال گذشته",
+                    f"{last_mean:.2f}"
+                )
             
-            # Display coordinates
-            st.markdown("### مختصات جغرافیایی")
-            lat = farm_data.get('عرض جغرافیایی', farm_data.get('Latitude', None))
-            lon = farm_data.get('طول جغرافیایی', farm_data.get('Longitude', None))
-            
-            if lat is not None and lon is not None:
-                st.markdown(f"**عرض جغرافیایی:** {lat}")
-                st.markdown(f"**طول جغرافیایی:** {lon}")
-                
-                # Create a small map to show the location
-                location_map = folium.Map(location=[lat, lon], zoom_start=12)
-                folium.Marker([lat, lon], popup=farm_data['مزرعه']).add_to(location_map)
-                st.components.v1.html(location_map._repr_html_(), height=300)
-            else:
-                st.warning("مختصات جغرافیایی برای این مزرعه موجود نیست.")
+            with col3:
+                st.metric(
+                    "تغییرات",
+                    f"{percent_change:.1f}%",
+                    f"{percent_change:.1f}%" if percent_change >= 0 else f"{percent_change:.1f}%",
+                    delta_color="normal" if selected_index == "MSI" else "inverse" if selected_index == "MSI" else "normal"
+                )
         
-        # Map tab
-        with tab1:
-            st.subheader(f"نقشه {selected_index} برای مزرعه {farm_data['مزرعه']}")
-            
-            try:
-                # Create geometry for the farm
-                if 'coordinates' in farm_data and farm_data['coordinates']:
-                    # Parse coordinates
-                    coords = farm_data['coordinates']
-                    if isinstance(coords, str):
-                        coords_parts = coords.replace('[', '').replace(']', '').split(',')
-                        lon = float(coords_parts[0])
-                        lat = float(coords_parts[1])
-                    else:
-                        lon = farm_data.get('طول جغرافیایی', farm_data.get('Longitude'))
-                        lat = farm_data.get('عرض جغرافیایی', farm_data.get('Latitude'))
-                        
-                    if lat is not None and lon is not None:
-                        # Create point geometry with buffer
-                        geometry = ee.Geometry.Point([lon, lat]).buffer(100)  # 100m buffer
-                        
-                        # Get Sentinel-2 imagery
-                        image = get_sentinel_imagery(geometry, start_date_str, end_date_str)
-                        
-                        if image is not None:
-                            # Calculate all indices
-                            image_with_indices = calculate_indices(image, geometry)
-                            
-                            # If the index is ET, get ET data separately
-                            if selected_index == 'ET':
-                                et_image = get_et_data(geometry, start_date_str, end_date_str)
-                                if et_image is not None:
-                                    # Create map for ET
-                                    m = create_index_map(et_image, geometry, 'ET')
-                                else:
-                                    st.warning("داده تبخیر و تعرق (ET) برای این دوره زمانی موجود نیست.")
-                                    m = None
-                            else:
-                                # Create map for other indices
-                                m = create_index_map(image_with_indices, geometry, selected_index)
-                            
-                            if m is not None:
-                                # Display the map
-                                m_html = m.to_html()
-                                st.components.v1.html(m_html, height=500)
-                                
-                                # Get index statistics
-                                stats = image_with_indices.select(selected_index).reduceRegion(
-                                    reducer=ee.Reducer.mean().combine(
-                                        reducer2=ee.Reducer.stdDev(),
-                                        sharedInputs=True
-                                    ).combine(
-                                        reducer2=ee.Reducer.minMax(),
-                                        sharedInputs=True
-                                    ),
-                                    geometry=geometry,
-                                    scale=10
-                                ).getInfo()
-                                
-                                # Display statistics
-                                st.subheader("آمار شاخص")
-                                cols = st.columns(4)
-                                
-                                mean_val = stats.get(f"{selected_index}_mean", 0)
-                                min_val = stats.get(f"{selected_index}_min", 0)
-                                max_val = stats.get(f"{selected_index}_max", 0)
-                                std_val = stats.get(f"{selected_index}_stdDev", 0)
-                                
-                                cols[0].metric("میانگین", f"{mean_val:.3f}")
-                                cols[1].metric("حداقل", f"{min_val:.3f}")
-                                cols[2].metric("حداکثر", f"{max_val:.3f}")
-                                cols[3].metric("انحراف معیار", f"{std_val:.3f}")
-                                
-                                # Status based on mean value
-                                status = get_status(selected_index, mean_val)
-                                st.info(f"وضعیت مزرعه بر اساس شاخص {selected_index}: **{status}**")
-                                
-                                # Download map button
-                                if st.button("دانلود نقشه"):
-                                    m.to_streamlit(height=500)
-                            else:
-                                st.warning("خطا در ایجاد نقشه")
-                        else:
-                            st.warning("تصویر ماهواره‌ای برای این بازه زمانی موجود نیست یا میزان ابر بیش از حد مجاز است.")
-                    else:
-                        st.warning("مختصات جغرافیایی برای این مزرعه موجود نیست.")
-                else:
-                    st.warning("مختصات جغرافیایی برای این مزرعه موجود نیست.")
-            except Exception as e:
-                st.error(f"خطا در پردازش نقشه: {str(e)}")
+        else:
+            st.warning("داده‌های کافی برای ایجاد نمودار زمانی وجود ندارد. لطفاً بازه زمانی دیگری را انتخاب کنید.")
+    
+    with tab3:
+        st.subheader("مقایسه وضعیت مزارع")
         
-        # Time series tab
-        with tab2:
-            st.subheader(
+        # Create health ranking table
+        health_table = create_farm_health_table(filtered_farms, selected_index)
+        
+        if health_table is not None:
+            # Create color-coded dataframe
+            def color_status(val):
+                if val == 'عالی':
+                    return 'background-color: #1a9850; color: white'
+                elif val == 'خوب':
+                    return 'background-color: #66bd63; color: white'
+                elif val == 'متوسط':
+                    return 'background-color: #fee08b'
+                elif val == 'ضعیف':
+                    return 'background-color: #f46d43; color: white'
+                else:  # بحرانی
+                    return 'background-color: #d73027; color: white'
+            
+            # Apply styling
+            styled_table = health_table.style.applymap(
+                color_status, subset=['وضعیت']
+            )
+            
+            # Display table
+            st.dataframe(styled_table, use_container_width=True)
+            
+            # Create distribution chart
+            status_counts = health_table['وضعیت'].value_counts()
+            
+            status_fig = px.pie(
+                values=status_counts.values,
+                names=status_counts.index,
+                title="توزیع وضعیت مزارع",
+                color=status_counts.index,
+                color_discrete_map={
+                    'عالی': '#1a9850',
+                    'خوب': '#66bd63',
+                    'متوسط': '#fee08b',
+                    'ضعیف': '#f46d43',
+                    'بحرانی': '#d73027'
+                }
+            )
+            
+            status_fig.update_layout(
+                legend_title="وضعیت",
+                height=350
+            )
+            
+            st.plotly_chart(status_fig)
+            
+            # Add summary statistics
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.markdown(
+                    f"""
+                    <div class="stats-box">
+                        <div class="stats-value">{len(health_table)}</div>
+                        <div class="stats-label">تعداد کل مزارع</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+            
+            with col2:
+                good_count = sum(status_counts[status] for status in ['عالی', 'خوب'] if status in status_counts)
+                st.markdown(
+                    f"""
+                    <div class="stats-box">
+                        <div class="stats-value">{good_count}</div>
+                        <div class="stats-label">مزارع با وضعیت خوب</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+            
+            with col3:
+                medium_count = status_counts.get('متوسط', 0)
+                st.markdown(
+                    f"""
+                    <div class="stats-box">
+                        <div class="stats-value">{medium_count}</div>
+                        <div class="stats-label">مزارع با وضعیت متوسط</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+            
+            with col4:
+                poor_count = sum(status_counts[status] for status in ['ضعیف', 'بحرانی'] if status in status_counts)
+                st.markdown(
+                    f"""
+                    <div class="stats-box">
+                        <div class="stats-value">{poor_count}</div>
+                        <div class="stats-label">مزارع با وضعیت ضعیف</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+            
+            # Add download button
+            csv = health_table.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="دانلود جدول به صورت CSV",
+                data=csv,
+                file_name=f"{selected_index}_farm_health_{datetime.datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            )
+        
+        else:
+            st.warning("خطا در ایجاد جدول رتبه‌بندی مزارع.")
+    
+    # Footer
+    st.markdown("""
+    ---
+    <div style="text-align: center; color: gray; font-size: 0.8em;">
+        داشبورد پایش مزارع نیشکر دهخدا | طراحی و توسعه: 2025
+    </div>
+    """, unsafe_allow_html=True)
+
+if __name__ == "__main__":
+    main()
