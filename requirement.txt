@@ -1,6 +1,8 @@
-streamlit
-pandas
-earthengine-api
-geemap
-folium
-leafmap
+streamlit==1.32.0
+pandas==2.2.0
+earthengine-api==0.1.375
+geemap==0.25.0
+folium==0.15.1
+leafmap==0.25.0
+numpy==1.26.4
+altair==5.2.0
