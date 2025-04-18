@@ -20,3 +20,4 @@ redis
 python-dotenv==1.0.0
 hydralit_components
 streamlit_extras
+ee
