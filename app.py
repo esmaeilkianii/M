@@ -26,1108 +26,836 @@ SERVICE_ACCOUNT_FILE = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json' # Your servi
 def initialize_gee():
     """Initializes Google Earth Engine using the Service Account."""
     try:
+
         if not os.path.exists(SERVICE_ACCOUNT_FILE):
-            st.error(f"خطا: فایل Service Account در مسیر '{SERVICE_ACCOUNT_FILE}' یافت نشد. لطفاً فایل را کنار اسکریپت قرار دهید.")
+            st.error(f"خطا: فایل Service Account در مسیر '{SERVICE_ACCOUNT_FILE}' یافت نشد.")
             st.stop()
         credentials = ee.ServiceAccountCredentials(None, key_file=SERVICE_ACCOUNT_FILE)
-        # Use high-volume endpoint for potentially better performance
+
+
+
+
+
+
+
+
+
+
         ee.Initialize(credentials=credentials, opt_url='https://earthengine-highvolume.googleapis.com')
         print("GEE Initialized Successfully using Service Account.")
-        return True # Indicate success
+        return True
     except ee.EEException as e:
         st.error(f"خطا در اتصال به Google Earth Engine: {e}")
-        st.error("لطفاً از صحت فایل Service Account، فعال بودن آن در پروژه GEE و اتصال اینترنت اطمینان حاصل کنید.")
-        st.stop() # Stop execution if GEE fails
+        st.error("لطفاً از صحت فایل Service Account و فعال بودن آن در پروژه GEE اطمینان حاصل کنید.")
+        st.stop()
     except Exception as e:
         st.error(f"خطای غیرمنتظره هنگام اتصال به GEE: {e}")
         st.stop()
-# --- Data Loading ---
-@st.cache_data # Cache the loaded data
-def load_data(csv_path):
-    """Loads and preprocesses farm data from the CSV file."""
+    """Loads farm data from the CSV file."""
     try:
         df = pd.read_csv(csv_path)
-        # **Critical Step**: Clean column names FIRST
-        df.columns = df.columns.str.strip() # Remove leading/trailing whitespace from headers
-        print(f"Original columns: {df.columns.tolist()}") # Debug: See original columns
 
-        # Rename columns for easier access if needed (optional)
-        # df = df.rename(columns={'سن ': 'سن'}) # Example if you prefer no space
+        df.columns = df.columns.str.strip()
 
-        # Convert coordinates to numeric, coercing errors to NaN
         df['طول جغرافیایی'] = pd.to_numeric(df['طول جغرافیایی'], errors='coerce')
         df['عرض جغرافیایی'] = pd.to_numeric(df['عرض جغرافیایی'], errors='coerce')
 
-        # Convert area to numeric
+        df.dropna(subset=['طول جغرافیایی', 'عرض جغرافیایی'], inplace=True)
+
         df['مساحت داشت'] = pd.to_numeric(df['مساحت داشت'], errors='coerce')
 
-        # Standardize farm IDs
         df['مزرعه'] = df['مزرعه'].str.strip()
 
-        # Fill potential NaN in categorical columns with a placeholder AFTER converting to string
-        for col in ['کانال', 'اداره', 'واریته', 'سن', 'روزهای هفته']: # Use cleaned name 'سن'
+        for col in ['کانال', 'اداره', 'واریته', 'سن ', 'روزهای هفته']:
              if col in df.columns:
-                # Convert to string first to handle mixed types (like numbers in 'کانال')
-                df[col] = df[col].astype(str).fillna('نامشخص')
-             else:
-                 print(f"Warning: Column '{col}' not found during data loading.")
-
-
-        # Ensure coordinates_missing is integer, handle potential NaN after coercion
-        if 'coordinates_missing' in df.columns:
-             df['coordinates_missing'] = pd.to_numeric(df['coordinates_missing'], errors='coerce').fillna(1).astype(int)
-        else:
-             print("Warning: Column 'coordinates_missing' not found. Assuming missing (1).")
-             df['coordinates_missing'] = 1 # Add column if missing, assuming coordinates are missing
-
+                df[col] = df[col].fillna('نامشخص').astype(str)
 
         print(f"Data loaded successfully. Shape: {df.shape}")
-        print(f"Cleaned columns: {df.columns.tolist()}") # Debug: See cleaned columns
+
         return df
     except FileNotFoundError:
         st.error(f"خطا: فایل CSV در مسیر '{csv_path}' یافت نشد.")
-        st.stop()
-    except Exception as e:
-        st.error(f"خطا در بارگذاری یا پردازش فایل CSV: {e}")
-        st.exception(e) # Print full traceback for debugging
-        st.stop()
 
 # --- GEE Image Processing Functions ---
+
 # Define common band names (used AFTER processing)
 COMMON_BAND_NAMES = ['Blue', 'Green', 'Red', 'RedEdge1', 'NIR', 'SWIR1', 'SWIR2']
 
-# --- Masking Functions (Optimized) ---
+# --- Masking Functions ---
+# These now operate on images with ORIGINAL sensor band names
+# and return images with only the necessary DATA bands, scaled, and masked.
+
 def mask_s2_clouds(image):
-    img_ee = ee.Image(image)
-    qa = img_ee.select('QA60')
-    cloud_mask = 1 << 10
-    cirrus_mask = 1 << 11
-    mask = qa.bitwiseAnd(cloud_mask).eq(0).And(qa.bitwiseAnd(cirrus_mask).eq(0))
-    # Select necessary data bands, scale, and apply mask
-    data_bands = ['B2', 'B3', 'B4', 'B5', 'B8', 'B11', 'B12']
-    # Scale factor for Sentinel-2 SR is 10000
-    return img_ee.select(data_bands).updateMask(mask).divide(10000.0)\
-        .copyProperties(img_ee, ["system:time_start"])
+    """Masks clouds in Sentinel-2 SR images using QA60.
+       Returns scaled, masked data bands ONLY (B2, B3, B4, B5, B8, B11, B12).
+    """
+    qa = image.select('QA60')
+
+    cloud_bit_mask = 1 << 10
+    cirrus_bit_mask = 1 << 11
+
+    mask = qa.bitwiseAnd(cloud_bit_mask).eq(0).And(
+             qa.bitwiseAnd(cirrus_bit_mask).eq(0))
+    # Select necessary data bands using original names, apply mask, scale
+    data_bands = ['B2', 'B3', 'B4', 'B5', 'B8', 'B11', 'B12'] # S2 bands needed for indices
+    return image.select(data_bands).updateMask(mask).divide(10000.0)\
+        .copyProperties(image, ["system:time_start"])
 
 def mask_landsat_clouds(image):
-    img_ee = ee.Image(image)
-    qa = img_ee.select('QA_PIXEL')
-    # Check Collection 2 specification for cloud, shadow, snow bits
-    cloud_shadow_mask = 1 << 3
-    snow_mask = 1 << 4
-    cloud_mask = 1 << 5
-    mask = qa.bitwiseAnd(cloud_shadow_mask).eq(0)\
-             .And(qa.bitwiseAnd(snow_mask).eq(0))\
-             .And(qa.bitwiseAnd(cloud_mask).eq(0))
-    # Apply scaling factors for Collection 2 Level 2 SR bands
-    sr_bands = ['SR_B2', 'SR_B3', 'SR_B4', 'SR_B5', 'SR_B6', 'SR_B7']
-    scale = 0.0000275; offset = -0.2
-    scaled_bands = img_ee.select(sr_bands).multiply(scale).add(offset)
+    """Masks clouds in Landsat 8/9 SR images using QA_PIXEL.
+       Returns scaled, masked data bands ONLY (SR_B2-SR_B7).
+    """
+    qa = image.select('QA_PIXEL')
+    # Bits 3 (Cloud Shadow), 4 (Snow), 5 (Cloud)
+    cloud_shadow_bit = 1 << 3
+    snow_bit = 1 << 4
+    cloud_bit = 1 << 5
+    mask = qa.bitwiseAnd(cloud_shadow_bit).eq(0)\
+             .And(qa.bitwiseAnd(snow_bit).eq(0))\
+             .And(qa.bitwiseAnd(cloud_bit).eq(0))
+
+    # Select SR bands (optical/SWIR), apply scaling, apply mask
+    sr_bands = ['SR_B2', 'SR_B3', 'SR_B4', 'SR_B5', 'SR_B6', 'SR_B7'] # L8/9 bands needed
+    scaled_bands = image.select(sr_bands).multiply(0.0000275).add(-0.2)
+
     return scaled_bands.updateMask(mask)\
-        .copyProperties(img_ee, ["system:time_start"])
+        .copyProperties(image, ["system:time_start"])
 
 
 # --- Index Calculation Functions ---
-# Ensure they return the calculated index band correctly named.
-def calculate_ndvi(image):
-    img_ee = ee.Image(image)
-    return img_ee.normalizedDifference(['NIR', 'Red']).rename('NDVI')
+# These functions now expect images with COMMON band names
+# (Blue, Green, Red, NIR, SWIR1, etc.)
 
+def calculate_ndvi(image):
+
+    return image.normalizedDifference(['NIR', 'Red']).rename('NDVI')
 
 def calculate_evi(image):
-    img_ee = ee.Image(image)
-    # Ensure necessary bands exist before expression
-    try:
-        img_ee.select(['NIR', 'Red', 'Blue']) # Check existence
-        evi = img_ee.expression(
-            '2.5 * ((NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1))', {
-                'NIR': img_ee.select('NIR'), 'RED': img_ee.select('Red'), 'BLUE': img_ee.select('Blue')
-            })
-        return evi.rename('EVI')
-    except ee.EEException as e:
-        # Return a dummy band or handle error if bands are missing
-        print(f"Could not calculate EVI, possibly missing bands: {e}")
-        return ee.Image().rename('EVI') # Return empty image named EVI
+    # EVI calculation requires Blue band
+    return image.expression(
+        '2.5 * ((NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1))', {
+            'NIR': image.select('NIR'),
+            'RED': image.select('Red'),
+            'BLUE': image.select('Blue') # Make sure Blue is available
+        }).rename('EVI')
 
 def calculate_ndmi(image):
-    img_ee = ee.Image(image)
-    return img_ee.normalizedDifference(['NIR', 'SWIR1']).rename('NDMI')
 
+
+
+    return image.normalizedDifference(['NIR', 'SWIR1']).rename('NDMI')
 
 def calculate_msi(image):
-    img_ee = ee.Image(image)
-    return img_ee.expression('SWIR1 / NIR', { 'SWIR1': img_ee.select('SWIR1'), 'NIR': img_ee.select('NIR') }).rename('MSI')
+    # Using SWIR1 / NIR definition
 
+
+
+    return image.expression('SWIR1 / NIR', {
+        'SWIR1': image.select('SWIR1'),
+        'NIR': image.select('NIR')
+    }).rename('MSI')
 
 def calculate_lai_simple(image):
-    img_ee = ee.Image(image)
+    # Use EVI if available, otherwise NDVI as fallback
     try:
-        # Prefer EVI if available
-        evi_img = calculate_evi(img_ee) # Calculate EVI (handles band check internally)
-        # Check if EVI calculation was successful (returned a band)
-        if 'EVI' in evi_img.bandNames().getInfo():
-            lai = evi_img.select('EVI').multiply(3.5).add(0.1) # Placeholder EVI-based LAI
-        else:
-             raise ee.EEException("EVI calculation failed, using NDVI for LAI.") # Force fallback
-    except Exception: # Catch potential EVI failure
-        # Fallback to NDVI
-        ndvi = img_ee.normalizedDifference(['NIR', 'Red'])
+        evi = calculate_evi(image).select('EVI')
+        lai = evi.multiply(3.5).add(0.1) # Placeholder EVI-based LAI
+    except ee.EEException: # Handle potential error if Blue band missing for EVI
+        st.warning("EVI calculation failed (Blue band might be missing), using NDVI for LAI.", icon="⚠️")
+        ndvi = calculate_ndvi(image).select('NDVI')
         lai = ndvi.multiply(5.0).add(0.1) # Placeholder NDVI-based LAI
-    # Rename the final LAI calculation and clamp
     return lai.clamp(0, 8).rename('LAI')
 
+
 def calculate_biomass_simple(image):
-    img_ee = ee.Image(image)
-    lai_image = calculate_lai_simple(img_ee) # This calculates and returns an image named 'LAI'
-    # Check if LAI calculation was successful
-    if 'LAI' in lai_image.bandNames().getInfo():
-        lai = lai_image.select('LAI')
-        a = 1.5; b = 0.2 # Placeholder coefficients - NEEDS CALIBRATION
-        biomass = lai.multiply(a).add(b)
-        return biomass.clamp(0, 50).rename('Biomass') # Placeholder clamp
-    else:
-        print("LAI calculation failed, cannot calculate Biomass.")
-        return ee.Image().rename('Biomass') # Return empty Biomass image
+    lai = calculate_lai_simple(image).select('LAI')
+    a = 1.5
+    b = 0.2
+    biomass = lai.multiply(a).add(b)
+    return biomass.clamp(0, 50).rename('Biomass')
+
+
+
 
 def calculate_chlorophyll_mcari(image):
-    img_ee = ee.Image(image)
+    # MCARI requires RedEdge1, only reliably available from Sentinel-2
+
+
+
     try:
-        # Check for RedEdge1 band explicitly
-        img_ee.select('RedEdge1')
-        mcari = img_ee.expression('((RE1 - RED) - 0.2 * (RE1 - GREEN)) * (RE1 / RED)',
-                                  {'RE1': img_ee.select('RedEdge1'), 'RED': img_ee.select('Red'), 'GREEN': img_ee.select('Green')})
-        return mcari.rename('Chlorophyll')
+        # Check if RedEdge1 exists before attempting calculation
+        image.select('RedEdge1') # This will throw an error if band doesn't exist
+        mcari = image.expression(
+            '((RE1 - RED) - 0.2 * (RE1 - GREEN)) * (RE1 / RED)', {
+                'RE1': image.select('RedEdge1'),
+                'RED': image.select('Red'),
+                'GREEN': image.select('Green')
+            }).rename('Chlorophyll')
+        return mcari
     except ee.EEException:
-         # Fallback to NDVI if RedEdge1 is missing (e.g., Landsat)
-         ndvi = img_ee.normalizedDifference(['NIR', 'Red'])
-         return ndvi.rename('Chlorophyll')
+         st.warning("MCARI requires Sentinel-2 Red Edge band. Using NDVI as Chlorophyll proxy.", icon="⚠️")
+         return calculate_ndvi(image).rename('Chlorophyll') # Fallback
+
+
+
+
+
+
+
+
+
+
 
 def calculate_et_placeholder(image):
-
-    img_ee = ee.Image(image)
-    # Using NDMI as a proxy for water content, related to ET potential
-    ndmi = img_ee.normalizedDifference(['NIR', 'SWIR1'])
-    return ndmi.rename('ET_proxy')
-
-# --- Index Definitions Dictionary (with descriptions) ---
-INDEX_DEFINITIONS = {
-    'NDVI': {
-        'func': calculate_ndvi, 'vis': {'min': 0, 'max': 1, 'palette': ['#d73027', '#fee08b', '#1a9850']}, # Red-Yellow-Green
-        'name_fa': "شاخص پوشش گیاهی (NDVI)",
-        'desc_fa': """**NDVI (شاخص نرمال‌شده تفاوت پوشش گیاهی):** رایج‌ترین شاخص برای سنجش سلامت و تراکم پوشش گیاهی سبز. مقادیر بالاتر نشان‌دهنده پوشش گیاهی سالم‌تر و متراکم‌تر است.
-                    - **محدوده:** -۱ تا +۱ (برای پوشش گیاهی معمولاً ۰.۱ تا ۰.۹)
-                    - **تفسیر:** < ۰.۲ (خاک، آب)، ۰.۲-۰.۵ (گیاه پراکنده/تنش)، > ۰.۵ (گیاه سالم و متراکم)""",
+    st.warning("ET calculation is complex. Using NDMI as a proxy for moisture status.", icon="⚠️")
+    return calculate_ndmi(image).rename('ET_proxy')
 
 
 
-
-
-
-
-        'sort_ascending': False # Higher is better
-    },
-    'EVI': {
-        'func': calculate_evi, 'vis': {'min': 0, 'max': 1, 'palette': ['#d73027', '#fee08b', '#1a9850']},
-        'name_fa': "شاخص پوشش گیاهی بهبودیافته (EVI)",
-        'desc_fa': """**EVI (شاخص بهبودیافته پوشش گیاهی):** مشابه NDVI اما با کاهش اثرات جوی و خاک زمینه، به‌ویژه در مناطق با پوشش گیاهی متراکم.
-                    - **محدوده:** معمولاً ۰ تا ۱
-                    - **تفسیر:** مقادیر بالاتر نشان‌دهنده پوشش گیاهی سالم‌تر و متراکم‌تر است.""",
-
-
-
-
-        'sort_ascending': False
-    },
-    'NDMI': {
-        'func': calculate_ndmi, 'vis': {'min': -0.5, 'max': 0.8, 'palette': ['#a50026', '#ffffbf', '#313695']}, # Brown-Yellow-Blue
-        'name_fa': "شاخص رطوبت (NDMI)",
-        'desc_fa': """**NDMI (شاخص نرمال‌شده تفاوت رطوبت):** میزان آب موجود در برگ‌ها را نشان می‌دهد.
-                    - **محدوده:** -۱ تا +۱
-                    - **تفسیر:** مقادیر بالاتر (آبی) نشان‌دهنده رطوبت بیشتر، مقادیر پایین‌تر (قهوه‌ای) نشان‌دهنده خشکی یا تنش آبی است.""",
-
-
-
-
-
-
-        'sort_ascending': False
-    },
-    'MSI': {
-        'func': calculate_msi, 'vis': {'min': 0.4, 'max': 2.5, 'palette': ['#1a9641', '#ffffbf', '#d7191c']}, # Green-Yellow-Red
-        'name_fa': "شاخص تنش رطوبتی (MSI)",
-        'desc_fa': """**MSI (شاخص تنش رطوبتی):** نیز به رطوبت گیاه حساس است، اما مقادیر **بالاتر** نشان‌دهنده تنش رطوبتی **بیشتر** است (برعکس NDMI).
-                    - **محاسبه:** SWIR1 / NIR
-                    - **محدوده:** معمولاً > ۰.۴
-                    - **تفسیر:** مقادیر پایین‌تر (سبز) بهتر است، مقادیر بالاتر (قرمز) نشان‌دهنده تنش بیشتر است.""",
-        'sort_ascending': True # Higher is worse (more stress)
-
-
-
-
-
-    },
-    'LAI': {
-        'func': calculate_lai_simple, 'vis': {'min': 0, 'max': 8, 'palette': ['#fff5f0', '#fdcdb9', '#e34a33']}, # Light Orange to Red
-        'name_fa': "شاخص سطح برگ (LAI - تخمینی)",
-        'desc_fa': """**LAI (شاخص سطح برگ):** نسبت کل مساحت یک طرفه برگ به واحد سطح زمین (m²/m²). این یک **تخمین** بر اساس سایر شاخص‌هاست و نیاز به کالیبراسیون دارد.
-                    - **محدوده:** معم��لاً ۰ تا ۸+
-                    - **تفسیر:** مقادیر بالاتر نشان‌دهنده پوشش گیاهی متراکم‌تر با سطح برگ بیشتر است.""",
-
-
-
-
-        'sort_ascending': False
-    },
-    'Biomass': {
-        'func': calculate_biomass_simple, 'vis': {'min': 0, 'max': 30, 'palette': ['#f7fcb9', '#addd8e', '#31a354']}, # Yellow-LightGreen-DarkGreen
-        'name_fa': "زیست‌توده (Biomass - تخمینی)",
-        'desc_fa': """**Biomass:** وزن ماده خشک گیاهی در واحد سطح (مثلاً تن بر هکتار). این نیز یک **تخمین** بر اساس LAI یا سایر شاخص‌هاست و نیاز به کالیبراسیون دقیق دارد.
-                    - **محدوده:** وابسته به نوع گیاه و کالیبراسیون.
-                    - **تفسیر:** مقادیر بالاتر نشان‌دهنده زیست‌توده بیشتر است.""",
-
-
-
-
-        'sort_ascending': False
-    },
-    'Chlorophyll': {
-        'func': calculate_chlorophyll_mcari, 'vis': {'min': 0, 'max': 1, 'palette': ['#ffffcc', '#a1dab4', '#253494']}, # Yellow-Green-Blue
-
-        'name_fa': "شاخص کلروفیل (MCARI/NDVI)",
-        'desc_fa': """**Chlorophyll Index:** به غلظت کلروفیل در برگ‌ها حساس است (مرتبط با فتوسنتز و سلامت). از شاخص MCARI (نیاز به باند RedEdge در Sentinel-2) یا NDVI (به عنوان تقریبی) استفاده می‌شود.
-                    - **محدوده:** متغیر.
-                    - **تفسیر:** مقادیر بالاتر معمولاً نشان‌دهنده کلروفیل بیشتر و سلامت بهتر گیاه است.""",
-
-
-
-        'sort_ascending': False
-    },
-    'ET_proxy': {
-        'func': calculate_et_placeholder, 'vis': {'min': -0.5, 'max': 0.8, 'palette': ['#a50026', '#ffffbf', '#313695']}, # Same as NDMI
-        'name_fa': "پراکسی تبخیر-تعرق (ET - بر اساس NDMI)",
-        'desc_fa': """**ET Proxy:** یک شاخص جایگزین برای نشان دادن وضعیت رطوبتی مرتبط با تبخیر و تعرق (ET). در اینجا از NDMI استفاده می‌شود. محاسبه دقیق ET بسیار پیچیده است.
-                    - **تفسیر:** مقادیر بالاتر NDMI (رطوبت بیشتر) می‌تواند پتانسیل ET بالاتری را نشان دهد.""",
-
-
-
-
-
-        'sort_ascending': False
-    }
+# Dictionary mapping index names to functions and visualization params
+INDEX_FUNCTIONS = {
+    'NDVI': {'func': calculate_ndvi, 'vis': {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']}},
+    'EVI': {'func': calculate_evi, 'vis': {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']}},
+    'NDMI': {'func': calculate_ndmi, 'vis': {'min': -0.5, 'max': 0.8, 'palette': ['brown', 'white', 'blue']}},
+    'MSI': {'func': calculate_msi, 'vis': {'min': 0.5, 'max': 2.5, 'palette': ['green', 'yellow', 'red']}},
+    'LAI': {'func': calculate_lai_simple, 'vis': {'min': 0, 'max': 8, 'palette': ['white', 'lightgreen', 'darkgreen']}},
+    'Biomass': {'func': calculate_biomass_simple, 'vis': {'min': 0, 'max': 30, 'palette': ['beige', 'yellow', 'brown']}},
+    'Chlorophyll': {'func': calculate_chlorophyll_mcari, 'vis': {'min': 0, 'max': 1, 'palette': ['yellow', 'lightgreen', 'darkgreen']}},
+    'ET_proxy': {'func': calculate_et_placeholder, 'vis': {'min': -0.5, 'max': 0.8, 'palette': ['brown', 'white', 'blue']}}
 }
+
+
+# --- GEE Data Retrieval ---
+def get_image_collection(start_date, end_date, geometry=None, sensor='Sentinel-2'):
+    """Gets, filters, masks, scales, and renames Sentinel-2 or Landsat images."""
     start_date_str = start_date.strftime('%Y-%m-%d')
     end_date_str = end_date.strftime('%Y-%m-%d')
 
-    collection_id = None
-    bands_to_select_orig = []
-    bands_to_rename_to = []
-    mask_func = None
-
-
     if sensor == 'Sentinel-2':
         collection_id = 'COPERNICUS/S2_SR_HARMONIZED'
+
         mask_func = mask_s2_clouds
+        # Original band names needed by mask_s2_clouds + QA
         bands_to_select_orig = ['B2', 'B3', 'B4', 'B5', 'B8', 'B11', 'B12', 'QA60']
-        bands_to_rename_to = COMMON_BAND_NAMES # Uses the global list
+        # Corresponding common names for the data bands AFTER masking/scaling
+        bands_to_rename_to = ['Blue', 'Green', 'Red', 'RedEdge1', 'NIR', 'SWIR1', 'SWIR2']
+        collection = ee.ImageCollection(collection_id)
 
     elif sensor == 'Landsat':
-        # Combine L8 and L9 SR collections
+
         l9 = ee.ImageCollection('LANDSAT/LC09/C02/T1_L2')
         l8 = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
-        collection_id = l9.merge(l8) # Use merged collection
+        collection = l9.merge(l8)
+
         mask_func = mask_landsat_clouds
+        # Original band names needed by mask_landsat_clouds + QA
         bands_to_select_orig = ['SR_B2', 'SR_B3', 'SR_B4', 'SR_B5', 'SR_B6', 'SR_B7', 'QA_PIXEL']
-        # Landsat doesn't have RedEdge1 equivalent easily available for all indices
-        bands_to_rename_to = ['Blue', 'Green', 'Red', 'NIR', 'SWIR1', 'SWIR2']
+        # Corresponding common names for the data bands AFTER masking/scaling
+        bands_to_rename_to = ['Blue', 'Green', 'Red', 'NIR', 'SWIR1', 'SWIR2'] # No RedEdge in Landsat
+
     else:
-        st.error(f"سنسور نامعتبر: {sensor}")
+        st.error("Sensor not supported")
         return None
 
-    # Basic Date Range Check
-         st.error("تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد.")
-         return None
-
-    # Create base collection object
-    collection = ee.ImageCollection(collection_id) if isinstance(collection_id, str) else collection_id
-
-    # Apply filters
     collection = collection.filterDate(start_date_str, end_date_str)
+
     if geometry:
+        collection = collection.filterBounds(geometry)
 
-        try:
-            # Simple check if geometry seems valid before filtering
-            if geometry.type().getInfo():
-
-
-                 collection = collection.filterBounds(geometry)
-        except Exception as e:
-            st.error(f"خطا در فیلتر کردن مرزهای هندسی: {e}")
-            return None
-
-    # Check size before processing (can be slow)
-    try:
-        initial_count = collection.size().getInfo()
-        if initial_count == 0:
-            # Don't show warning if the date range itself is empty
-            if (end_date - start_date).days >= 0:
-                 st.warning(f"هیچ تصویری در بازه زمانی و منطقه انتخابی ({sensor}) قبل از ماسک ابر یافت نشد.", icon="⏳")
-            return None
-    except ee.EEException as e:
-        st.error(f"خطا در دریافت تعداد اولیه تصاویر: {e}")
+    # Check initial collection size
+    initial_count = collection.size().getInfo()
+    if initial_count == 0:
+        st.warning(f"No images found for the selected period and area using {sensor} before cloud masking.")
         return None
 
-
-    # --- Processing Function (Mapped) ---
-    def process_image(image_element):
-        image = ee.Image(image_element)
-        # Select necessary bands FIRST
+    # --- Processing Function ---
+    def process_image(image):
+        # 1. Select original bands needed for masking and data
         img_selected_orig = image.select(bands_to_select_orig)
-        # Apply masking and scaling
+
+        # 2. Apply masking and scaling (mask_func returns scaled data bands)
         img_processed = mask_func(img_selected_orig)
-        # Ensure it's an image before renaming
-        img_processed_safe = ee.Image(img_processed)
-        # Rename to common names
-        # Rename might fail if mask_func returned fewer bands than expected
-        try:
-            # Check band count compatibility if needed
-            # actual_bands = img_processed_safe.bandNames().length()
-            # expected_bands = ee.Number(len(bands_to_rename_to))
-            # ... conditional logic ...
-            img_renamed = img_processed_safe.rename(bands_to_rename_to)
-        except ee.EEException as rename_e:
-            # Handle rename error, maybe return the image without renaming or log warning
-            print(f"Warning: Could not rename bands for an image. Error: {rename_e}")
-            # Decide how to proceed: return unprocessed, processed without rename, or skip?
-            # Returning processed but not renamed might break downstream index calcs
-            return None # Skip image if renaming fails
-        # Copy essential properties
+
+        # 3. Rename the processed bands to common names
+        # Note: bands_to_rename_to count must match bands returned by mask_func
+        img_renamed = img_processed.rename(bands_to_rename_to)
+
         return img_renamed.copyProperties(image, ["system:time_start"])
 
-    # Map the processing function, removing nulls (images that failed processing)
-    processed_collection = collection.map(process_image).filter(ee.Filter.neq('item', None))
 
 
-    # Check size AFTER processing
-    try:
-        count = processed_collection.size().getInfo()
-        if count == 0:
-            st.warning(f"هیچ تصویر بدون ابری در بازه زمانی و منطقه انتخابی ({sensor}) یافت نشد.", icon="☁️")
-            return None
-    except ee.EEException as e:
-        st.error(f"خطا در دریافت تعداد تصاویر پردازش شده: {e}")
+    # Map the processing function over the collection
+    processed_collection = collection.map(process_image)
+
+    # Check if collection is empty after filtering/masking
+    count = processed_collection.size().getInfo()
+    if count == 0:
+        st.warning(f"No cloud-free images found for the selected period and area using {sensor}.")
         return None
 
-
-    # Final check on first image bands (optional)
+    # Verify bands in the first image after processing
     try:
         first_image = processed_collection.first()
-        if first_image:
-            final_bands = ee.Image(first_image).bandNames().getInfo()
-            print(f"Bands in first processed image: {final_bands}")
-        else:
-            # This case should be caught by the size check above, but for safety:
-             st.warning("کالکشن پس از پردازش خالی شد.", icon="⚠️")
+        if first_image is None:
+             st.error("Collection became empty after processing map function.")
              return None
+        final_bands = first_image.bandNames().getInfo()
+        print(f"Final bands in processed collection: {final_bands}")
+
+        # Basic check if expected bands are present (adjust for Landsat vs S2)
+        expected_check = bands_to_rename_to
+        if not all(name in final_bands for name in expected_check):
+            st.warning(f"Warning: Not all expected common bands ({expected_check}) found. Available: {final_bands}", icon="⚠️")
 
     except ee.EEException as e:
-        # Non-critical error, proceed but log it
-        print(f"Warning: Could not verify bands in first processed image: {e}")
+        st.error(f"Error verifying processed bands: {e}")
+        # May happen if collection is truly empty or other GEE issue
+        return None
+
 
     return processed_collection
 
-# --- Function to calculate a single index for a collection ---
-def calculate_single_index(collection, index_name):
-    """Calculates a single specified index for the collection."""
-    if collection is None: return None
-    index_detail = INDEX_DEFINITIONS.get(index_name)
-    if not index_detail:
 
-    index_func = index_detail['func']
-    try:
-        # Map the function - it should return an image containing the calculated index band
-        indexed_collection = collection.map(index_func)
+def calculate_indices_for_collection(collection, index_list):
+    """Maps index calculation functions over a processed collection."""
+    if collection is None:
+        return None
 
-        # Check if the index band was actually created in the first image
-        first_img = indexed_collection.first()
-        if first_img and index_name in ee.Image(first_img).bandNames().getInfo():
-             # Return the collection containing images with (at least) the calculated index band
-             # Select only the index band for consistency downstream?
-             return indexed_collection.select(index_name)
+    calculated_collection = collection
+    bands_available = ee.Image(collection.first()).bandNames().getInfo() # Check bands AFTER processing
+
+
+
+
+    for index_name in index_list:
+        if index_name in INDEX_FUNCTIONS:
+            # Basic check if necessary bands likely exist (can be improved)
+            req_bands_guess = [] # Simplistic check, refine if needed
+            if index_name in ['NDVI', 'NDMI', 'MSI', 'EVI']: req_bands_guess = ['NIR', 'Red']
+            if index_name == 'EVI': req_bands_guess.append('Blue')
+            if index_name == 'Chlorophyll': req_bands_guess.append('RedEdge1') # Will fail gracefully in func if missing
+            # Add more checks if needed
+
+            if all(b in bands_available for b in req_bands_guess if b != 'RedEdge1') or index_name == 'LAI' or index_name == 'Biomass' or index_name == 'ET_proxy': # LAI/Biomass handle fallback
+                 try:
+                     calculated_collection = calculated_collection.map(INDEX_FUNCTIONS[index_name]['func'])
+                     print(f"Calculated {index_name}")
+                 except Exception as e:
+                     st.warning(f"Could not calculate {index_name}. Error: {e}. Required bands might be missing.", icon="⚠️")
+                     # Add dummy band? Or let it fail downstream? For now, let it proceed.
+                     # calculated_collection = calculated_collection.map(lambda img: img.addBands(ee.Image(0).rename(index_name)))
+            else:
+                 st.warning(f"Skipping {index_name}: Required bands {req_bands_guess} not fully available in {bands_available}", icon="⚠️")
         else:
-             # Log which bands ARE available if the index is missing
-             available_bands = ee.Image(first_img).bandNames().getInfo() if first_img else "None"
-             st.warning(f"باند شاخص '{index_name}' پس از محاسبه ایجاد نشد. باندهای موجود: {available_bands}", icon="⚠️")
-             return None # Indicate failure
-    except ee.EEException as e:
-        st.error(f"خطای GEE در محاسبه شاخص '{index_name}': {e}")
-        # Attempt to provide more context
-        try:
-            first_input_img = collection.first()
-            if first_input_img:
-                st.info(f"Bands input to failed index calculation: {ee.Image(first_input_img).bandNames().getInfo()}")
-        except: pass # Ignore errors during error reporting
-        return None
-    except Exception as e:
-        st.error(f"خطای غیر GEE در محاسبه شاخص '{index_name}': {e}")
-        st.exception(e) # Show full traceback
-        return None
+            st.warning(f"Index function for '{index_name}' not defined.")
 
+    return calculated_collection
 
-# --- get_timeseries_for_farm ---
-@st.cache_data(ttl=1800) # Cache for 30 minutes
+@st.cache_data(ttl=3600)
 def get_timeseries_for_farm(_farm_geom_geojson, start_date, end_date, index_name, sensor):
-    """Retrieves and calculates the time series for a specific index and farm geometry."""
-    try:
-        farm_geom = ee.Geometry(json.loads(_farm_geom_geojson))
-    except Exception as e:
-        st.error(f"خطا در پردازش هندسه مزرعه: {e}")
+    """Retrieves the time series for a specific index and farm geometry."""
+    farm_geom = ee.Geometry(json.loads(_farm_geom_geojson))
+
+    collection = get_image_collection(start_date, end_date, farm_geom, sensor)
+    if collection is None:
         return pd.DataFrame(columns=['Date', index_name])
 
-    # Get the base masked, renamed collection
-    base_collection = get_image_collection(start_date, end_date, farm_geom, sensor)
-    if base_collection is None: return pd.DataFrame(columns=['Date', index_name])
+    # Check if index calculation is feasible before proceeding
+    first_image_bands = ee.Image(collection.first()).bandNames().getInfo()
+    index_func_detail = INDEX_FUNCTIONS.get(index_name)
+    if not index_func_detail:
+         st.error(f"Index function for {index_name} not found.")
+         return pd.DataFrame(columns=['Date', index_name])
 
-    # Calculate the specific index
-    indexed_collection = calculate_single_index(base_collection, index_name)
-    if indexed_collection is None: return pd.DataFrame(columns=['Date', index_name])
+    # Crude check for band requirements before mapping - prevents unnecessary calculation
+    # Add more specific checks based on index_name if needed
+    bands_needed = ['NIR', 'Red'] # Base requirement for most
+    if index_name == 'EVI': bands_needed.append('Blue')
+    if index_name == 'Chlorophyll' and sensor == 'Sentinel-2': bands_needed.append('RedEdge1') # Only if S2
 
-    # Define the extraction function
-    def extract_value(image):
-        img_ee = ee.Image(image) # Ensure image type
-        # Use mean reducer over the buffered farm point geometry
-        stats = img_ee.reduceRegion(
-            reducer=ee.Reducer.mean(), geometry=farm_geom, scale=30, maxPixels=1e9, tileScale=4
-        )
-        val = stats.get(index_name) # Get the calculated value
-        time_ms = img_ee.get('system:time_start') # Get time from the image object
-        # Return feature with time and value (or placeholder if null)
-        return ee.Feature(None, {'time': time_ms, index_name: ee.Algorithms.If(val, val, -9999)})
+    if not all(b in first_image_bands for b in bands_needed if b != 'RedEdge1' or sensor == 'Sentinel-2'):
+         st.warning(f"Cannot calculate timeseries for {index_name}: Required bands missing after processing.", icon="⚠️")
+         return pd.DataFrame(columns=['Date', index_name])
 
-    # Execute the extraction
+
+    # Calculate *only* the required index for the timeseries
+    indexed_collection = collection.map(index_func_detail['func'])
+
+    # Check if the target index band exists after mapping
     try:
-        # Increase timeout? Not directly possible here. Use tileScale.
+         first_img_check = indexed_collection.first()
+         if first_img_check is None or index_name not in first_img_check.bandNames().getInfo():
+              st.warning(f"Index band '{index_name}' not found after calculation for timeseries.", icon="⚠️")
+              return pd.DataFrame(columns=['Date', index_name])
+    except ee.EEException as e:
+         st.error(f"GEE Error checking index band for timeseries: {e}")
+         return pd.DataFrame(columns=['Date', index_name])
+
+
+    def extract_value(image):
+
+        stats = image.select(index_name).reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=farm_geom,
+            scale=30,  # Use 30m for potentially better performance/less timeouts
+            maxPixels=1e9,
+            tileScale=4 # Increase tileScale to potentially avoid memory errors
+        )
+
+        val = stats.get(index_name)
+
+
+        return ee.Feature(None, {
+            'time': image.get('system:time_start'),
+            index_name: ee.Algorithms.If(val, val, -9999)
+            })
+
+    try:
         ts_info = indexed_collection.map(extract_value).getInfo()
     except ee.EEException as e:
-        st.error(f"خطای GEE در استخراج سری زمانی (reduceRegion): {e}")
-        st.info("این خطا ممکن است به دلیل محدودیت حافظه یا زمان GEE باشد. سعی کنید بازه زمانی کوتاه‌تر یا منطقه کوچک‌تری را انتخاب کنید.")
-        return pd.DataFrame(columns=['Date', index_name])
-    except Exception as e:
-        st.error(f"خطای ناشناخته در استخراج سری زمانی: {e}")
+        st.error(f"Error extracting timeseries values (reduceRegion): {e}")
+        st.info("This might be due to GEE memory limits or timeouts. Try a smaller date range or area.")
         return pd.DataFrame(columns=['Date', index_name])
 
 
-    # Process results into DataFrame
+
     data = []
-    if 'features' in ts_info:
-        for feature in ts_info['features']:
-            props = feature.get('properties', {})
-            value = props.get(index_name)
-            time_ms = props.get('time')
-            # Validate data before appending
-            if value not in [None, -9999] and time_ms is not None:
-                try:
-                    # Convert milliseconds timestamp to datetime
-                    dt = datetime.datetime.fromtimestamp(time_ms / 1000.0)
-                    data.append([dt, value])
-                except (TypeError, ValueError) as time_e:
-                     st.warning(f"نادیده گرفتن داده با زمان نامعتبر ({time_ms}): {time_e}", icon="⚠️")
-    else:
-        st.warning("ساختار 'features' در نتایج سری زمانی یافت نشد.")
+    for feature in ts_info['features']:
+        value = feature['properties'].get(index_name)
+        time_ms = feature['properties'].get('time')
+        # Check if value and time are valid before processing
+        if value is not None and value != -9999 and time_ms is not None:
+            try:
+                dt = datetime.datetime.fromtimestamp(time_ms / 1000.0)
+                data.append([dt, value])
+            except TypeError:
+                 st.warning(f"Skipping invalid timestamp in timeseries data: {time_ms}", icon="⚠️")
 
-    if not data: return pd.DataFrame(columns=['Date', index_name]) # Return empty if no valid data
-    ts_df = pd.DataFrame(data, columns=['Date', index_name]).sort_values(by='Date').reset_index(drop=True)
+
+    if not data:
+        return pd.DataFrame(columns=['Date', index_name])
+    ts_df = ts_df.sort_values(by='Date')
     return ts_df
 
-# --- Function for getting median index over a period for multiple farms ---
-@st.cache_data(ttl=1800) # Cache for 30 minutes
-def get_median_index_for_period(_farms_df_json, start_date, end_date, index_name, sensor):
-    """Gets the median index value over a period for multiple farms."""
+@st.cache_data(ttl=3600)
+def get_latest_index_for_ranking(_farms_df_json, selected_day, start_date, end_date, index_name, sensor):
+    """Gets the median index value for ranking farms active on a selected day."""
     farms_df = pd.read_json(_farms_df_json)
+    if selected_day != "همه روزها":
+        farms_df_filtered = farms_df[farms_df['روزهای هفته'] == selected_day].copy()
+    else:
+    if farms_df_filtered.empty:
+        return pd.DataFrame(columns=['مزرعه', index_name])
 
-    farms_df_valid_coords = farms_df.dropna(subset=['طول جغرافیایی', 'عرض جغرافیایی']).copy()
-
-    if farms_df_valid_coords.empty:
-         # Don't show warning here, let calling function handle empty result
-         # st.warning("No farms with valid coordinates for period calculation.", icon="📍")
-         return pd.DataFrame(columns=['مزرعه', index_name])
 
     features = []
-    for idx, row in farms_df_valid_coords.iterrows():
+    for idx, row in farms_df_filtered.iterrows():
         try:
              geom = ee.Geometry.Point([row['طول جغرافیایی'], row['عرض جغرافیایی']])
-             buffered_geom = geom.buffer(50) # Buffer for reduction robustness
-             # Ensure farm_id is included in properties
+             # Buffer slightly - 50m radius might be reasonable for farm center point
+             buffered_geom = geom.buffer(50)
              feature = ee.Feature(buffered_geom, {'farm_id': row['مزرعه']})
              features.append(feature)
         except Exception as e:
-             print(f"Warning: Skipping farm {row.get('مزرعه', 'Unknown')} due to geometry error: {e}")
+             st.warning(f"Skipping farm {row.get('مزرعه', 'Unknown')} due to invalid geometry data: {e}", icon="⚠️")
 
     if not features:
-         # st.warning("No valid farm geometries created.", icon="⚠️")
+         st.warning("No valid farm geometries found for ranking.", icon="⚠️")
          return pd.DataFrame(columns=['مزرعه', index_name])
 
     farm_fc = ee.FeatureCollection(features)
 
-    # Get base collection for the period
-    base_collection = get_image_collection(start_date, end_date, farm_fc.geometry(), sensor)
-    if base_collection is None: return pd.DataFrame(columns=['مزرعه', index_name])
+    collection = get_image_collection(start_date, end_date, farm_fc.geometry(), sensor)
+
+    if collection is None:
+        return pd.DataFrame(columns=['مزرعه', index_name])
+
+    # Check if index calculation is feasible
+    first_image_bands = ee.Image(collection.first()).bandNames().getInfo()
+    index_func_detail = INDEX_FUNCTIONS.get(index_name)
+    if not index_func_detail:
+        st.error(f"Index function for {index_name} not found.")
+        return pd.DataFrame(columns=['مزرعه', index_name])
+
+    # Similar band check as in timeseries
+    bands_needed = ['NIR', 'Red']
+    if index_name == 'EVI': bands_needed.append('Blue')
+    if index_name == 'Chlorophyll' and sensor == 'Sentinel-2': bands_needed.append('RedEdge1')
+
+    if not all(b in first_image_bands for b in bands_needed if b != 'RedEdge1' or sensor == 'Sentinel-2'):
+        st.warning(f"Cannot calculate ranking for {index_name}: Required bands missing after processing.", icon="⚠️")
+        return pd.DataFrame(columns=['مزرعه', index_name])
 
 
+    # Calculate only the required index
+    indexed_collection = collection.map(index_func_detail['func'])
 
-    # Calculate the specified index
-    indexed_collection = calculate_single_index(base_collection, index_name)
-    if indexed_collection is None: return pd.DataFrame(columns=['مزرعه', index_name])
+     # Check if the target index band exists after mapping
+    try:
+         first_img_check = indexed_collection.first()
+         if first_img_check is None or index_name not in first_img_check.bandNames().getInfo():
+              st.warning(f"Index band '{index_name}' not found after calculation for ranking.", icon="⚠️")
+              return pd.DataFrame(columns=['مزرعه', index_name])
+    except ee.EEException as e:
+         st.error(f"GEE Error checking index band for ranking: {e}")
+         return pd.DataFrame(columns=['مزرعه', index_name])
 
 
-    # Create a median composite image for robustness against outliers
-    median_image = indexed_collection.median() # Contains only the index band
+    # Create a median composite over the period for robustness
+    median_image = indexed_collection.select(index_name).median()
 
-    # Reduce the composite image over all farm geometries
+    # Reduce the composite image over the farm geometries
     try:
         farm_values = median_image.reduceRegions(
-            collection=farm_fc, reducer=ee.Reducer.mean(), scale=30, tileScale=8 # Increased tileScale
+            collection=farm_fc,
+            reducer=ee.Reducer.mean(),
+            scale=30, # Use 30m scale
+            tileScale=4 # Increase tileScale
         ).getInfo()
     except ee.EEException as e:
-        st.error(f"خطای GEE در محاسبه مقادیر مزارع (reduceRegions): {e}")
-        return pd.DataFrame(columns=['مزرعه', index_name])
-    except Exception as e:
-         st.error(f"خطای ناشناخته در محاسبه مقادیر مزارع: {e}")
-         return pd.DataFrame(columns=['مزرعه', index_name])
+        st.error(f"Error during reduceRegions for ranking: {e}")
+        st.info("Trying again with larger tileScale...")
 
-    # Extract results into a DataFrame
-    results_data = []
-    if 'features' in farm_values:
-        for feature in farm_values['features']:
-            props = feature.get('properties', {})
-            farm_id = props.get('farm_id') # Get farm_id from properties
-            value = props.get('mean') # Default output name for mean reducer
-            if farm_id is not None and value is not None:
-                results_data.append({'مزرعه': farm_id, index_name: value})
-            else:
-                # Log if reduction failed for a specific farm
-                print(f"Warning: Could not get value for farm_id: {farm_id}, Props: {props}")
-    else:
-        st.warning("ساختار 'features' در نتایج reduceRegions یافت نشد.")
-
-
-    if not results_data:
-         # st.warning("No data extracted after GEE processing for farms.", icon="📊")
-         return pd.DataFrame(columns=['مزرعه', index_name])
-
-    results_df = pd.DataFrame(results_data)
-    return results_df
-
-# --- Function for Weekly Comparison ---
-@st.cache_data(ttl=1800) # Cache for 30 minutes
-def get_weekly_comparison(_filtered_df_json, start_date, end_date, index_name, sensor):
-    """Compares the index values from the current week to the previous week."""
-    if not isinstance(start_date, datetime.date) or not isinstance(end_date, datetime.date):
-        st.error("تاریخ‌های شروع و پایان نامعتبر برای مقایسه هفتگی.")
-        return pd.DataFrame()
-
-    # Define current and previous week date ranges
-    current_start = start_date
-    current_end = end_date
-    # Ensure previous week doesn't overlap
-    prev_end = current_start - timedelta(days=1)
-    prev_start = prev_end - timedelta(days=(end_date-start_date).days) # Match duration
+        try:
+             farm_values = median_image.reduceRegions(
+                collection=farm_fc,
+                reducer=ee.Reducer.mean(),
+                scale=30,
+                tileScale=8 # Further increase tileScale
+             ).getInfo()
+        except ee.EEException as e2:
+             st.error(f"ReduceRegions failed again: {e2}")
+             st.warning("Could not calculate farm rankings. Try reducing the date range or number of farms.")
+             return pd.DataFrame(columns=['مزرعه', index_name])
 
 
 
-
-    st.write(f"دوره فع��ی: {current_start.strftime('%Y-%m-%d')} تا {current_end.strftime('%Y-%m-%d')}")
-    st.write(f"دوره قبلی: {prev_start.strftime('%Y-%m-%d')} تا {prev_end.strftime('%Y-%m-%d')}")
-
-    # Get data for the current period
-    with st.spinner(f"درحال دریافت داده‌های '{index_name}' برای دوره فعلی..."):
-        df_current = get_median_index_for_period(_filtered_df_json, current_start, current_end, index_name, sensor)
-    if df_current.empty:
-        st.warning(f"داده‌ای برای دوره فعلی ({current_start} تا {current_end}) جهت مقایسه یافت نشد.", icon="⚠️")
-        return pd.DataFrame()
-
-    # Get data for the previous period
-    with st.spinner(f"درحال دریافت داده‌های '{index_name}' برای دوره قبلی..."):
-        df_previous = get_median_index_for_period(_filtered_df_json, prev_start, prev_end, index_name, sensor)
-    if df_previous.empty:
-        st.warning(f"داده‌ای برای دوره قبلی ({prev_start} تا {prev_end}) جهت مقایسه یافت نشد.", icon="⚠️")
-        return pd.DataFrame() # Cannot compare without previous week's data
-
-
-    # Merge the dataframes on 'مزرعه'
-    df_comparison = pd.merge(
-        df_previous.rename(columns={index_name: f'{index_name}_prev'}),
-        df_current.rename(columns={index_name: f'{index_name}_curr'}),
-        on='مزرعه',
-        how='inner' # Only compare farms present in BOTH periods
-    )
-
-    if df_comparison.empty:
-        st.info("هیچ مزرعه مشترکی بین دو دوره زمانی برای مقایسه یافت نشد.")
-        return pd.DataFrame()
-
-    # Calculate difference and percentage change robustly
-    df_comparison['تغییر'] = df_comparison[f'{index_name}_curr'] - df_comparison[f'{index_name}_prev']
-    # Use numpy for safe division and handling potential NaNs
-    df_comparison['درصد_تغییر'] = np.where(
-        np.abs(df_comparison[f'{index_name}_prev']) > 1e-9, # Avoid division by very small numbers
-       ((df_comparison['تغییر'] / df_comparison[f'{index_name}_prev']) * 100.0),
-        np.nan # Assign NaN if previous value is too small or zero
-    )
-
-    # Filter for farms with decrease (change < 0)
-    # Consider a small threshold? e.g., df_comparison['تغییر'] < -0.01
-    df_decreased = df_comparison[df_comparison['تغییر'] < 0].copy()
-
-    # Sort by percentage change (most negative first)
-    df_decreased = df_decreased.sort_values(by='درصد_تغییر', ascending=True, na_position='last')
-
-    return df_decreased
-
-
-# --- Streamlit App Layout ---
-st.set_page_config(page_title=APP_TITLE, layout="wide", initial_sidebar_state="expanded")
-st.title(f"🌾 {APP_TITLE}")
-st.markdown("مانیتورینگ وضعیت مزارع نیشکر با استفاده از تصاویر ماهواره‌ای و Google Earth Engine")
-st.divider()
-
-# Initialize GEE (shows error if fails)
-if initialize_gee():
-    # Load data (shows error if fails)
-    farm_data_df = load_data(CSV_FILE_PATH)
-
-    # --- Sidebar Controls ---
-    with st.sidebar:
-        st.header("⚙️ تنظیمات و فیلترها")
-        st.divider()
-
-        # --- Date Range Selection ---
-        st.subheader("🗓️ انتخاب بازه زمانی")
-        today = datetime.date.today()
-        # Default to last 7 days ending today
-        default_start = today - timedelta(days=6)
-        start_date = st.date_input("تاریخ شروع", value=default_start, max_value=today, help="تاریخ شروع دوره تحلیل اصلی")
-        end_date = st.date_input("تاریخ پایان", value=today, min_value=start_date, max_value=today, help="تاریخ پایان دوره تحلیل اصلی")
-        st.info(f"مدت دوره: {(end_date - start_date).days + 1} روز", icon="⏳")
-        st.divider()
-
-        # --- Data Filters ---
-        st.subheader("🔍 فیلتر داده‌ها")
-        # Day of Week Filter
-        days_list = ["همه روزها"] + sorted(farm_data_df['روزهای هفته'].unique().tolist())
-        selected_day = st.selectbox("روز هفته آبیاری", options=days_list, help="فیلتر مزارع بر اساس روز هفته ثبت شده در فایل CSV")
-
-        # Filter DataFrame based on selected day *before* subsequent controls
-        if selected_day == "همه روزها":
-            filtered_df = farm_data_df.copy()
+    ranking_data = []
+    for feature in farm_values['features']:
+        farm_id = feature['properties'].get('farm_id')
+        value = feature['properties'].get('mean') # Default output name is 'mean'
+        if farm_id is not None and value is not None:
+            ranking_data.append({'مزرعه': farm_id, index_name: value})
         else:
-            filtered_df = farm_data_df[farm_data_df['روزهای هفته'] == selected_day].copy()
-        st.caption(f"{len(filtered_df)} مزرعه با فیلتر روز هفته انتخاب شده است.")
-
-        # Index Selection for Analysis
-        available_indices = list(INDEX_DEFINITIONS.keys())
-        selected_index = st.selectbox(
-            "شاخص مورد تحلیل",
-            options=available_indices,
-            format_func=lambda x: INDEX_DEFINITIONS[x]['name_fa'], # Show Persian name
-            help="شاخصی که برای نقشه، رتبه‌بندی و مقایسه استفاده خواهد شد"
-            )
-
-        # Sensor Selection
-        selected_sensor = st.radio(
-            "سنسور ماهواره",
-            ('Sentinel-2', 'Landsat'), index=0, horizontal=True,
-            help="Sentinel-2 تفکیک مکانی بهتر (10m) و باندهای RedEdge دارد. Landsat توالی زمانی طولانی‌تر دارد."
-            )
-        st.divider()
-
-        # --- Farm Selection ---
-        st.subheader("🚜 انتخاب مزرعه")
-        # Populate farm list based on the *day-filtered* data
-        farm_list = ["همه مزارع"] + sorted(filtered_df['مزرعه'].unique().tolist())
-        selected_farm = st.selectbox(
-            "مزرعه خاص (یا همه)", options=farm_list,
-             help="یک مزرعه خاص را برای مشاهده جزئیات و روند زمانی انتخاب کنید، یا 'همه مزارع' را برای دید کلی نگه دارید."
-             )
-        st.divider()
+            # Optionally log farms where reduction failed
+            # print(f"Warning: Could not get ranking value for farm_id: {farm_id}")
+             pass
 
 
 
-
-        # --- Display Index Information ---
-        st.header("ℹ️ راهنمای شاخص‌ها")
-        index_options = list(INDEX_DEFINITIONS.keys())
-        index_to_explain = st.selectbox(
-            "مشاهده توضیحات شاخص:",
-            options=index_options,
-            index=index_options.index(selected_index), # Default to selected index for analysis
-            format_func=lambda x: INDEX_DEFINITIONS[x]['name_fa']
-        )
-        if index_to_explain:
-            with st.expander(f"جزئیات شاخص {INDEX_DEFINITIONS[index_to_explain]['name_fa']}", expanded=False):
-                st.markdown(INDEX_DEFINITIONS[index_to_explain]['desc_fa'], unsafe_allow_html=True)
-        st.divider()
-        st.caption("ساخته شده با Streamlit و Google Earth Engine")
+    if not ranking_data:
+         st.warning("No ranking data could be extracted after GEE processing.", icon="⚠️")
+         return pd.DataFrame(columns=['مزرعه', index_name])
 
 
-    # --- Main Panel with Tabs ---
-    tab1, tab2, tab3 = st.tabs([
-        "🗺️ نقشه و جزئیات",
-        "📊 رتبه‌بندی مزارع",
-        "📉 مقایسه هفتگی"
-        ])
+    ranking_df = pd.DataFrame(ranking_data)
+    ascending_sort = False if index_name not in ['MSI'] else True # Higher MSI is usually worse
+    ranking_df = ranking_df.sort_values(by=index_name, ascending=ascending_sort, na_position='last').reset_index(drop=True)
 
-    # --- Tab 1: Map and Farm Details ---
-    with tab1:
-        col_map, col_detail = st.columns([2, 1]) # Adjust column ratio
+    return ranking_df
 
-        with col_map:
-            st.subheader(f"نقشه وضعیت: {INDEX_DEFINITIONS[selected_index]['name_fa']}")
-            st.caption(f"دوره: {start_date.strftime('%Y-%m-%d')} تا {end_date.strftime('%Y-%m-%d')} | سنسور: {selected_sensor}")
-            map_placeholder = st.empty() # Placeholder for the map
-            m = geemap.Map(center=[INITIAL_LAT, INITIAL_LON], zoom=INITIAL_ZOOM, add_google_map=False)
-            m.add_basemap('HYBRID') # Use satellite view
 
-            vis_params = INDEX_DEFINITIONS.get(selected_index, {}).get('vis')
-            if not vis_params: vis_params = {'min': 0, 'max': 1, 'palette': ['white', 'gray']} # Fallback vis
+    # Date Range Selector
+    default_end_date = datetime.date.today()
+    # Default to last 7 days for weekly report focus
+    default_start_date = default_end_date - datetime.timedelta(days=7)
+    start_date = st.sidebar.date_input("تاریخ شروع", value=default_start_date, max_value=default_end_date)
+    end_date = st.sidebar.date_input("تاریخ پایان", value=default_end_date, min_value=start_date, max_value=default_end_date)
 
-            # Determine display geometry and target farm info
-            display_geom = None
-            target_object_for_map = None
-            farm_info_for_display = None # Store info of the selected farm for details pane
+    selected_farm = st.sidebar.selectbox("انتخاب مزرعه", options=farm_list)
 
-            # Use the day-filtered data for display logic
-            display_df = filtered_df.copy()
+    # Index Selection Dropdown
+    # Ensure index list is dynamically generated from the INDEX_FUNCTIONS keys
+    available_indices = list(INDEX_FUNCTIONS.keys())
+    selected_index = st.sidebar.selectbox("انتخاب شاخص", options=available_indices)
 
-            if selected_farm == "همه مزارع":
-                # Use only farms with valid coordinates for bounds calculation
-                display_df_valid = display_df.dropna(subset=['طول جغرافیایی', 'عرض جغرافیایی'])
-                if not display_df_valid.empty:
-                    try:
-                        min_lon, min_lat = display_df_valid['طول جغرافیایی'].min(), display_df_valid['عرض جغرافیایی'].min()
-                        max_lon, max_lat = display_df_valid['طول جغرافیایی'].max(), display_df_valid['عرض جغرافیایی'].max()
-                        display_geom = ee.Geometry.Rectangle([min_lon, min_lat, max_lon, max_lat])
-                        target_object_for_map = display_geom
-                    except Exception as bounds_e:
-                        st.error(f"خطا در محاسبه مرزها: {bounds_e}")
-                else:
-                    st.info("هیچ مزرعه‌ای با مختصات معتبر برای نمایش در این روز هفته یافت نشد.", icon="📍")
-            else: # Single farm selected
-                farm_info_rows = display_df[display_df['مزرعه'] == selected_farm]
+    # Sensor Selection
+    selected_sensor = st.sidebar.radio("انتخاب سنسور ماهواره", ('Sentinel-2', 'Landsat'), index=0, key='sensor_select')
+
+
+    # --- Main Panel ---
+    col1, col2 = st.columns([3, 1])
+
+    with col1:
+        st.subheader("نقشه وضعیت مزارع")
+        map_placeholder = st.empty() # Placeholder for the map
+
+        # Initialize Map
+        m = geemap.Map(center=[INITIAL_LAT, INITIAL_LON], zoom=INITIAL_ZOOM, add_google_map=False)
+        m.add_basemap('HYBRID')
+
+        # Get visualization parameters
+        vis_params = INDEX_FUNCTIONS.get(selected_index, {}).get('vis')
+        if not vis_params:
+            st.error(f"Visualization parameters not found for index: {selected_index}")
+            # Provide default vis_params or stop execution
+            vis_params = {'min': 0, 'max': 1, 'palette': ['white', 'gray']} # Basic default
+
+
+
+
+
+        # --- Display Logic ---
+        # Define geometry for fetching data - either single farm or bounds of all
+        display_geom = None
+        target_object_for_map = None # GEE object to center map on
+
+        if selected_farm == "همه مزارع":
+            if not filtered_df.empty:
+
+                 min_lon, min_lat = filtered_df['طول جغرافیایی'].min(), filtered_df['عرض جغرافیایی'].min()
+                 max_lon, max_lat = filtered_df['طول جغرافیایی'].max(), filtered_df['عرض جغرافیایی'].max()
+                 # Create bounds geometry only if coordinates are valid
+                 if pd.notna(min_lon) and pd.notna(min_lat) and pd.notna(max_lon) and pd.notna(max_lat):
+                     display_geom = ee.Geometry.Rectangle([min_lon, min_lat, max_lon, max_lat])
+                     target_object_for_map = display_geom
+                 else:
+                     st.warning("Could not determine valid bounds for selected farms.", icon="⚠️")
+            else:
+                 st.info("هیچ مزرعه‌ای برای نمایش با فیلترهای انتخاب شده یافت نشد.")
+        else: # Single farm selected
+            farm_info_rows = filtered_df[filtered_df['مزرعه'] == selected_farm]
+            if not farm_info_rows.empty:
+                 farm_info = farm_info_rows.iloc[0]
+                 farm_lat = farm_info['عرض جغرافیایی']
+                 farm_lon = farm_info['طول جغرافیایی']
+                 if pd.notna(farm_lat) and pd.notna(farm_lon):
+                     farm_geom = ee.Geometry.Point([farm_lon, farm_lat])
+                     display_geom = farm_geom.buffer(150) # Buffer for visualization
+                     target_object_for_map = farm_geom # Center on the point
+                 else:
+                      st.warning(f"مختصات نامعتبر برای مزرعه {selected_farm}.", icon="⚠️")
+            else:
+                 st.warning(f"اطلاعات مزرعه {selected_farm} یافت نشد (ممکن است مربوط به روز هفته دیگری باشد).", icon="⚠️")
+
+        # Proceed only if we have a valid geometry to display
+        if display_geom:
+            with st.spinner(f"در حال پردازش تصویر {selected_index} برای منطقه/مزرعه..."):
+                 collection = get_image_collection(start_date, end_date, display_geom, selected_sensor)
+
+                 if collection:
+                    # Check feasibility before calculating all indices
+                     first_image_bands = ee.Image(collection.first()).bandNames().getInfo()
+                     index_func_detail = INDEX_FUNCTIONS.get(selected_index)
+
+                     bands_needed = ['NIR', 'Red']
+                     if selected_index == 'EVI': bands_needed.append('Blue')
+                     if selected_index == 'Chlorophyll' and selected_sensor == 'Sentinel-2': bands_needed.append('RedEdge1')
+
+                     if index_func_detail and all(b in first_image_bands for b in bands_needed if b != 'RedEdge1' or selected_sensor == 'Sentinel-2'):
+                         # Calculate only the selected index for display
+                         indexed_collection = collection.map(index_func_detail['func'])
+
+                         # Check if index band exists after calculation
+                         first_img_check = indexed_collection.first()
+                         if first_img_check and selected_index in first_img_check.bandNames().getInfo():
+                             median_image = indexed_collection.select(selected_index).median()
+                             # Clip layer if single farm selected for cleaner view
+                             layer_image = median_image.clip(display_geom) if selected_farm != "همه مزارع" else median_image
+
+                             m.addLayer(layer_image, vis_params, f'{selected_index} (Median)')
+                             try:
+                                m.add_legend(title=f'{selected_index}', builtin_legend=None, palette=vis_params['palette'], min=vis_params['min'], max=vis_params['max'])
+                             except Exception as legend_e:
+                                 st.warning(f"Could not add legend: {legend_e}", icon="⚠️")
+
+                             # Add download button (use display_geom for region)
+                             try:
+                                 thumb_url = median_image.getThumbURL({
+                                     'region': display_geom.toGeoJson(),
+                                     'bands': selected_index,
+                                     'palette': vis_params['palette'],
+                                     'min': vis_params['min'],
+                                     'max': vis_params['max'],
+                                     'dimensions': 512
+                                 })
+
+                                 response = requests.get(thumb_url)
+                                 if response.status_code == 200:
+                                     img_bytes = BytesIO(response.content)
+                                     st.sidebar.download_button(
+                                         label=f"دانلود نقشه ({selected_index})",
+                                         data=img_bytes,
+                                         file_name=f"map_{selected_farm if selected_farm != 'همه مزارع' else 'all'}_{selected_index}.png",
+                                         mime="image/png",
+                                         key=f"download_{selected_index}" # Add key to avoid issues
+                                     )
+                                 else:
+                                     st.sidebar.warning(f"Link generation failed (Status: {response.status_code}).", icon="⚠️")
+                             except Exception as thumb_e:
+                                 st.sidebar.warning(f"Error generating download link: {thumb_e}", icon="⚠️")
+
+
+                         else:
+                             st.warning(f"Index band '{selected_index}' not found after calculation for map.", icon="⚠️")
+
+                     else:
+                          st.warning(f"Cannot display {selected_index}: Required bands missing after processing for this sensor/index.", icon="⚠️")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                 else:
+                    st.warning(f"No suitable satellite images found for the selected period/area.", icon="⚠️")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            # Add markers AFTER adding the layer
+            if selected_farm == "همه مزارع" and not filtered_df.empty:
+                 for idx, row in filtered_df.iterrows():
+                      if pd.notna(row['عرض جغرافیایی']) and pd.notna(row['طول جغرافیایی']):
+                           popup_html = f"<b>مزرعه:</b> {row['مزرعه']}<br><b>کانال:</b> {row['کانال']}<br><b>مساحت:</b> {row['مساحت داشت']:.2f}<br><b>واریته:</b> {row['واریته']}"
+                           folium.Marker(
+                               location=[row['عرض جغرافیایی'], row['طول جغرافیایی']],
+                               popup=folium.Popup(popup_html, max_width=200),
+                               tooltip=f"مزرعه {row['مزرعه']}",
+                               icon=folium.Icon(color='blue', icon='info-sign')
+                           ).add_to(m)
+            elif selected_farm != "همه مزارع":
+                farm_info_rows = filtered_df[filtered_df['مزرعه'] == selected_farm]
                 if not farm_info_rows.empty:
-                    farm_info_for_display = farm_info_rows.iloc[0] # Save for details pane
-                    farm_lat = farm_info_for_display['عرض جغرافیایی']
-                    farm_lon = farm_info_for_display['طول جغرافیایی']
-                    if pd.notna(farm_lat) and pd.notna(farm_lon):
-                        try:
-                            farm_geom = ee.Geometry.Point([farm_lon, farm_lat])
-                            display_geom = farm_geom.buffer(150) # Area around point for vis
-                            target_object_for_map = farm_geom # Center on the actual point
-                        except Exception as point_e:
-                             st.error(f"خطا در ایجاد هندسه نقطه: {point_e}")
-                             farm_info_for_display = None # Invalidate if geom fails
+                    farm_info = farm_info_rows.iloc[0]
+                    if pd.notna(farm_info['عرض جغرافیایی']) and pd.notna(farm_info['طول جغرافیایی']):
+                         popup_html = f"<b>مزرعه:</b> {farm_info['مزرعه']}<br><b>کانال:</b> {farm_info['کانال']}<br><b>اداره:</b> {farm_info['اداره']}<br><b>مساحت:</b> {farm_info['مساحت داشت']:.2f}<br><b>واریته:</b> {farm_info['واریته']}<br><b>سن:</b> {farm_info['سن ']}"
+                         folium.Marker(
+                             location=[farm_info['عرض جغرافیایی'], farm_info['طول جغرافیایی']],
+                             popup=folium.Popup(popup_html, max_width=250),
+                             tooltip=f"مزرعه {farm_info['مزرعه']}",
+                             icon=folium.Icon(color='red', icon='star')
+                         ).add_to(m)
+
+            # Center the map
+            if target_object_for_map:
+                zoom_level = INITIAL_ZOOM + 2 if selected_farm != "همه مزارع" else INITIAL_ZOOM
+                m.center_object(target_object_for_map, zoom=zoom_level)
+
+        # Render the map in the placeholder
+        with map_placeholder:
+             m.to_streamlit(height=500)
+
+    with col2:
+        if selected_farm != "همه مزارع":
+            st.subheader(f"جزئیات مزرعه: {selected_farm}")
+            farm_info_rows = filtered_df[filtered_df['مزرعه'] == selected_farm]
+            if not farm_info_rows.empty:
+                farm_info = farm_info_rows.iloc[0]
+                st.metric("کانال", str(farm_info['کانال'])) # Ensure string
+                st.metric("اداره", str(farm_info['اداره'])) # Ensure string
+                st.metric("مساحت داشت (هکتار)", f"{farm_info['مساحت داشت']:.2f}" if pd.notna(farm_info['مساحت داشت']) else "N/A")
+                st.metric("واریته", str(farm_info['واریته']))
+                st.metric("سن", str(farm_info['سن ']))
+                st.metric("روز آبیاری", str(farm_info['روزهای هفته']))
+                st.metric("وضعیت مختصات", "موجود" if farm_info['coordinates_missing'] == 0 else "گمشده")
+
+                st.subheader(f"روند شاخص {selected_index}")
+                # Check coordinates before fetching timeseries
+                if pd.notna(farm_info['عرض جغرافیایی']) and pd.notna(farm_info['طول جغرافیایی']):
+                    with st.spinner(f"در حال دریافت سری زمانی {selected_index} برای مزرعه {selected_farm}..."):
+                        farm_geom = ee.Geometry.Point([farm_info['طول جغرافیایی'], farm_info['عرض جغرافیایی']])
+                        # Pass geom as GeoJSON string for caching
+                        ts_df = get_timeseries_for_farm(farm_geom.toGeoJsonString(), start_date, end_date, selected_index, selected_sensor)
+
+                    if not ts_df.empty:
+                        fig = px.line(ts_df, x='Date', y=selected_index, title=f"روند زمانی {selected_index}", markers=True)
+                        fig.update_layout(xaxis_title="تاریخ", yaxis_title=selected_index)
+                        st.plotly_chart(fig, use_container_width=True)
                     else:
-                        st.warning(f"مختصات نامعتبر برای مزرعه {selected_farm}.", icon="📍")
-                        farm_info_for_display = None
+                        st.warning(f"داده‌ای برای نمایش نمودار روند زمانی {selected_index} یافت نشد.", icon="📉")
                 else:
-                    st.warning(f"اطلاعات مزرعه {selected_farm} برای روز هفته '{selected_day}' یافت نشد.", icon="⚠️")
-
-            # --- Fetch data and display layer on map ---
-            if display_geom:
-                with st.spinner(f"در حال پردازش نقشه '{selected_index}'... لطفاً کمی صبر کنید."):
-                    base_collection = get_image_collection(start_date, end_date, display_geom, selected_sensor)
-                    layer_added = False # Flag to check if layer was added
-                    if base_collection:
-                        indexed_collection = calculate_single_index(base_collection, selected_index)
-                        if indexed_collection:
-
-
-
-
-
-
-
-
-                            try:
-                                median_image = indexed_collection.median()
-                                # Clip layer visually if single farm selected
-                                layer_image = median_image.clip(display_geom) if selected_farm != "همه مزارع" else median_image
-                                # Add layer to map
-                                m.addLayer(layer_image, vis_params, f'{selected_index} (Median)')
-                                layer_added = True # Mark as added
-                                # Add legend
-                                try:
-                                    m.add_legend(title=f'{selected_index}', builtin_legend=None, palette=vis_params['palette'], min=vis_params['min'], max=vis_params['max'])
-                                except Exception as legend_e:
-                                     print(f"Warning: Could not add legend: {legend_e}") # Log warning
-
-                                # Add download button for map layer
-                                try:
-                                    thumb_url = median_image.getThumbURL({
-                                        'region': display_geom.toGeoJson(), 'bands': selected_index,
-                                        'palette': vis_params['palette'], 'min': vis_params['min'], 'max': vis_params['max'],
-                                        'dimensions': 512 })
-                                    response = requests.get(thumb_url)
-                                    if response.status_code == 200:
-                                        st.sidebar.download_button(
-                                            label=f"📥 دانلود نقشه ({selected_index})", data=BytesIO(response.content),
-                                            file_name=f"map_{selected_farm if selected_farm != 'همه مزارع' else 'all'}_{selected_index}.png",
-                                            mime="image/png", key=f"dl_map_{selected_index}_{selected_farm}" )
-                                except Exception as thumb_e:
-                                     print(f"Warning: Could not generate map thumbnail: {thumb_e}") # Log warning
-
-                            except ee.EEException as ee_err:
-                                st.error(f"خطای GEE هنگام پردازش لایه نقشه: {ee_err}")
-                            except Exception as err:
-                                st.error(f"خطای ناشناخته هنگام پردازش لایه نقشه: {err}")
-                        else:
-                             st.warning(f"محاسبه شاخص '{selected_index}' برای نقشه ممکن نبود.", icon="⚠️")
-                    else:
-                         # Warnings are shown inside get_image_collection if no images found
-                         pass # st.info("تصویری برای پردازش نقشه یافت نشد.")
-
-                # --- Add markers ---
-                if layer_added: # Only add markers if the layer was processed
-                    if selected_farm == "همه مزارع":
-                        # Mark all farms from the day-filtered list with valid coords
-                        df_to_mark = display_df.dropna(subset=['طول جغرافیایی', 'عرض جغرافیایی'])
-                        for idx, row in df_to_mark.iterrows():
-                            # Use cleaned column name 'سن'
-                            popup_html = f"<b>مزرعه:</b> {row['مزرعه']}<br><b>کانال:</b> {row['کانال']} | <b>اداره:</b> {row['اداره']}<br><b>مساحت:</b> {row['مساحت داشت']:.2f}<br><b>واریته:</b> {row['واریته']} | <b>سن:</b> {row['سن']}"
-                            folium.Marker(location=[row['عرض جغرافیایی'], row['طول جغرافیایی']],
-                                          popup=folium.Popup(popup_html, max_width=250),
-                                          tooltip=f"{row['مزرعه']}",
-                                          icon=folium.Icon(color='blue', icon='info-sign', prefix='fa') # Use FontAwesome icons
-                                          ).add_to(m)
-                    elif farm_info_for_display is not None: # Single farm selected and info is valid
-                        farm_info = farm_info_for_display
-                        # Use cleaned column name 'سن'
-                        popup_html = f"<b>مزرعه:</b> {farm_info['مزرعه']}<br><b>کانال:</b> {farm_info['کانال']} | <b>اداره:</b> {farm_info['اداره']}<br><b>مساحت:</b> {farm_info['مساحت داشت']:.2f}<br><b>واریته:</b> {farm_info['واریته']} | <b>سن:</b> {farm_info['سن']}"
-                        folium.Marker(location=[farm_info['عرض جغرافیایی'], farm_info['طول جغرافیایی']],
-                                      popup=folium.Popup(popup_html, max_width=250),
-                                      tooltip=f"{farm_info['مزرعه']} (انتخاب شده)",
-                                      icon=folium.Icon(color='red', icon='star', prefix='fa') # Red star for selected
-                                      ).add_to(m)
-
-                # Center the map view
-                if target_object_for_map:
-                    zoom_level = INITIAL_ZOOM + 2 if selected_farm != "همه مزارع" else INITIAL_ZOOM
-                    try: m.center_object(target_object_for_map, zoom=zoom_level)
-                    except Exception as center_e:
-                         print(f"Warning: Could not center map object: {center_e}")
-                         m.set_center(INITIAL_LON, INITIAL_LAT, INITIAL_ZOOM) # Fallback center
-
+                    st.warning("مختصات نامعتبر برای دریافت سری زمانی.", icon="📍")
             else:
-                # No valid geometry determined earlier
-                st.info("لطفاً یک مزرعه معتبر انتخاب کنید یا از وجود مزارع با مختصات صحیح در فایل CSV اطمینان حاصل کنید.")
+                 st.info("اطلاعات این مزرعه برای روز هفته انتخاب شده موجود نیست.")
 
 
-            # Render the map in the placeholder
-            with map_placeholder:
-                m.to_streamlit(height=550) # Slightly taller map
+        else: # "همه مزارع" is selected
+            st.subheader(f"رتبه‌بندی مزارع بر اساس {selected_index}")
+            st.info(f"نمایش میانگین مقدار شاخص '{selected_index}' در بازه زمانی برای مزارع فعال در '{selected_day}'.")
 
-
-
-
-        # --- Column 2: Farm Details and Timeseries ---
-        with col_detail:
-            if selected_farm != "همه مزارع":
-                st.subheader(f" جزئیات مزرعه: {selected_farm}")
-                st.divider()
-                if farm_info_for_display is not None:
-                    farm_info = farm_info_for_display # Use the data fetched for map display
-                    # Display metrics using cleaned column name 'سن'
-                    st.metric("کانال", str(farm_info.get('کانال', 'N/A')), help="شماره کانال آبیاری")
-                    st.metric("اداره", str(farm_info.get('اداره', 'N/A')), help="شماره اداره مربوطه")
-                    st.metric("مساحت (هکتار)", f"{farm_info['مساحت داشت']:.2f}" if pd.notna(farm_info.get('مساحت داشت')) else "N/A", help="مساحت ثبت شده مزرعه")
-                    st.metric("واریته", str(farm_info.get('واریته', 'N/A')), help="نوع واریته کشت شده")
-                    st.metric("سن", str(farm_info.get('سن', 'N/A')), help="سن کشت (P: پلانت، R: راتون)") # Access cleaned name
-                    st.metric("روز آبیاری", str(farm_info.get('روزهای هفته', 'N/A')), help="روز هفته آبیاری طبق برنامه")
-                    st.divider()
-
-                    # --- Timeseries Chart ---
-                    st.subheader(f"📈 روند شاخص: {INDEX_DEFINITIONS[selected_index]['name_fa']}")
-                    # Check coordinates again before potentially expensive GEE call
-                    if pd.notna(farm_info.get('عرض جغرافیایی')) and pd.notna(farm_info.get('طول جغرافیایی')):
-                        with st.spinner(f"در حال دریافت سری زمانی '{selected_index}'..."):
-                            # Create geometry again safely
-                            try:
-                                farm_geom_ts = ee.Geometry.Point([farm_info['طول جغرافیایی'], farm_info['عرض جغرافیایی']])
-                                # Pass geom as GeoJSON string for caching
-                                ts_df = get_timeseries_for_farm(farm_geom_ts.toGeoJsonString(), start_date, end_date, selected_index, selected_sensor)
-                            except Exception as ts_geom_e:
-                                st.error(f"خطا در ایجاد هندسه برای سری زمانی: {ts_geom_e}")
-                                ts_df = pd.DataFrame() # Ensure empty df
-
-                        if not ts_df.empty:
-                            fig_ts = px.line(ts_df, x='Date', y=selected_index,
-                                            title=f"روند زمانی {selected_index} برای مزرعه {selected_farm}",
-                                            markers=True, labels={'Date': 'تاریخ', selected_index: f'مقدار {selected_index}'})
-                            fig_ts.update_layout(xaxis_title="تاریخ", yaxis_title=f"مقدار {selected_index}", title_x=0.5)
-                            fig_ts.update_traces(line=dict(color='royalblue', width=2), marker=dict(color='salmon', size=6))
-                            st.plotly_chart(fig_ts, use_container_width=True)
-                        else:
-                            st.info(f"داده‌ای برای نمایش نمودار روند زمانی '{selected_index}' در بازه انتخابی یافت نشد.", icon="📉")
-                    else:
-                        st.warning("مختصات نامعتبر برای دریافت سری زمانی.", icon="📍")
-                else:
-                    st.info("اطلاعات این مزرعه برای روز هفته یا انتخاب فعلی در دسترس نیست یا مختصات نامعتبر است.")
-            else: # "همه مزارع" selected
-                 st.subheader("راهنمای جزئیات و روند")
-                 st.info("""
-                 برای مشاهده جزئیات کامل و نمودار روند زمانی یک مزرعه خاص:
-                 1.  از نوار کناری، فیلتر **روز هفته آبیاری** را (در صورت نیاز) تنظیم کنید.
-                 2.  از منوی **مزرعه خاص (یا همه)**، نام مزرعه مورد نظر را انتخاب نمایید.
-                 3.  جزئیات و نمودار در این بخش نمایش داده خواهد شد.
-                 """, icon="👈")
-
-
-    # --- Tab 2: Ranking ---
-    with tab2:
-        st.subheader(f"📊 رتبه‌بندی مزارع بر اساس شاخص: {INDEX_DEFINITIONS[selected_index]['name_fa']}")
-        st.caption(f"میانگین مقدار شاخص '{selected_index}' در بازه زمانی {start_date.strftime('%Y-%m-%d')} تا {end_date.strftime('%Y-%m-%d')} برای مزارع با روز هفته '{selected_day}'.")
-        st.divider()
-
-        # Use the filtered_df which respects the day filter
-        if filtered_df.empty:
-             st.warning(f"هیچ مزرعه‌ای برای روز هفته '{selected_day}' جهت رتبه‌بندی یافت نشد.", icon="⚠️")
-        else:
-            with st.spinner(f"در حال محاسبه رتبه‌بندی '{selected_index}'..."):
-                # Pass the day-filtered DataFrame JSON for ranking
-                ranking_df = get_median_index_for_period(filtered_df.to_json(), start_date, end_date, selected_index, sensor=selected_sensor)
+            with st.spinner(f"در حال محاسبه رتبه‌بندی مزارع بر اساس {selected_index}..."):
+                 # Pass DataFrame as JSON for caching
+                ranking_df = get_latest_index_for_ranking(filtered_df.to_json(), selected_day, start_date, end_date, selected_index, selected_sensor)
 
             if not ranking_df.empty:
-                # Determine sort order based on index definition
-                ascending_sort = INDEX_DEFINITIONS[selected_index].get('sort_ascending', False)
-                ranking_df_sorted = ranking_df.sort_values(by=selected_index, ascending=ascending_sort, na_position='last').reset_index(drop=True)
+                # Ensure index column exists before formatting
+                if selected_index in ranking_df.columns:
+                     st.dataframe(ranking_df.style.format({selected_index: "{:.3f}"}), use_container_width=True)
+                else:
+                     st.dataframe(ranking_df, use_container_width=True) # Display without formatting if index column missing
 
-                st.dataframe(
-                    ranking_df_sorted.style.format({selected_index: "{:.3f}"}) # Format the index value
-                                          .bar(subset=[selected_index], color='lightcoral' if ascending_sort else 'lightgreen', align='mid'), # Add data bars
-                    use_container_width=True
-                    )
-
-                # Download Button for Ranking
-                csv_rank = ranking_df_sorted.to_csv(index=False).encode('utf-8')
+                # Allow downloading ranking data
+                csv = ranking_df.to_csv(index=False).encode('utf-8')
                 st.download_button(
-                   label=f"📥 دانلود جدول رتبه‌بندی ({selected_index})", data=csv_rank,
-                   file_name=f'ranking_{selected_index}_{selected_day}.csv', mime='text/csv', key='dl_rank'
+                   label=f"دانلود جدول رتبه‌بندی ({selected_index})",
+                   data=csv,
+                   file_name=f'ranking_{selected_index}_{selected_day}.csv',
+                   mime='text/csv',
+                   key='download_ranking'
                  )
             else:
-                st.warning(f"اطلاعاتی برای رتبه‌بندی مزارع با فیلتر '{selected_day}' و شاخص '{selected_index}' یافت نشد.", icon="📊")
-        st.divider()
-
-
-
-
-
-
-
-
-
-    # --- Tab 3: Weekly Comparison ---
-    with tab3:
-        st.subheader(f"📉 مقایسه هفتگی: مزارع با کاهش شاخص ({INDEX_DEFINITIONS[selected_index]['name_fa']})")
-        st.caption(f"مقایسه مقادیر میانگین شاخص بین دوره جاری و دوره مشابه هفته قبل برای مزارع با روز هفته '{selected_day}'.")
-        st.markdown("فقط مزارعی نمایش داده می‌شوند که مقدار شاخص آن‌ها در هفته جاری نسبت به هفته قبل **کاهش** داشته است.")
-        st.divider()
-
-        # Use the filtered_df which respects the day filter
-        if filtered_df.empty:
-             st.warning(f"هیچ مزرعه‌ای برای روز هفته '{selected_day}' جهت مقایسه یافت نشد.", icon="⚠️")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        else:
-            with st.spinner(f"در حال محاسبه و مقایسه داده‌های هفتگی '{selected_index}'..."):
-                # Pass the day-filtered json for comparison relevant to the selected day
-                comparison_df_decreased = get_weekly_comparison(filtered_df.to_json(), start_date, end_date, selected_index, selected_sensor)
-
-            if not comparison_df_decreased.empty:
-                st.markdown("##### مزارع با کاهش شاخص:")
-                # Display table with relevant columns, formatted nicely
-                display_cols = ['مزرعه', f'{index_name}_prev', f'{index_name}_curr', 'تغییر', 'درصد_تغییر']
-                st.dataframe(
-                    comparison_df_decreased[display_cols].style.format({
-                        f'{index_name}_prev': "{:.3f}", f'{index_name}_curr': "{:.3f}",
-                        'تغییر': "{:+.3f}", 'درصد_تغییر': "{:+.1f}%" # Add sign to change
-                    }).applymap(lambda x: 'color: red' if x < 0 else ('color: black' if x==0 else 'color: green'), subset=['تغییر','درصد_تغییر']), # Color changes
-                    use_container_width=True
-                )
-                st.divider()
-
-                st.markdown("##### نمودار مقایسه‌ای:")
-                # Create grouped bar chart for visual comparison
-                fig_comp = go.Figure()
-                fig_comp.add_trace(go.Bar(
-                    x=comparison_df_decreased['مزرعه'], y=comparison_df_decreased[f'{index_name}_prev'],
-                    name='هفته قبل', marker_color='dodgerblue', text=comparison_df_decreased[f'{index_name}_prev'].round(3), textposition='auto'
-                ))
-                fig_comp.add_trace(go.Bar(
-                    x=comparison_df_decreased['مزرعه'], y=comparison_df_decreased[f'{index_name}_curr'],
-                    name='هفته جاری', marker_color='lightcoral', text=comparison_df_decreased[f'{index_name}_curr'].round(3), textposition='auto'
-                ))
-
-                fig_comp.update_layout(
-                    barmode='group', title=f'مقایسه شاخص {selected_index} (مزارع با کاهش)',
-                    xaxis_title='مزرعه', yaxis_title=f'مقدار {selected_index}', legend_title='دوره زمانی',
-                    xaxis={'categoryorder':'total descending'}, # Order bars if needed
-                    hovermode="x unified", title_x=0.5
-                )
-                st.plotly_chart(fig_comp, use_container_width=True)
-                st.divider()
-
-                # Download Button for Comparison Data
-                csv_comp = comparison_df_decreased.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                   label=f"📥 دانلود داده‌های مقایسه ({selected_index})", data=csv_comp,
-                   file_name=f'comparison_decrease_{selected_index}_{selected_day}.csv', mime='text/csv', key='dl_comp'
-                 )
-
-            else:
-                st.success(f"✅ هیچ مزرعه‌ای کاهش قابل توجهی در شاخص '{selected_index}' بین دو هفته اخیر نشان نداد.")
+                st.warning("اطلاعاتی برای رتبه‌بندی مزارع یافت نشد.", icon="📊")
 
 else:
-    st.error("اتصال به Google Earth Engine برقرار نشد. لطفاً پیش‌نیازها و خطاهای احتمالی را بررسی کنید.", icon="🚨")
+    st.warning("لطفا صبر کنید تا اتصال به Google Earth Engine برقرار شود یا خطاهای نمایش داده شده را بررسی کنید.", icon="⏳")
+
+# Add a footer or instructions
+st.sidebar.markdown("---")
+st.sidebar.info("راهنما: از منوها برای انتخاب بازه زمانی، روز هفته، مزرعه و شاخص استفاده کنید.")
