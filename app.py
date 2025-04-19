@@ -456,7 +456,7 @@ def get_timeseries_for_farm(_farm_geom_geojson, start_date, end_date, index_name
 
 @st.cache_data(ttl=3600)
 def get_latest_index_for_ranking(_farms_df_json, selected_day, start_date, end_date, index_name, sensor):
-    """Gets the median index value for ranking farms active on a selected day."""
+    "Gets the median index value for ranking farms active on a selected day.""
     features = []
     for idx, row in farms_df_filtered.iterrows():
         try:
@@ -825,4 +825,4 @@ else:
 
 # Add a footer or instructions
 st.sidebar.markdown("---")
-st.sidebar.info("راهنما: از منوها برای انتخاب بازه زمانی، روز هفته، مزرعه و شاخص استفاده کنید.")
+st.sidebar.info("""راهنما: از منوها برای انتخاب بازه زمانی، روز هفته، مزرعه و شاخص استفاده کنید.""")
