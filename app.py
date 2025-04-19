@@ -1,8 +1,68 @@
-# (Keep imports and other functions like initialize_gee, load_data the same)
+import streamlit as st
+import pandas as pd
+import ee
+import geemap.foliumap as geemap
+import folium
+import json
+import datetime
+import plotly.express as px
+import os
+from io import BytesIO
+import requests # Needed for getThumbUrl download
 
-# --- GEE Image Processing Functions ---
+# --- Configuration ---
+APP_TITLE = "داشبورد مانیتورینگ مزارع نیشکر دهخدا"
+INITIAL_LAT = 31.534442
+INITIAL_LON = 48.724416
+INITIAL_ZOOM = 12
 
-# Define common band names (used AFTER processing)
+# --- File Paths (Relative to the script location in Hugging Face) ---
+CSV_FILE_PATH = 'output (1).csv'
+SERVICE_ACCOUNT_FILE = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json'
+
+# --- GEE Authentication ---
+@st.cache_resource # Cache the GEE initialization
+def initialize_gee():
+    """Initializes Google Earth Engine using the Service Account."""
+    try:
+        if not os.path.exists(SERVICE_ACCOUNT_FILE):
+            st.error(f"خطا: فایل Service Account در مسیر '{SERVICE_ACCOUNT_FILE}' یافت نشد.")
+            st.stop()
+        credentials = ee.ServiceAccountCredentials(None, key_file=SERVICE_ACCOUNT_FILE)
+        ee.Initialize(credentials=credentials, opt_url='https://earthengine-highvolume.googleapis.com')
+        print("GEE Initialized Successfully using Service Account.")
+        return True
+    except ee.EEException as e:
+        st.error(f"خطا در اتصال به Google Earth Engine: {e}")
+        st.error("لطفاً از صحت فایل Service Account و فعال بودن آن در پروژه GEE اطمینان حاصل کنید.")
+        st.stop()
+    except Exception as e:
+        st.error(f"خطای غیرمنتظره هنگام اتصال به GEE: {e}")
+        st.stop()
+
+# --- Data Loading ---
+@st.cache_data # Cache the loaded data
+def load_data(csv_path):
+    """Loads farm data from the CSV file."""
+    try:
+        df = pd.read_csv(csv_path)
+        df.columns = df.columns.str.strip()
+        df['طول جغرافیایی'] = pd.to_numeric(df['طول جغرافیایی'], errors='coerce')
+        df['عرض جغرافیایی'] = pd.to_numeric(df['عرض جغرافیایی'], errors='coerce')
+        df.dropna(subset=['طول جغرافیایی', 'عرض جغرافیایی'], inplace=True)
+        df['مساحت داشت'] = pd.to_numeric(df['مساحت داشت'], errors='coerce')
+        df['مزرعه'] = df['مزرعه'].str.strip()
+        for col in ['کانال', 'اداره', 'واریته', 'سن ', 'روزهای هفته']:
+             if col in df.columns:
+                df[col] = df[col].fillna('نامشخص').astype(str)
+        print(f"Data loaded successfully. Shape: {df.shape}")
+        return df
+    except FileNotFoundError:
+        st.error(f"خطا: فایل CSV در مسیر '{csv_path}' یافت نشد.")
+        st.stop()
+    except Exception as e:
+        st.error(f"خطا در بارگذاری یا پردازش فایل CSV: {e}")
+        st.stop()
 COMMON_BAND_NAMES = ['Blue', 'Green', 'Red', 'RedEdge1', 'NIR', 'SWIR1', 'SWIR2']
 
 # --- Masking Functions ---
