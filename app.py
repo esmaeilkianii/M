@@ -1,4 +1,7 @@
 import streamlit as st
+import locale
+# Set locale to handle Persian characters properly
+locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
 import pandas as pd
 import ee
 import geemap.foliumap as geemap
