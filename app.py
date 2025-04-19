@@ -26,7 +26,7 @@ def authenticate_gee(service_account_file):
         # در محیط Hugging Face Spaces، فایل باید در ریشه پروژه باشد
         with open(service_account_file) as f:
             credentials_dict = json.load(f)
-        credentials = ee.ServiceAccountCredentials(credentials_dict['client_email'], service_account_file)
+        credentials = ee.ServiceAccountCredentials(credentials_dict['dehkhodamap-e9f0da4ce9f6514021@ee-esmaeilkiani13877.iam.gserviceaccount.com'], service_account_file)
         ee.Initialize(credentials=credentials, opt_url='https://earthengine-highvolume.googleapis.com')
         st.success("اتصال به Google Earth Engine با موفقیت انجام شد.", icon="✅")
         return True # نشان دهنده موفقیت
