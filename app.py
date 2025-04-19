@@ -174,9 +174,8 @@ def get_image_collection(_aoi, start_date, end_date, source='Sentinel-2'):
             collection = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED') \
                            .filterBounds(_aoi) \
                            .filterDate(start_date, end_date) \
-                           .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 30)) # Increase tolerance slightly
-                           # Map the masking function safely
-                           .map(lambda img: ee.Algorithms.If(img.bandNames().contains('QA60'), mask_s2_clouds(img), img))
+                           .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 30)) \
+                           .map(lambda img: ee.Algorithms.If(img.bandNames().contains('QA60'), mask_s2_clouds(img), img)) # Corrected Indentation
 
         except ee.EEException as e:
             st.warning(f"Could not retrieve Sentinel-2 collection: {e}")
@@ -187,12 +186,12 @@ def get_image_collection(_aoi, start_date, end_date, source='Sentinel-2'):
             collection_l9 = ee.ImageCollection('LANDSAT/LC09/C02/T1_L2') \
                 .filterBounds(_aoi) \
                 .filterDate(start_date, end_date) \
-                .map(lambda img: ee.Algorithms.If(img.bandNames().contains('QA_PIXEL'), mask_landsat_clouds(img), img))
+                .map(lambda img: ee.Algorithms.If(img.bandNames().contains('QA_PIXEL'), mask_landsat_clouds(img), img)) # Corrected Indentation
 
             collection_l8 = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2') \
                 .filterBounds(_aoi) \
                 .filterDate(start_date, end_date) \
-                .map(lambda img: ee.Algorithms.If(img.bandNames().contains('QA_PIXEL'), mask_landsat_clouds(img), img))
+                .map(lambda img: ee.Algorithms.If(img.bandNames().contains('QA_PIXEL'), mask_landsat_clouds(img), img)) # Corrected Indentation
 
             collection = collection_l8.merge(collection_l9).sort('system:time_start')
         except ee.EEException as e:
@@ -363,7 +362,6 @@ INDEX_RANGES = { # Approximate ranges for visualization, adjust as needed
 }
 
 # --- Get Time Series Data ---
-# MODIFIED: farm_geometry -> _farm_geometry, _farm_name -> farm_name
 @st.cache_data(show_spinner="در حال محاسبه سری زمانی...", ttl=3600) # Cache for 1 hour
 def get_time_series_for_farm(farm_name, _farm_geometry, index_name, start_date, end_date, source):
     """
@@ -449,7 +447,6 @@ def get_time_series_for_farm(farm_name, _farm_geometry, index_name, start_date, 
 
 
 # --- Get Map Image ---
-# MODIFIED: farm_geometry -> _farm_geometry, _farm_name -> farm_name
 @st.cache_data(show_spinner="در حال تولید نقشه...", ttl=3600)
 def get_map_image(farm_name, _farm_geometry, index_name, date, source):
     """
@@ -521,7 +518,6 @@ def get_map_image(farm_name, _farm_geometry, index_name, date, source):
         return None, None
 
 # --- Calculate Weekly Average ---
-# MODIFIED: farm_geometries_dict -> _farm_geometries_dict, _farm_name_list -> farm_name_list
 @st.cache_data(show_spinner="در حال محاسبه میانگین هفتگی...", ttl=3600)
 def calculate_weekly_average(farm_name_list, _farm_geometries_dict, index_name, end_date_dt, source):
     """
@@ -728,7 +724,6 @@ with col1_map:
 
 
     # Get and Add Index Layer
-    # MODIFIED: Pass selected_farm_geometry
     map_image, actual_image_date = get_map_image(selected_farm_name, selected_farm_geometry, selected_index, selected_date, data_source)
 
     if map_image and actual_image_date:
