@@ -362,6 +362,12 @@ def calculate_indices_for_collection(collection, index_list):
 @st.cache_data(ttl=3600)
 def get_timeseries_for_farm(_farm_geom_geojson, start_date, end_date, index_name, sensor):
     """Retrieves the time series for a specific index and farm geometry."""
+    # Convert GeoJSON string back to GEE geometry
+    farm_geom = ee.Geometry(json.loads(_farm_geom_geojson))
+    
+    # Get the image collection
+    collection = get_image_collection(start_date, end_date, farm_geom, sensor)
+    
     if collection is None:
         return pd.DataFrame(columns=['Date', index_name])
 
@@ -825,3 +831,7 @@ if initialize_gee():
                    label=f"دانلود جدول رتبه‌بندی ({selected_index})",
 else:
     st.warning("لطفا صبر کنید تا اتصال به Google Earth Engine برقرار شود یا خطاهای نمایش داده شده را بررسی کنید.", icon="⏳")
+
+# Add a footer or instructions
+st.sidebar.markdown("---")
+st.sidebar.info("""راهنما: از منوها برای انتخاب بازه زمانی، روز هفته، مزرعه، شاخص استفاده کنید.""")  
