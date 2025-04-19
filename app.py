@@ -11,7 +11,7 @@ st.set_page_config(layout="wide", page_title="داشبورد مانیتورین�
 
 # Define paths for input files
 GEE_KEY_FILENAME = "ee-esmaeilkiani13877-cfdea6eaf411 (4).json" # Ensure this is the correct filename
-CSV_FILENAME = "farm_data.csv" # Ensure this is the correct filename
+CSV_FILENAME = "output (1).csv" # Ensure this is the correct filename
 
 # Service Account Email (from the JSON file or provided)
 SERVICE_ACCOUNT_EMAIL = "dehkhodamap-e9f0da4ce9f6514021@ee-esmaeilkiani13877.iam.gserviceaccount.com"
