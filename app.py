@@ -124,7 +124,6 @@ farm_data_full, farm_data_valid, farm_geometries = load_farm_data(CSV_FILE_PATH)
 # ==============================================================================
 
 # --- Cloud Masking ---
-# (No changes needed in cloud masking functions)
 def mask_s2_clouds(image):
     """Masks clouds in Sentinel-2 images."""
     qa = image.select('QA60')
@@ -138,10 +137,6 @@ def mask_s2_clouds(image):
 def mask_landsat_clouds(image):
     """Masks clouds in Landsat 8/9 images using the QA_PIXEL band."""
     qa_pixel = image.select('QA_PIXEL')
-    # Bits 3 (Cloud Shadow) and 5 (Cloud) are relevant for SR. Previous used bit 4 (Cirrus for T1_L1)
-    # Let's stick to Cloud Shadow (bit 3) and Cloud (bit 5) based on Collection 2 specs
-    cloud_shadow_bit = 1 << 3
-    cloud_bit = 1 << 5 # Bit 5 is Dilated Cloud in C2 L2SP QA_PIXEL, let's use Cloud (Bit 3)
     # Let's re-evaluate based on documentation: Bits 1 (Dilated Cloud), 3 (Cloud), 4 (Cloud Shadow)
     # Masking out pixels where any of these are set.
     dilated_cloud_bit = 1 << 1
@@ -175,7 +170,7 @@ def get_image_collection(_aoi, start_date, end_date, source='Sentinel-2'):
                            .filterBounds(_aoi) \
                            .filterDate(start_date, end_date) \
                            .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 30)) \
-                           .map(lambda img: ee.Algorithms.If(img.bandNames().contains('QA60'), mask_s2_clouds(img), img)) # Corrected Indentation
+                           .map(lambda img: ee.Algorithms.If(img.bandNames().contains('QA60'), mask_s2_clouds(img), img))
 
         except ee.EEException as e:
             st.warning(f"Could not retrieve Sentinel-2 collection: {e}")
@@ -186,12 +181,12 @@ def get_image_collection(_aoi, start_date, end_date, source='Sentinel-2'):
             collection_l9 = ee.ImageCollection('LANDSAT/LC09/C02/T1_L2') \
                 .filterBounds(_aoi) \
                 .filterDate(start_date, end_date) \
-                .map(lambda img: ee.Algorithms.If(img.bandNames().contains('QA_PIXEL'), mask_landsat_clouds(img), img)) # Corrected Indentation
+                .map(lambda img: ee.Algorithms.If(img.bandNames().contains('QA_PIXEL'), mask_landsat_clouds(img), img))
 
             collection_l8 = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2') \
                 .filterBounds(_aoi) \
                 .filterDate(start_date, end_date) \
-                .map(lambda img: ee.Algorithms.If(img.bandNames().contains('QA_PIXEL'), mask_landsat_clouds(img), img)) # Corrected Indentation
+                .map(lambda img: ee.Algorithms.If(img.bandNames().contains('QA_PIXEL'), mask_landsat_clouds(img), img))
 
             collection = collection_l8.merge(collection_l9).sort('system:time_start')
         except ee.EEException as e:
@@ -206,7 +201,6 @@ def get_image_collection(_aoi, start_date, end_date, source='Sentinel-2'):
 
 
 # --- Index Calculation Functions ---
-# (No changes needed in index calculation logic itself)
 def calculate_ndvi(image, source='Sentinel-2'):
     nir, red = None, None
     if source == 'Sentinel-2':
@@ -706,15 +700,22 @@ with col1_map:
 
     # Initialize map centered on the selected farm or default coordinates
     map_center = selected_farm_coords if selected_farm_name and not (math.isnan(selected_farm_coords[0]) or math.isnan(selected_farm_coords[1])) else (DEFAULT_LATITUDE, DEFAULT_LONGITUDE)
-    m = geemap.Map(center=map_center, zoom=INITIAL_ZOOM + 2, add_google_map=False) # Start zoomed closer
+    # Use geemap.Map which wraps folium.Map
+    m = geemap.Map(center=map_center, zoom=INITIAL_ZOOM + 2, add_google_map=False)
     m.add_basemap("HYBRID") # Use Google Satellite Hybrid
 
     # Add Farm Boundary Layer (only if geometry is valid)
     if selected_farm_geometry and isinstance(selected_farm_geometry, ee.Geometry):
         try:
-            # Create a buffer around the point geometry to represent the farm area visually
             farm_boundary_viz = selected_farm_geometry.buffer(500) # 500m buffer
-            m.add_ee_layer(farm_boundary_viz, {'color': 'FFFF00', 'fillColor': 'FFFF0050'}, f'مرز مزرعه {selected_farm_name}')
+            boundary_vis_params = {'color': 'FFFF00', 'fillColor': 'FFFF0050'}
+            # MODIFIED: Use geemap.ee_tile_layer and m.add_child
+            boundary_tile_layer = geemap.ee_tile_layer(
+                ee_object=farm_boundary_viz,
+                vis_params=boundary_vis_params,
+                name=f'مرز مزرعه {selected_farm_name}'
+            )
+            m.add_child(boundary_tile_layer)
             # Center map on the selected farm
             m.centerObject(selected_farm_geometry, INITIAL_ZOOM + 3)
         except Exception as e:
@@ -739,28 +740,36 @@ with col1_map:
 
         try:
             # Clip the image to the farm boundary for focused visualization
-            clipped_image = map_image.clip(selected_farm_geometry.buffer(500)) # Clip to buffered area
-
-            m.add_ee_layer(clipped_image, index_vis_params, f"{selected_index} ({actual_image_date})")
-            # Add color bar only if visualization parameters are valid
-            if 'palette' in index_vis_params and 'min' in index_vis_params and 'max' in index_vis_params:
-                 m.add_colorbar(index_vis_params, label=f"{selected_index} ({actual_image_date})", layer_name=f"{selected_index} ({actual_image_date})")
+            # Ensure geometry is valid before clipping
+            if selected_farm_geometry and isinstance(selected_farm_geometry, ee.Geometry):
+                 clipped_image = map_image.clip(selected_farm_geometry.buffer(500)) # Clip to buffered area
             else:
-                 st.warning(f"پارامترهای نمایش (min, max, palette) برای {selected_index} کامل نیستند. Colorbar اضافه نشد.")
+                 clipped_image = map_image # Use unclipped if geometry invalid
+
+            layer_name = f"{selected_index} ({actual_image_date})"
+            # MODIFIED: Use geemap.ee_tile_layer and m.add_child
+            index_tile_layer = geemap.ee_tile_layer(
+                ee_object=clipped_image,
+                vis_params=index_vis_params,
+                name=layer_name
+            )
+            m.add_child(index_tile_layer)
+
+            # REMOVED: m.add_colorbar(...) - Not available in foliumap
 
             st.info(f"نقشه نمایش داده شده مربوط به نزدیک‌ترین تصویر موجود در تاریخ {actual_image_date} است.")
         except ee.EEException as e:
              st.error(f"خطای GEE هنگام افزودن لایه نقشه {selected_index}: {e}")
         except Exception as e:
-             st.error(f"خطای نامشخص هنگام افزودن لایه نقشه یا کالربار: {e}")
+             st.error(f"خطای نامشخص هنگام افزودن لایه نقشه: {e}")
 
     elif actual_image_date:
          st.warning(f"تصویر معتبری برای تاریخ {actual_image_date} یافت شد، اما محاسبه شاخص {selected_index} ناموفق بود.")
     else:
         st.warning(f"تصویری برای نمایش شاخص {selected_index} در حدود تاریخ {selected_date.strftime(DATE_FORMAT)} یافت نشد.")
 
-    # Add Layer Control
-    m.add_layer_control()
+    # Add Layer Control using Folium's LayerControl
+    folium.LayerControl().add_to(m) # Use folium's LayerControl directly
 
     # Display Map
     try:
