@@ -825,7 +825,3 @@ if initialize_gee():
                    label=f"دانلود جدول رتبه‌بندی ({selected_index})",
 else:
     st.warning("لطفا صبر کنید تا اتصال به Google Earth Engine برقرار شود یا خطاهای نمایش داده شده را بررسی کنید.", icon="⏳")
-
-# Add a footer or instructions
-st.sidebar.markdown("---")
-st.sidebar.info("""راهنما: از منوها برای انتخاب بازه زمانی، روز هفته، مزرعه، شاخص استفاده کنید.""")  
