@@ -239,10 +239,15 @@ def get_latest_image_value(geometry, index_name='NDVI', days_back=90):
 
         return value, date
     except ee.EEException as e:
-        st.error(f"خطای GEE هنگام دریافت آخرین مقدار شاخص: {e}")
+        # Log the error instead of stopping the app for every GEE issue
+        # لاگ کردن خطا به جای متوقف کردن برنامه برای هر مشکل GEE
+        print(f"GEE Error in get_latest_image_value for {geometry.getInfo()}: {e}") # Log to console/server logs
+        # Optionally show a less intrusive warning in UI
+        # st.warning(f"خطای GEE هنگام دریافت آخرین مقدار شاخص رخ داد. ممکن است برخی داده‌ها نمایش داده نشوند.")
         return None, None
     except Exception as e:
-        st.error(f"خطای غیرمنتظره هنگام دریافت آخرین مقدار شاخص: {e}")
+        print(f"Unexpected Error in get_latest_image_value for {geometry.getInfo()}: {e}") # Log to console/server logs
+        # st.error(f"خطای غیرمنتظره هنگام دریافت آخرین مقدار شاخص: {e}") # Avoid stopping if possible
         return None, None
 
 def get_recent_mean_value(geometry, index_name='NDVI', days=7):
@@ -264,6 +269,8 @@ def get_recent_mean_value(geometry, index_name='NDVI', days=7):
         # محاسبه میانگین در مجموعه
         mean_image = index_collection.mean() # Creates a single image representing the mean
 
+        # Check if the mean image has the required band (it might be empty if no images were found)
+        # بررسی اینکه آیا تصویر میانگین باند مورد نیاز را دارد (ممکن است خالی باشد اگر تصویری یافت نشود)
         if mean_image is None or not mean_image.bandNames().getInfo():
              # st.warning(f"هیچ تصویری در {days} روز گذشته برای محاسبه میانگین یافت نشد.")
              return None
@@ -282,11 +289,10 @@ def get_recent_mean_value(geometry, index_name='NDVI', days=7):
     except ee.EEException as e:
         # Don't flood the UI with errors for every farm, maybe log instead
         # رابط کاربری را با خطا برای هر مزرعه پر نکنید، شاید به جای آن لاگ کنید
-        # st.warning(f"خطای GEE هنگام محاسبه میانگین اخیر برای {index_name}: {e}")
-        print(f"GEE Error calculating recent mean for {index_name}: {e}")
+        print(f"GEE Error calculating recent mean for {index_name} at {geometry.getInfo()}: {e}")
         return None
     except Exception as e:
-        print(f"Unexpected Error calculating recent mean for {index_name}: {e}")
+        print(f"Unexpected Error calculating recent mean for {index_name} at {geometry.getInfo()}: {e}")
         return None
 
 
@@ -321,8 +327,8 @@ def get_index_time_series(geometry, index_name, start_date, end_date):
         # نگاشت روی مجموعه برای دریافت مقدار برای هر تصویر
         ts_features = index_collection.map(get_value)
 
-        # Filter out null values which can occur if the entire region was masked
-        # فیلتر کردن مقادیر تهی که ممکن است در صورت ماسک شدن کل منطقه رخ دهد
+        # Filter out null values which can occur if the entire region was masked or computation failed
+        # فیلتر کردن مقادیر تهی که ممکن است در صورت ماسک شدن کل منطقه یا شکست محاسبه رخ دهد
         ts_features = ts_features.filter(ee.Filter.NotNull([index_name]))
 
         # Evaluate the results
@@ -343,8 +349,10 @@ def get_index_time_series(geometry, index_name, start_date, end_date):
                  })
 
         if not data:
-            st.warning(f"داده‌ای برای سری زمانی شاخص '{index_name}' در محدوده تاریخ مشخص شده یافت نشد.")
-            return None
+            # This is not necessarily an error, just no data found
+            # این لزوماً یک خطا نیست، فقط داده‌ای یافت نشد
+            # st.warning(f"داده‌ای برای سری زمانی شاخص '{index_name}' در محدوده تاریخ مشخص شده یافت نشد.")
+            return pd.DataFrame(columns=['date', index_name]) # Return empty DataFrame
 
         df = pd.DataFrame(data)
         df['date'] = pd.to_datetime(df['date'])
@@ -353,10 +361,10 @@ def get_index_time_series(geometry, index_name, start_date, end_date):
 
     except ee.EEException as e:
         st.error(f"خطای GEE هنگام دریافت سری زمانی برای {index_name}: {e}")
-        return None
+        return None # Indicate error with None
     except Exception as e:
         st.error(f"خطای غیرمنتظره هنگام دریافت سری زمانی برای {index_name}: {e}")
-        return None
+        return None # Indicate error with None
 
 # --- Streamlit App Layout ---
 
@@ -428,37 +436,50 @@ with tab1:
         st.write("در حال محاسبه آخرین NDVI و افزودن مزارع به نقشه...")
         progress_bar_map = st.progress(0)
 
-        for i, row in enumerate(filtered_farms.itertuples()):
-            try:
-                lat = row._asdict()['عرض جغرافیایی']
-                lon = row._asdict()['طول جغرافیایی']
-                farm_name = row._asdict()['مزرعه']
+        # Use itertuples for potentially better performance and cleaner access
+        # استفاده از itertuples برای عملکرد بالقوه بهتر و دسترسی تمیزتر
+        for i, row in enumerate(filtered_farms.itertuples(index=False)): # index=False prevents adding index to tuple
+            farm_name = None # Initialize farm_name for the except block
+            row_dict = row._asdict() # Convert namedtuple to dict once
 
-                # Check for valid coordinates
-                # بررسی مختصات معتبر
+            try:
+                # Get farm name safely using .get() with a default value
+                # دریافت نام مزرعه به صورت ایمن با استفاده از .get() با مقدار پیش‌فرض
+                farm_name = row_dict.get('مزرعه', f'ردیف ناشناس {i+1}')
+
+                lat = row_dict.get('عرض جغرافیایی')
+                lon = row_dict.get('طول جغرافیایی')
+
+                # Check for valid coordinates earlier
+                # بررسی مختصات معتبر زودتر
                 if pd.isna(lat) or pd.isna(lon):
-                    st.warning(f"مختصات نامعتبر برای مزرعه: {farm_name}. رد شد.")
-                    continue
+                    st.warning(f"مختصات نامعتبر یا گمشده برای مزرعه: '{farm_name}'. این ردیف رد شد.")
+                    continue # Skip to the next iteration
 
                 # Create GEE geometry (Point)
                 # ایجاد هندسه GEE (نقطه)
-                # TODO: Adapt if polygon data becomes available
-                # TODO: در صورت در دسترس قرار گرفتن داده‌های چندضلعی، تطبیق دهید
                 farm_geom = ee.Geometry.Point([lon, lat])
 
                 # Get latest NDVI value
                 # دریافت آخرین مقدار NDVI
                 latest_ndvi, image_date = get_latest_image_value(farm_geom, 'NDVI', days_back=90) # Look back 90 days
 
-                if latest_ndvi is not None:
+                if latest_ndvi is not None and image_date is not None:
                     ndvi_values.append(latest_ndvi)
-                    color = geemap.normalized_difference_palette(latest_ndvi, min=0, max=1, palette=NDVI_PALETTE) # Get color from palette
+                    # Ensure latest_ndvi is float for palette function
+                    # اطمینان از اینکه latest_ndvi از نوع float برای تابع پالت است
+                    try:
+                        ndvi_float = float(latest_ndvi)
+                        color = geemap.normalized_difference_palette(ndvi_float, min=0, max=1, palette=NDVI_PALETTE) # Get color from palette
+                    except (ValueError, TypeError):
+                         st.warning(f"مقدار NDVI نامعتبر ({latest_ndvi}) برای رنگ‌آمیزی مزرعه {farm_name}. از رنگ پیش‌فرض استفاده می‌شود.")
+                         color = 'gray' # Default color if conversion fails
 
                     tooltip_text = f"""
                     <b>مزرعه:</b> {farm_name}<br>
                     <b>آخرین NDVI:</b> {latest_ndvi:.3f}<br>
                     <b>تاریخ تصویر:</b> {image_date}<br>
-                    <b>روز هفته:</b> {row._asdict()['روزهای هفته']}<br>
+                    <b>روز هفته:</b> {row_dict.get('روزهای هفته', 'N/A')}<br>
                     <b>عرض جغرافیایی:</b> {lat:.5f}<br>
                     <b>طول جغرافیایی:</b> {lon:.5f}
                     """
@@ -471,26 +492,36 @@ with tab1:
                     )
                     farms_added_to_map += 1
                 else:
-                    # Optionally mark farms with no recent data differently
-                    # به صورت اختیاری مزارعی که داده اخیر ندارند را متفاوت علامت‌گذاری کنید
+                    # Mark farms with no recent data differently
+                    # مزارعی که داده اخیر ندارند را متفاوت علامت‌گذاری کنید
                      Map.add_marker(
                         location=[lat, lon],
                         tooltip=f"مزرعه: {farm_name}\n (داده NDVI اخیر یافت نشد)",
                         icon=folium.Icon(color='gray', icon='question-circle', prefix='fa')
                     )
 
+            # Specific exception for missing keys (columns)
+            # استثنای خاص برای کلیدهای (ستون‌های) گمشده
+            except KeyError as ke:
+                 st.warning(f"خطا: ستون ضروری '{ke}' در داده‌های مزرعه '{farm_name or f'ردیف {i+1}'}' یافت نشد. این ردیف رد شد.")
+            # Catch other potential errors during processing a single farm
+            # گرفتن خطاهای احتمالی دیگر هنگام پردازش یک مزرعه واحد
             except Exception as e:
-                st.warning(f"خطا در پردازش مزرعه {farm_name}: {e}")
-            # Update progress bar
-            # به‌روزرسانی نوار پیشرفت
+                # Use farm_name if available, otherwise use the fallback name
+                # استفاده از farm_name در صورت وجود، در غیر این صورت از نام جایگزین استفاده کنید
+                st.warning(f"خطا در پردازش مزرعه '{farm_name or f'ردیف ناشناس {i+1}'}': {e}")
+
+            # Update progress bar outside the try/except for each iteration
+            # به‌روزرسانی نوار پیشرفت خارج از try/except برای هر تکرار
             progress_bar_map.progress((i + 1) / len(filtered_farms))
 
         if farms_added_to_map > 0:
             # Add NDVI color bar legend
             # اضافه کردن راهنمای نوار رنگی NDVI
              Map.add_colorbar(VIS_PARAMS['NDVI'], label="NDVI (آخرین تصویر)", layer_name="NDVI")
-        else:
-            st.warning("هیچ داده NDVI معتبری برای نمایش روی نقشه یافت نشد.")
+        elif not filtered_farms.empty: # Only show warning if there were farms to process
+             st.warning("هیچ داده NDVI معتبری برای نمایش روی نقشه یافت نشد (ممکن است تصاویر اخیر بدون ابر نباشند).")
+
 
         # Display Map
         # نمایش نقشه
@@ -511,14 +542,21 @@ with tab2:
         st.write("در حال محاسبه میانگین NDVI 7 روز اخیر برای رتبه‌بندی...")
         progress_bar_rank = st.progress(0)
 
-        for i, row in enumerate(filtered_farms.itertuples()):
+        # Use itertuples for potentially better performance
+        # استفاده از itertuples برای عملکرد بالقوه بهتر
+        for i, row in enumerate(filtered_farms.itertuples(index=False)):
+            farm_name_rank = None # Initialize for except block
+            row_dict_rank = row._asdict()
             try:
-                lat = row._asdict()['عرض جغرافیایی']
-                lon = row._asdict()['طول جغرافیایی']
-                farm_name = row._asdict()['مزرعه']
+                farm_name_rank = row_dict_rank.get('مزرعه', f'ردیف ناشناس {i+1}')
+                lat = row_dict_rank.get('عرض جغرافیایی')
+                lon = row_dict_rank.get('طول جغرافیایی')
 
                 if pd.isna(lat) or pd.isna(lon):
-                    continue # Skip if coordinates are invalid
+                    st.warning(f"مختصات نامعتبر برای رتبه‌بندی مزرعه: '{farm_name_rank}'. رد شد.")
+                    # Add entry with N/A to keep row count consistent? Or skip? Skipping for now.
+                    # اضافه کردن ورودی با N/A برای حفظ شمارش ردیف؟ یا رد کردن؟ فعلاً رد می‌شود.
+                    continue # Skip this farm
 
                 farm_geom = ee.Geometry.Point([lon, lat])
 
@@ -527,18 +565,27 @@ with tab2:
                 recent_ndvi = get_recent_mean_value(farm_geom, 'NDVI', days=7)
 
                 ranking_data.append({
-                    'مزرعه': farm_name,
+                    'مزرعه': farm_name_rank,
                     'عرض جغرافیایی': lat,
                     'طول جغرافیایی': lon,
-                    'میانگین NDVI (7 روز اخیر)': recent_ndvi if recent_ndvi is not None else 'N/A' # Handle None
+                    'میانگین NDVI (7 روز اخیر)': recent_ndvi # Keep None if calculation failed
                 })
-            except Exception as e:
-                 st.warning(f"خطا در محاسبه NDVI اخیر برای {farm_name}: {e}")
+            except KeyError as ke:
+                 st.warning(f"خطا در ستون مورد نیاز '{ke}' برای رتبه‌بندی مزرعه '{farm_name_rank or f'ردیف {i+1}'}'")
+                 # Optionally add a row indicating the error
                  ranking_data.append({
-                    'مزرعه': farm_name,
-                    'عرض جغرافیایی': lat,
-                    'طول جغرافیایی': lon,
-                    'میانگین NDVI (7 روز اخیر)': 'خطا'
+                    'مزرعه': farm_name_rank or f'ردیف {i+1}',
+                    'عرض جغرافیایی': row_dict_rank.get('عرض جغرافیایی'), # Keep coords if available
+                    'طول جغرافیایی': row_dict_rank.get('طول جغرافیایی'),
+                    'میانگین NDVI (7 روز اخیر)': 'خطای ستون'
+                 })
+            except Exception as e:
+                 st.warning(f"خطا در محاسبه NDVI اخیر برای رتبه‌بندی مزرعه '{farm_name_rank or f'ردیف {i+1}'}': {e}")
+                 ranking_data.append({
+                    'مزرعه': farm_name_rank or f'ردیف {i+1}',
+                    'عرض جغرافیایی': lat if 'lat' in locals() else None, # Include coords if available
+                    'طول جغرافیایی': lon if 'lon' in locals() else None,
+                    'میانگین NDVI (7 روز اخیر)': 'خطای محاسبه'
                 })
             # Update progress bar
             # به‌روزرسانی نوار پیشرفت
@@ -547,8 +594,8 @@ with tab2:
 
         if ranking_data:
             rank_df = pd.DataFrame(ranking_data)
-            # Convert NDVI column to numeric, coercing errors (like 'N/A' or 'خطا') to NaN
-            # تبدیل ستون NDVI به عددی، تبدیل خطاها (مانند 'N/A' یا 'خطا') به NaN
+            # Convert NDVI column to numeric, coercing errors (like None, 'خطا') to NaN
+            # تبدیل ستون NDVI به عددی، تبدیل خطاها (مانند None، 'خطا') به NaN
             rank_df['میانگین NDVI (7 روز اخیر)'] = pd.to_numeric(rank_df['میانگین NDVI (7 روز اخیر)'], errors='coerce')
 
             # Sort by NDVI (descending), NaNs will be placed last by default
@@ -562,12 +609,13 @@ with tab2:
 
             st.dataframe(rank_df.style.format({'عرض جغرافیایی': "{:.5f}",
                                                'طول جغرافیایی': "{:.5f}",
-                                               'میانگین NDVI (7 روز اخیر)': "{:.3f}"})
-                                     .highlight_null(null_color='lightgrey') # Highlight missing values
+                                               'میانگین NDVI (7 روز اخیر)': "{:.3f}"},
+                                              na_rep='N/A') # Display NaN as N/A
+                                     .highlight_null(null_color='lightgrey') # Highlight missing/failed values
                                      .background_gradient(cmap=NDVI_PALETTE, subset=['میانگین NDVI (7 روز اخیر)'], vmin=0, vmax=1) # Add color gradient
                         , use_container_width=True)
         else:
-            st.info("داده‌ای برای رتبه‌بندی مزارع یافت نشد.")
+            st.info("داده‌ای برای رتبه‌بندی مزارع یافت نشد (ممکن است به دلیل خطاهای پردازش یا مختصات نامعتبر باشد).")
 
     else:
         st.info("هیچ مزرعه‌ای برای رتبه‌بندی برای روز انتخاب شده وجود ندارد.")
@@ -579,13 +627,18 @@ with tab3:
     if not filtered_farms.empty:
         # Select farm for time series analysis
         # انتخاب مزرعه برای تحلیل سری زمانی
-        farm_names = filtered_farms['مزرعه'].tolist()
+        # Use unique farm names in case of duplicates
+        # استفاده از نام‌های منحصر به فرد مزارع در صورت وجود تکرار
+        farm_names = filtered_farms['مزرعه'].unique().tolist()
         selected_farm_name = st.selectbox("انتخاب مزرعه برای نمایش سری زمانی:", farm_names)
 
         # Select index for time series analysis
         # انتخاب شاخص برای تحلیل سری زمانی
         available_indices = list(INDEX_FUNCTIONS.keys())
-        selected_index = st.selectbox("انتخاب شاخص:", available_indices, index=available_indices.index('NDVI'))
+        # Default to NDVI if available, otherwise first index
+        # پیش‌فرض به NDVI در صورت وجود، در غیر این صورت اولین شاخص
+        default_index_ts = available_indices.index('NDVI') if 'NDVI' in available_indices else 0
+        selected_index = st.selectbox("انتخاب شاخص:", available_indices, index=default_index_ts)
 
         # Select time range
         # انتخاب محدوده زمانی
@@ -598,35 +651,50 @@ with tab3:
         with col2:
             end_date_ts = st.date_input("تاریخ پایان:", value=today, min_value=start_date_ts + datetime.timedelta(days=1), max_value=today)
 
+        # Button to trigger time series calculation
+        # دکمه برای شروع محاسبه سری زمانی
         if st.button(f"نمایش نمودار سری زمانی {selected_index} برای {selected_farm_name}"):
             if selected_farm_name and selected_index and start_date_ts < end_date_ts:
-                farm_info = filtered_farms[filtered_farms['مزرعه'] == selected_farm_name].iloc[0]
-                lat = farm_info['عرض جغرافیایی']
-                lon = farm_info['طول جغرافیایی']
+                # Get the first matching farm's info (in case of duplicate names)
+                # دریافت اطلاعات اولین مزرعه منطبق (در صورت وجود نام‌های تکراری)
+                farm_info_list = filtered_farms[filtered_farms['مزرعه'] == selected_farm_name]
+                if not farm_info_list.empty:
+                    farm_info = farm_info_list.iloc[0]
+                    lat = farm_info['عرض جغرافیایی']
+                    lon = farm_info['طول جغرافیایی']
 
-                if pd.notna(lat) and pd.notna(lon):
-                    farm_geom_ts = ee.Geometry.Point([lon, lat])
+                    if pd.notna(lat) and pd.notna(lon):
+                        farm_geom_ts = ee.Geometry.Point([lon, lat])
 
-                    with st.spinner(f"در حال محاسبه سری زمانی {selected_index} برای {selected_farm_name}..."):
-                        ts_df = get_index_time_series(farm_geom_ts, selected_index,
-                                                      start_date_ts.strftime('%Y-%m-%d'),
-                                                      end_date_ts.strftime('%Y-%m-%d'))
+                        with st.spinner(f"در حال محاسبه سری زمانی {selected_index} برای {selected_farm_name}..."):
+                            ts_df = get_index_time_series(farm_geom_ts, selected_index,
+                                                          start_date_ts.strftime('%Y-%m-%d'),
+                                                          end_date_ts.strftime('%Y-%m-%d'))
 
-                    if ts_df is not None and not ts_df.empty:
-                        fig = px.line(ts_df, x='date', y=selected_index,
-                                      title=f"روند زمانی شاخص {selected_index} برای مزرعه {selected_farm_name}",
-                                      labels={'date': 'تاریخ', selected_index: f'مقدار {selected_index}'},
-                                      markers=True) # Add markers to see individual points
-                        fig.update_layout(xaxis_title="تاریخ", yaxis_title=f"مقدار {selected_index}")
-                        st.plotly_chart(fig, use_container_width=True)
-                    elif ts_df is not None and ts_df.empty:
-                        st.warning(f"هیچ داده‌ای برای سری زمانی {selected_index} در محدوده تاریخ انتخاب شده برای مزرعه {selected_farm_name} یافت نشد.")
+                        # Check if ts_df is a DataFrame (even if empty) or None (indicating error)
+                        # بررسی اینکه آیا ts_df یک DataFrame است (حتی اگر خالی باشد) یا None (نشان دهنده خطا)
+                        if isinstance(ts_df, pd.DataFrame):
+                            if not ts_df.empty:
+                                fig = px.line(ts_df, x='date', y=selected_index,
+                                              title=f"روند زمانی شاخص {selected_index} برای مزرعه {selected_farm_name}",
+                                              labels={'date': 'تاریخ', selected_index: f'مقدار {selected_index}'},
+                                              markers=True) # Add markers to see individual points
+                                fig.update_layout(xaxis_title="تاریخ", yaxis_title=f"مقدار {selected_index}")
+                                st.plotly_chart(fig, use_container_width=True)
+                            else:
+                                # No error, but no data points found
+                                # بدون خطا، اما هیچ نقطه داده‌ای یافت نشد
+                                st.warning(f"هیچ داده‌ای برای سری زمانی {selected_index} در محدوده تاریخ انتخاب شده برای مزرعه {selected_farm_name} یافت نشد (ممکن است تصاویر بدون ابر وجود نداشته باشند).")
+                        else:
+                            # An error occurred during time series fetching (already shown by get_index_time_series)
+                            # خطایی هنگام دریافت سری زمانی رخ داده است (قبلاً توسط get_index_time_series نشان داده شده است)
+                            st.error("خطا در دریافت داده‌های سری زمانی.")
                     else:
-                        st.error("خطا در دریافت داده‌های سری زمانی.")
+                        st.error(f"مختصات نامعتبر برای مزرعه {selected_farm_name}.")
                 else:
-                    st.error(f"مختصات نامعتبر برای مزرعه {selected_farm_name}.")
+                     st.error(f"اطلاعات مزرعه برای {selected_farm_name} یافت نشد.") # Should not happen if name is from list
             else:
-                st.warning("لطفاً یک مزرعه، شاخص و محدوده تاریخ معتبر انتخاب کنید.")
+                st.warning("لطفاً یک مزرعه، شاخص و محدوده تاریخ معتبر انتخاب کنید (تاریخ شروع باید قبل از تاریخ پایان باشد).")
     else:
         st.info("هیچ مزرعه‌ای برای تحلیل سری زمانی برای روز انتخاب شده وجود ندارد.")
 
