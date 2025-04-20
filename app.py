@@ -10,6 +10,7 @@ import os
 from io import BytesIO
 import requests # Needed for getThumbUrl download
 import traceback  # Add missing traceback import
+from streamlit_folium import st_folium  # Add missing st_folium import
 
 # --- Configuration ---
 APP_TITLE = "داشبورد مانیتورینگ مزارع نیشکر دهخدا"
@@ -443,7 +444,6 @@ if selected_farm_geom:
             m.add_legend(
                 title=f"{selected_index} Legend",
                 builtin_legend=None, # Use custom labels if needed or rely on palette
-                palette=vis_params.get(selected_index, {}).get('palette', []),
                 labels=['بحرانی/پایین', 'متوسط', 'سالم/بالا'] if selected_index in ['NDVI', 'EVI', 'LAI', 'CVI'] else ['مرطوب/بالا', 'متوسط', 'خشک/پایین'] if selected_index in ['NDMI', 'MSI'] else None, # Basic labels
                 position='bottomright'
             )
