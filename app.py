@@ -440,17 +440,39 @@ if selected_farm_geom:
                 f"{selected_index} ({start_date_current_str} to {end_date_current_str})"
             )
 
-            # Add legend - Fixed to avoid None concatenation
-            legend_labels = ['بحرانی/پایین', 'متوسط', 'سالم/بالا'] if selected_index in ['NDVI', 'EVI', 'LAI', 'CVI'] else ['مرطوب/بالا', 'متوسط', 'خشک/پایین'] if selected_index in ['NDMI', 'MSI'] else []
+            # Remove the problematic add_legend call and replace with a custom legend
+            # Create a custom legend using folium
+            if selected_index in ['NDVI', 'EVI', 'LAI', 'CVI']:
+                legend_html = '''
+                <div style="position: fixed; bottom: 50px; right: 50px; z-index: 1000; background-color: white; padding: 10px; border: 2px solid grey; border-radius: 5px;">
+                    <p style="margin: 0;"><strong>{} Legend</strong></p>
+                    <p style="margin: 0; color: red;">بحرانی/پایین</p>
+                    <p style="margin: 0; color: yellow;">متوسط</p>
+                    <p style="margin: 0; color: green;">سالم/بالا</p>
+                </div>
+                '''.format(selected_index)
+            elif selected_index in ['NDMI', 'MSI']:
+                legend_html = '''
+                <div style="position: fixed; bottom: 50px; right: 50px; z-index: 1000; background-color: white; padding: 10px; border: 2px solid grey; border-radius: 5px;">
+                    <p style="margin: 0;"><strong>{} Legend</strong></p>
+                    <p style="margin: 0; color: blue;">مرطوب/بالا</p>
+                    <p style="margin: 0; color: white;">متوسط</p>
+                    <p style="margin: 0; color: brown;">خشک/پایین</p>
+                </div>
+                '''.format(selected_index)
+            else:
+                # Default legend for other indices
+                legend_html = '''
+                <div style="position: fixed; bottom: 50px; right: 50px; z-index: 1000; background-color: white; padding: 10px; border: 2px solid grey; border-radius: 5px;">
+                    <p style="margin: 0;"><strong>{} Legend</strong></p>
+                    <p style="margin: 0;">Low</p>
+                    <p style="margin: 0;">Medium</p>
+                    <p style="margin: 0;">High</p>
+                </div>
+                '''.format(selected_index)
             
-            # Only add legend if we have labels
-            if legend_labels:
-                m.add_legend(
-                    title=f"{selected_index} Legend",
-                    builtin_legend=None,
-                    labels=legend_labels,
-                    position='bottomright'
-                )
+            # Add the custom legend to the map
+            m.get_root().html.add_child(folium.Element(legend_html))
 
             # Add markers for farms
             if selected_farm_name == "همه مزارع":
