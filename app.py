@@ -9,6 +9,7 @@ import plotly.express as px
 import os
 from io import BytesIO
 import requests # Needed for getThumbUrl download
+import traceback  # Add missing traceback import
 
 # --- Configuration ---
 APP_TITLE = "داشبورد مانیتورینگ مزارع نیشکر دهخدا"
@@ -205,10 +206,11 @@ def maskS2clouds(image):
 
     # Scale and offset factors for Sentinel-2 SR bands
     opticalBands = image.select('B.*').multiply(0.0001)
-    thermalBands = image.select('ST_B.*').multiply(0.00341802).add(149.0) # If using thermal
+    
+    # Remove thermal band processing as it's not available in the dataset
+    # thermalBands = image.select('ST_B.*').multiply(0.00341802).add(149.0) # If using thermal
 
     return image.addBands(opticalBands, None, True)\
-                .addBands(thermalBands, None, True)\
                 .updateMask(mask).updateMask(good_quality) # Apply both masks
 
 
