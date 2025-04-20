@@ -11,6 +11,11 @@ from io import BytesIO
 import requests # Needed for getThumbUrl download
 import traceback  # Add missing traceback import
 from streamlit_folium import st_folium  # Add missing st_folium import
+import socket
+import socks
+import httplib2
+import pickle
+from pathlib import Path
 
 # --- Configuration ---
 APP_TITLE = "داشبورد مانیتورینگ مزارع نیشکر دهخدا"
@@ -18,9 +23,118 @@ INITIAL_LAT = 31.534442
 INITIAL_LON = 48.724416
 INITIAL_ZOOM = 12
 
+# --- Theme Configuration ---
+THEME_COLORS = {
+    'primary': '#2E86C1',  # آبی اصلی
+    'secondary': '#27AE60',  # سبز
+    'accent': '#E74C3C',  # قرمز
+    'background': '#F8F9F9',  # پس‌زمینه روشن
+    'text': '#2C3E50',  # متن تیره
+    'success': '#2ECC71',  # سبز موفقیت
+    'warning': '#F1C40F',  # زرد هشدار
+    'danger': '#E74C3C',  # قرمز خطا
+}
+
+# --- Custom CSS ---
+st.markdown(f"""
+    <style>
+        /* RTL Support */
+        .stApp {{
+            direction: rtl;
+            text-align: right;
+        }}
+        
+        /* Modern Theme */
+        .stApp {{
+            background-color: {THEME_COLORS['background']};
+            color: {THEME_COLORS['text']};
+        }}
+        
+        /* Headers */
+        h1, h2, h3 {{
+            color: {THEME_COLORS['primary']};
+            font-weight: 600;
+        }}
+        
+        /* Metrics */
+        .stMetric {{
+            background-color: white;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }}
+        
+        /* DataFrames */
+        .dataframe {{
+            direction: rtl;
+            text-align: right;
+        }}
+        
+        /* Buttons */
+        .stButton>button {{
+            background-color: {THEME_COLORS['primary']};
+            color: white;
+            border-radius: 0.5rem;
+            padding: 0.5rem 1rem;
+            border: none;
+            transition: all 0.3s ease;
+        }}
+        
+        .stButton>button:hover {{
+            background-color: {THEME_COLORS['secondary']};
+            transform: translateY(-2px);
+        }}
+        
+        /* Sidebar */
+        .css-1d391kg {{
+            background-color: white;
+        }}
+        
+        /* Progress Bar */
+        .stProgress > div > div {{
+            background-color: {THEME_COLORS['primary']};
+        }}
+    </style>
+""", unsafe_allow_html=True)
+
 # --- File Paths (Relative to the script location in Hugging Face) ---
 CSV_FILE_PATH = 'cleaned_output.csv'
 SERVICE_ACCOUNT_FILE = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json'
+CACHE_DIR = Path('cache')
+INDEX_DATA_FILE = CACHE_DIR / 'index_data.pkl'
+LAST_UPDATE_FILE = CACHE_DIR / 'last_update.txt'
+
+# Create cache directory if it doesn't exist
+CACHE_DIR.mkdir(exist_ok=True)
+
+# --- Data Caching Functions ---
+def load_cached_data():
+    """Load cached index data if available and not expired."""
+    try:
+        if not INDEX_DATA_FILE.exists() or not LAST_UPDATE_FILE.exists():
+            return None, None
+        
+        # Check if data is less than 24 hours old
+        last_update = datetime.datetime.fromtimestamp(float(LAST_UPDATE_FILE.read_text()))
+        if datetime.datetime.now() - last_update > datetime.timedelta(hours=24):
+            return None, None
+        
+        with open(INDEX_DATA_FILE, 'rb') as f:
+            return pickle.load(f), last_update
+    except Exception as e:
+        st.warning(f"خطا در بارگذاری داده‌های کش شده: {e}")
+        return None, None
+
+def save_cached_data(data):
+    """Save index data to cache."""
+    try:
+        with open(INDEX_DATA_FILE, 'wb') as f:
+            pickle.dump(data, f)
+        LAST_UPDATE_FILE.write_text(str(datetime.datetime.now().timestamp()))
+        return True
+    except Exception as e:
+        st.error(f"خطا در ذخیره داده‌ها: {e}")
+        return False
 
 # --- GEE Authentication ---
 @st.cache_resource # Cache the GEE initialization
@@ -82,7 +196,18 @@ def load_farm_data(csv_path=CSV_FILE_PATH):
 
 # Initialize GEE and Load Data
 if initialize_gee():
-    farm_data_df = load_farm_data()
+    # Update index data
+    index_data = update_index_data()
+    
+    if index_data is not None:
+        # Continue with the rest of the application
+        farm_data_df = load_farm_data()
+        if farm_data_df is not None:
+            # ... (rest of the existing application code) ...
+            pass
+    else:
+        st.error("❌ امکان ادامه کار بدون داده‌های شاخص وجود ندارد.")
+        st.stop()
 else:
     st.error("❌ امکان ادامه کار بدون اتصال به Google Earth Engine وجود ندارد.")
     st.stop()
@@ -132,9 +257,7 @@ index_options = {
     "LAI": "شاخص سطح برگ (تخمینی)",
     "MSI": "شاخص تنش رطوبتی",
     "CVI": "شاخص کلروفیل (تخمینی)",
-    # Add more indices if needed and implemented
-    # "Biomass": "زیست‌توده (تخمینی)",
-    # "ET": "تبخیر و تعرق (تخمینی)",
+    "NIT": "شاخص ازت (تخمینی)",
 }
 selected_index = st.sidebar.selectbox(
     "📈 شاخص مورد نظر برای نمایش روی نقشه:",
@@ -253,13 +376,19 @@ def add_indices(image):
         'RED': image.select('B4')
     }).rename('CVI')
 
+    # NIT (Nitrogen Index) - (NIR - Red) / (NIR + Red + 0.5)
+    nit = image.expression('(NIR - RED) / (NIR + RED + 0.5)', {
+        'NIR': image.select('B8'),
+        'RED': image.select('B4')
+    }).rename('NIT')
+
     # Biomass - Placeholder: Needs calibration (e.g., Biomass = a * LAI + b)
     # biomass = lai.multiply(1.5).add(0.5).rename('Biomass') # Example: a=1.5, b=0.5
 
     # ET (Evapotranspiration) - Complex: Requires meteorological data or specialized models/datasets (e.g., MODIS ET, SSEBop)
     # Not calculating directly here, would typically use a pre-existing GEE product if available.
 
-    return image.addBands([ndvi, evi, ndmi, msi, lai, cvi]) # Add calculated indices
+    return image.addBands([ndvi, evi, ndmi, msi, lai, cvi, nit]) # Add calculated indices
 
 # --- Function to get processed image for a date range and geometry ---
 @st.cache_data(show_spinner="در حال پردازش تصاویر ماهواره‌ای...", persist=True)
@@ -410,6 +539,7 @@ vis_params = {
     'LAI': {'min': 0, 'max': 6, 'palette': ['white', 'lightgreen', 'darkgreen']}, # Adjust max based on expected values
     'MSI': {'min': 0, 'max': 3, 'palette': ['blue', 'white', 'brown']}, # Lower values = more moisture
     'CVI': {'min': 0, 'max': 20, 'palette': ['yellow', 'lightgreen', 'darkgreen']}, # Adjust max based on expected values
+    'NIT': {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']},
     # Add vis params for other indices if implemented
 }
 
@@ -737,3 +867,67 @@ else:
 st.markdown("---")
 st.sidebar.markdown("---")
 st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap")
+
+# --- Data Update Function ---
+def update_index_data():
+    """Update cached index data if needed."""
+    cached_data, last_update = load_cached_data()
+    
+    if cached_data is not None:
+        st.info(f"✅ داده‌ها به‌روز هستند (آخرین به‌روزرسانی: {last_update.strftime('%Y-%m-%d %H:%M')})")
+        return cached_data
+    
+    st.info("🔄 در حال به‌روزرسانی داده‌ها...")
+    
+    # Calculate new data
+    new_data = {}
+    farm_data_df = load_farm_data()
+    if farm_data_df is None:
+        st.error("❌ امکان به‌روزرسانی داده‌ها وجود ندارد.")
+        return None
+    
+    # Calculate indices for each farm
+    progress_bar = st.progress(0)
+    total_farms = len(farm_data_df)
+    
+    for i, (idx, farm) in enumerate(farm_data_df.iterrows()):
+        farm_name = farm['مزرعه']
+        indices, error = calculate_indices_for_farm(farm, start_date_current_str, end_date_current_str)
+        
+        if indices:
+            new_data[farm_name] = indices
+        progress_bar.progress((i + 1) / total_farms)
+    
+    progress_bar.empty()
+    
+    # Save new data
+    if save_cached_data(new_data):
+        st.success("✅ داده‌ها با موفقیت به‌روز شدند.")
+        return new_data
+    else:
+        st.error("❌ خطا در ذخیره داده‌های جدید.")
+        return None
+
+# --- Index Calculation Functions ---
+def calculate_indices_for_farm(farm_data, start_date, end_date):
+    """Calculate indices for a single farm."""
+    try:
+        lat = farm_data['عرض جغرافیایی']
+        lon = farm_data['طول جغرافیایی']
+        point_geom = ee.Geometry.Point([lon, lat])
+        
+        # Get processed image
+        image, error = get_processed_image(point_geom, start_date, end_date, 'NDVI')
+        if error:
+            return None, error
+            
+        # Calculate mean values for all indices
+        mean_dict = image.reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=point_geom,
+            scale=10
+        ).getInfo()
+        
+        return mean_dict, None
+    except Exception as e:
+        return None, str(e)
