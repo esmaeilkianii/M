@@ -440,13 +440,17 @@ if selected_farm_geom:
                 f"{selected_index} ({start_date_current_str} to {end_date_current_str})"
             )
 
-            # Add legend
-            m.add_legend(
-                title=f"{selected_index} Legend",
-                builtin_legend=None, # Use custom labels if needed or rely on palette
-                labels=['بحرانی/پایین', 'متوسط', 'سالم/بالا'] if selected_index in ['NDVI', 'EVI', 'LAI', 'CVI'] else ['مرطوب/بالا', 'متوسط', 'خشک/پایین'] if selected_index in ['NDMI', 'MSI'] else [], # Provide empty list instead of None
-                position='bottomright'
-            )
+            # Add legend - Fixed to avoid None concatenation
+            legend_labels = ['بحرانی/پایین', 'متوسط', 'سالم/بالا'] if selected_index in ['NDVI', 'EVI', 'LAI', 'CVI'] else ['مرطوب/بالا', 'متوسط', 'خشک/پایین'] if selected_index in ['NDMI', 'MSI'] else []
+            
+            # Only add legend if we have labels
+            if legend_labels:
+                m.add_legend(
+                    title=f"{selected_index} Legend",
+                    builtin_legend=None,
+                    labels=legend_labels,
+                    position='bottomright'
+                )
 
             # Add markers for farms
             if selected_farm_name == "همه مزارع":
@@ -491,27 +495,34 @@ st.subheader(f"📈 نمودار روند زمانی شاخص {selected_index}")
 
 if selected_farm_name == "همه مزارع":
     st.info("لطفاً یک مزرعه خاص را از پنل کناری انتخاب کنید تا نمودار روند زمانی آن نمایش داده شود.")
-elif selected_farm_geom and isinstance(selected_farm_geom, ee.Geometry.Point):
-    # Define a longer period for the time series chart (e.g., last 6 months)
-    timeseries_end_date = today.strftime('%Y-%m-%d')
-    timeseries_start_date = (today - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
+elif selected_farm_geom:
+    # Fix the isinstance check - use string comparison instead
+    # Check if the geometry type is Point by converting to string and checking
+    is_point = str(selected_farm_geom).find('Point') >= 0
+    
+    if is_point:
+        # Define a longer period for the time series chart (e.g., last 6 months)
+        timeseries_end_date = today.strftime('%Y-%m-%d')
+        timeseries_start_date = (today - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
 
-    ts_df, ts_error = get_index_time_series(
-        selected_farm_geom,
-        selected_index,
-        start_date=timeseries_start_date,
-        end_date=timeseries_end_date
-    )
+        ts_df, ts_error = get_index_time_series(
+            selected_farm_geom,
+            selected_index,
+            start_date=timeseries_start_date,
+            end_date=timeseries_end_date
+        )
 
-    if ts_error:
-        st.warning(f"خطا در دریافت داده‌های سری زمانی: {ts_error}")
-    elif not ts_df.empty:
-        st.line_chart(ts_df[selected_index])
-        st.caption(f"نمودار تغییرات شاخص {selected_index} برای مزرعه {selected_farm_name} در 6 ماه گذشته.")
+        if ts_error:
+            st.warning(f"خطا در دریافت داده‌های سری زمانی: {ts_error}")
+        elif not ts_df.empty:
+            st.line_chart(ts_df[selected_index])
+            st.caption(f"نمودار تغییرات شاخص {selected_index} برای مزرعه {selected_farm_name} در 6 ماه گذشته.")
+        else:
+            st.info(f"داده‌ای برای نمایش نمودار سری زمانی {selected_index} در بازه مشخص شده یافت نشد.")
     else:
-        st.info(f"داده‌ای برای نمایش نمودار سری زمانی {selected_index} در بازه مشخص شده یافت نشد.")
+        st.warning("نوع هندسه مزرعه برای نمودار سری زمانی پشتیبانی نمی‌شود (فقط نقطه).")
 else:
-    st.warning("نوع هندسه مزرعه برای نمودار سری زمانی پشتیبانی نمی‌شود (فقط نقطه).")
+    st.warning("هندسه مزرعه برای نمودار سری زمانی در دسترس نیست.")
 
 
 # --- Ranking Table ---
