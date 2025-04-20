@@ -652,6 +652,35 @@ if not ranking_df.empty:
     ranking_df_sorted.index = ranking_df_sorted.index + 1
     ranking_df_sorted.index.name = 'رتبه'
 
+    # Add a status column to indicate growth or stress
+    # For NDVI, EVI, LAI, CVI: higher is better
+    # For MSI, NDMI: lower is better
+    def determine_status(row, index_name):
+        if pd.isna(row['تغییر']) or pd.isna(row[f'{index_name} (هفته جاری)']) or pd.isna(row[f'{index_name} (هفته قبل)']):
+            return "بدون داده"
+        
+        # For indices where higher is better (NDVI, EVI, LAI, CVI)
+        if index_name in ['NDVI', 'EVI', 'LAI', 'CVI']:
+            if row['تغییر'] > 0.05:  # Significant growth
+                return "رشد مثبت"
+            elif row['تغییر'] < -0.05:  # Significant decline
+                return "تنش/کاهش"
+            else:
+                return "ثابت"
+        # For indices where lower is better (MSI, NDMI)
+        elif index_name in ['MSI', 'NDMI']:
+            if row['تغییر'] < -0.05:  # Significant improvement
+                return "بهبود"
+            elif row['تغییر'] > 0.05:  # Significant deterioration
+                return "تنش/بدتر شدن"
+            else:
+                return "ثابت"
+        else:
+            return "نامشخص"
+
+    # Add status column
+    ranking_df_sorted['وضعیت'] = ranking_df_sorted.apply(lambda row: determine_status(row, selected_index), axis=1)
+    
     # Format numbers for better readability
     cols_to_format = [f'{selected_index} (هفته جاری)', f'{selected_index} (هفته قبل)', 'تغییر']
     for col in cols_to_format:
@@ -659,8 +688,39 @@ if not ranking_df.empty:
              # Check if column exists before formatting
              ranking_df_sorted[col] = ranking_df_sorted[col].map(lambda x: f"{x:.3f}" if pd.notna(x) else "N/A")
 
-
+    # Display the table with color coding
     st.dataframe(ranking_df_sorted, use_container_width=True)
+    
+    # Add a summary of farm statuses
+    st.subheader("📊 خلاصه وضعیت مزارع")
+    
+    # Display status counts with appropriate colors
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if "رشد مثبت" in ranking_df_sorted['وضعیت'].value_counts() or "بهبود" in ranking_df_sorted['وضعیت'].value_counts():
+            status = "رشد مثبت" if "رشد مثبت" in ranking_df_sorted['وضعیت'].value_counts() else "بهبود"
+            count = ranking_df_sorted['وضعیت'].value_counts()[status]
+            st.metric(f"🟢 {status}", count)
+    
+    with col2:
+        if "ثابت" in ranking_df_sorted['وضعیت'].value_counts():
+            count = ranking_df_sorted['وضعیت'].value_counts()["ثابت"]
+            st.metric("⚪ ثابت", count)
+    
+    with col3:
+        if "تنش/کاهش" in ranking_df_sorted['وضعیت'].value_counts() or "تنش/بدتر شدن" in ranking_df_sorted['وضعیت'].value_counts():
+            status = "تنش/کاهش" if "تنش/کاهش" in ranking_df_sorted['وضعیت'].value_counts() else "تنش/بدتر شدن"
+            count = ranking_df_sorted['وضعیت'].value_counts()[status]
+            st.metric(f"🔴 {status}", count)
+    
+    # Add explanation
+    st.info(f"""
+    **توضیحات:**
+    - **🟢 رشد مثبت/بهبود**: مزارعی که نسبت به هفته قبل بهبود داشته‌اند
+    - **⚪ ثابت**: مزارعی که تغییر معناداری نداشته‌اند
+    - **🔴 تنش/کاهش**: مزارعی که نسبت به هفته قبل وضعیت بدتری داشته‌اند
+    """)
 
     # Add download button for the table
     csv_data = ranking_df_sorted.to_csv(index=True).encode('utf-8')
