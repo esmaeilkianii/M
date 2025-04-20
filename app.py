@@ -3,66 +3,43 @@ import pandas as pd
 import ee
 import geemap.foliumap as geemap
 import folium
-from streamlit_folium import st_folium
-import datetime
-import traceback
 import json
+import datetime
+import plotly.express as px
 import os
+from io import BytesIO
+import requests # Needed for getThumbUrl download
 
-# ==============================================================================
-# Configuration and Initialization
-# ==============================================================================
+# --- Configuration ---
+APP_TITLE = "داشبورد مانیتورینگ مزارع نیشکر دهخدا"
+INITIAL_LAT = 31.534442
+INITIAL_LON = 48.724416
+INITIAL_ZOOM = 12
 
-# Streamlit Page Configuration (Set Title and Layout)
-st.set_page_config(page_title="داشبورد پایش مزارع نیشکر دهخدا", layout="wide")
-st.title("📊 داشبورد پایش هفتگی مزارع نیشکر شرکت دهخدا")
-st.markdown("""
-این داشبورد وضعیت سلامت مزارع نیشکر را با استفاده از تصاویر ماهواره‌ای و شاخص‌های کشاورزی نمایش می‌دهد.
-داده‌ها به‌صورت هفتگی بر اساس روز انتخابی شما فیلتر و تحلیل می‌شوند.
-""")
+# --- File Paths (Relative to the script location in Hugging Face) ---
+CSV_FILE_PATH = 'output (1).csv'
+SERVICE_ACCOUNT_FILE = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json'
 
-# --- Google Earth Engine Initialization ---
-@st.cache_resource(show_spinner="در حال اتصال به Google Earth Engine...")
+# --- GEE Authentication ---
+@st.cache_resource # Cache the GEE initialization
 def initialize_gee():
-    """
-    Initializes the Google Earth Engine library using service account credentials.
-    Relies on GOOGLE_APPLICATION_CREDENTIALS environment variable being set.
-    """
+    """Initializes Google Earth Engine using the Service Account."""
     try:
-        # Check if credentials environment variable is set (common in cloud environments)
-        if 'GOOGLE_APPLICATION_CREDENTIALS' in os.environ:
-            creds_path = os.environ['GOOGLE_APPLICATION_CREDENTIALS']
-            if os.path.exists(creds_path):
-                 # Use service account credentials from the file
-                creds = ee.ServiceAccountCredentials(
-                    st.secrets["gcp_service_account"]["project_id"], # Assuming service account email is stored in secrets
-                    creds_path
-                )
-                ee.Initialize(credentials=creds)
-                st.success("✅ اتصال به Google Earth Engine با موفقیت برقرار شد.")
-                return True
-            else:
-                st.error(f"❌ فایل کلید سرویس اکانت در مسیر '{creds_path}' یافت نشد.")
-                st.info("لطفاً مطمئن شوید متغیر محیطی GOOGLE_APPLICATION_CREDENTIALS به درستی تنظیم شده یا فایل کلید در مسیر پیش‌فرض قرار دارد.")
-                return False
-        else:
-             # Fallback: Try default authentication (e.g., gcloud auth application-default login)
-             # This might work in local development but usually not in deployed environments like Spaces
-             # without extra setup.
-            try:
-                ee.Initialize()
-                st.warning("⚠️ اتصال به GEE با استفاده از اعتبار پیش‌فرض انجام شد. برای محیط‌های ابری، استفاده از Service Account توصیه می‌شود.")
-                return True
-            except Exception as e:
-                st.error(f"❌ خطا در اتصال پیش‌فرض به GEE: {e}")
-                st.info("لطفاً از طریق Service Account احراز هویت کنید یا از `gcloud auth application-default login` در ترمینال استفاده نمایید.")
-                return False
-
+        if not os.path.exists(SERVICE_ACCOUNT_FILE):
+            st.error(f"خطا: فایل Service Account در مسیر '{SERVICE_ACCOUNT_FILE}' یافت نشد.")
+            st.stop()
+        credentials = ee.ServiceAccountCredentials(None, key_file=SERVICE_ACCOUNT_FILE)
+        ee.Initialize(credentials=credentials, opt_url='https://earthengine-highvolume.googleapis.com')
+        print("GEE Initialized Successfully using Service Account.")
+        return True
+    except ee.EEException as e:
+        st.error(f"خطا در اتصال به Google Earth Engine: {e}")
+        st.error("لطفاً از صحت فایل Service Account و فعال بودن آن در پروژه GEE اطمینان حاصل کنید.")
+        st.stop()
     except Exception as e:
-        st.error(f"❌ خطای غیرمنتظره در اتصال به Google Earth Engine:")
-        st.error(traceback.format_exc())
-        st.stop() # Stop execution if GEE fails to initialize
-        return False
+        st.error(f"خطای غیرمنتظره هنگام اتصال به GEE: {e}")
+        st.stop()
+
 
 # --- Load Farm Data ---
 @st.cache_data(show_spinner="در حال بارگذاری داده‌های مزارع...")
