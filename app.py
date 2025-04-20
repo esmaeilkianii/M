@@ -3,700 +3,665 @@ import pandas as pd
 import ee
 import geemap.foliumap as geemap
 import folium
-import json
+from streamlit_folium import st_folium
 import datetime
-import plotly.express as px
+import traceback
+import json
 import os
-from io import BytesIO
-import requests # Needed for getThumbUrl download
-import time # For potential delays/retries
-from dateutil.relativedelta import relativedelta # For date calculations
 
-# --- Configuration ---
-APP_TITLE = "داشبورد مانیتورینگ مزارع نیشکر دهخدا"
-INITIAL_LAT = 31.534442 # مختصات اولیه نقشه - عرض جغرافیایی
-INITIAL_LON = 48.724416 # مختصات اولیه نقشه - طول جغرافیایی
-INITIAL_ZOOM = 12 # زوم اولیه نقشه
+# ==============================================================================
+# Configuration and Initialization
+# ==============================================================================
 
-# --- File Paths (Ensure these paths are correct relative to your script) ---
-# --- مسیر فایل‌ها (اطمینان حاصل کنید این مسیرها نسبت به اسکریپت شما صحیح هستند) ---
-CSV_FILE_PATH = 'cleaned_output.csv'
-SERVICE_ACCOUNT_FILE = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json' # فایل کلید حساب سرویس GEE
+# Streamlit Page Configuration (Set Title and Layout)
+st.set_page_config(page_title="داشبورد پایش مزارع نیشکر دهخدا", layout="wide")
+st.title("📊 داشبورد پایش هفتگی مزارع نیشکر شرکت دهخدا")
+st.markdown("""
+این داشبورد وضعیت سلامت مزارع نیشکر را با استفاده از تصاویر ماهواره‌ای و شاخص‌های کشاورزی نمایش می‌دهد.
+داده‌ها به‌صورت هفتگی بر اساس روز انتخابی شما فیلتر و تحلیل می‌شوند.
+""")
 
-# --- Constants ---
-DAYS_OF_WEEK_FA = ["شنبه", "یکشنبه", "دوشنبه", "سه شنبه", "چهارشنبه", "پنجشنبه", "جمعه"]
-# Define standard color palettes for indices (example for NDVI)
-# تعریف پالت‌های رنگی استاندارد برای شاخص‌ها (مثال برای NDVI)
-NDVI_PALETTE = 'RdYlGn' # Example palette, you can choose others like 'viridis', 'plasma' etc.
-
-# --- GEE Authentication ---
-@st.cache_resource # Cache the GEE initialization
+# --- Google Earth Engine Initialization ---
+@st.cache_resource(show_spinner="در حال اتصال به Google Earth Engine...")
 def initialize_gee():
-    """Initializes Google Earth Engine using the Service Account."""
-    """راه اندازی اولیه Google Earth Engine با استفاده از حساب سرویس."""
+    """
+    Initializes the Google Earth Engine library using service account credentials.
+    Relies on GOOGLE_APPLICATION_CREDENTIALS environment variable being set.
+    """
     try:
-        if not os.path.exists(SERVICE_ACCOUNT_FILE):
-            st.error(f"خطا: فایل Service Account در مسیر '{SERVICE_ACCOUNT_FILE}' یافت نشد.")
-            st.stop()
-        # Attempt initialization with specified opt_url for high volume endpoint
-        # تلاش برای راه اندازی اولیه با opt_url مشخص شده برای نقطه پایانی حجم بالا
-        credentials = ee.ServiceAccountCredentials(None, key_file=SERVICE_ACCOUNT_FILE)
-        ee.Initialize(credentials=credentials, opt_url='https://earthengine-highvolume.googleapis.com')
-        print("GEE Initialized Successfully using Service Account.")
-        st.success("اتصال به Google Earth Engine با موفقیت برقرار شد.")
-        return True
-    except ee.EEException as e:
-        st.error(f"خطا در اتصال به Google Earth Engine: {e}")
-        st.error("لطفاً از صحت فایل Service Account و فعال بودن آن در پروژه GEE اطمینان حاصل کنید.")
-        st.stop()
-    except Exception as e:
-        st.error(f"خطای غیرمنتظره هنگام اتصال به GEE: {e}")
-        st.stop()
+        # Check if credentials environment variable is set (common in cloud environments)
+        if 'GOOGLE_APPLICATION_CREDENTIALS' in os.environ:
+            creds_path = os.environ['GOOGLE_APPLICATION_CREDENTIALS']
+            if os.path.exists(creds_path):
+                 # Use service account credentials from the file
+                creds = ee.ServiceAccountCredentials(
+                    st.secrets["gcp_service_account"]["project_id"], # Assuming service account email is stored in secrets
+                    creds_path
+                )
+                ee.Initialize(credentials=creds)
+                st.success("✅ اتصال به Google Earth Engine با موفقیت برقرار شد.")
+                return True
+            else:
+                st.error(f"❌ فایل کلید سرویس اکانت در مسیر '{creds_path}' یافت نشد.")
+                st.info("لطفاً مطمئن شوید متغیر محیطی GOOGLE_APPLICATION_CREDENTIALS به درستی تنظیم شده یا فایل کلید در مسیر پیش‌فرض قرار دارد.")
+                return False
+        else:
+             # Fallback: Try default authentication (e.g., gcloud auth application-default login)
+             # This might work in local development but usually not in deployed environments like Spaces
+             # without extra setup.
+            try:
+                ee.Initialize()
+                st.warning("⚠️ اتصال به GEE با استفاده از اعتبار پیش‌فرض انجام شد. برای محیط‌های ابری، استفاده از Service Account توصیه می‌شود.")
+                return True
+            except Exception as e:
+                st.error(f"❌ خطا در اتصال پیش‌فرض به GEE: {e}")
+                st.info("لطفاً از طریق Service Account احراز هویت کنید یا از `gcloud auth application-default login` در ترمینال استفاده نمایید.")
+                return False
 
-# --- Data Loading ---
-@st.cache_data # Cache the loaded data
-def load_data(csv_path):
-    """Loads farm data from the CSV file."""
-    """بارگذاری داده‌های مزارع از فایل CSV."""
+    except Exception as e:
+        st.error(f"❌ خطای غیرمنتظره در اتصال به Google Earth Engine:")
+        st.error(traceback.format_exc())
+        st.stop() # Stop execution if GEE fails to initialize
+        return False
+
+# --- Load Farm Data ---
+@st.cache_data(show_spinner="در حال بارگذاری داده‌های مزارع...")
+def load_farm_data(csv_path="cleaned_output.csv"):
+    """Loads farm data from the specified CSV file."""
     try:
-        if not os.path.exists(csv_path):
-            st.error(f"خطا: فایل CSV در مسیر '{csv_path}' یافت نشد.")
-            st.stop()
         df = pd.read_csv(csv_path)
-        # Data Cleaning and Type Conversion
-        # پاکسازی داده‌ها و تبدیل نوع
-        df['عرض جغرافیایی'] = pd.to_numeric(df['عرض جغرافیایی'], errors='coerce')
+        # Basic validation
+        required_cols = ['مزرعه', 'طول جغرافیایی', 'عرض جغرافیایی', 'روزهای هفته', 'coordinates_missing']
+        if not all(col in df.columns for col in required_cols):
+            st.error(f"❌ فایل CSV باید شامل ستون‌های ضروری باشد: {', '.join(required_cols)}")
+            return None
+        # Convert coordinate columns to numeric, coercing errors
         df['طول جغرافیایی'] = pd.to_numeric(df['طول جغرافیایی'], errors='coerce')
-        # Handle potential missing coordinates - Drop rows where essential coordinates are missing
-        # مدیریت مختصات گمشده احتمالی - حذف ردیف‌هایی که مختصات ضروری آن‌ها گمشده است
-        df.dropna(subset=['عرض جغرافیایی', 'طول جغرافیایی'], inplace=True)
-        # Ensure 'روزهای هفته' is string type for filtering
-        # اطمینان از اینکه ستون 'روزهای هفته' از نوع رشته است برای فیلتر کردن
-        df['روزهای هفته'] = df['روزهای هفته'].astype(str)
-        st.success(f"داده‌های مزارع از {csv_path} با موفقیت بارگذاری شد.")
+        df['عرض جغرافیایی'] = pd.to_numeric(df['عرض جغرافیایی'], errors='coerce')
+        # Handle missing coordinates flag explicitly if needed
+        df['coordinates_missing'] = df['coordinates_missing'].fillna(False).astype(bool)
+        # Drop rows where coordinates are actually missing after coercion or flagged
+        df = df.dropna(subset=['طول جغرافیایی', 'عرض جغرافیایی'])
+        df = df[~df['coordinates_missing']]
+
+        if df.empty:
+            st.warning("⚠️ داده معتبری برای مزارع یافت نشد (پس از حذف رکوردهای بدون مختصات).")
+            return None
+
+        # Ensure 'روزهای هفته' is string type for consistent filtering
+        df['روزهای هفته'] = df['روزهای هفته'].astype(str).str.strip()
+
+        st.success(f"✅ داده‌های {len(df)} مزرعه با موفقیت بارگذاری شد.")
         return df
     except FileNotFoundError:
-        st.error(f"خطا: فایل CSV در مسیر '{csv_path}' یافت نشد.")
-        st.stop()
-    except pd.errors.EmptyDataError:
-        st.error(f"خطا: فایل CSV '{csv_path}' خالی است.")
-        st.stop()
-    except KeyError as e:
-        st.error(f"خطا: ستون مورد نیاز '{e}' در فایل CSV یافت نشد. ستون‌های مورد نیاز: مزرعه, طول جغرافیایی, عرض جغرافیایی, روزهای هفته")
-        st.stop()
-    except Exception as e:
-        st.error(f"خطا در بارگذاری یا پردازش فایل CSV: {e}")
-        st.stop()
-
-# --- GEE Calculation Functions ---
-
-def get_sentinel2_collection(start_date, end_date, geometry, cloud_pixel_percentage=20):
-    """Gets Sentinel-2 SR collection filtered by date, bounds, and cloud cover."""
-    """دریافت مجموعه داده Sentinel-2 SR فیلتر شده بر اساس تاریخ، محدوده و پوشش ابر."""
-    s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-                 .filterBounds(geometry)
-                 .filterDate(ee.Date(start_date), ee.Date(end_date))
-                 # Pre-filter based on metadata cloud cover (less reliable but faster)
-                 # پیش‌فیلتر بر اساس پوشش ابر متادیتا (کمتر قابل اعتماد اما سریعتر)
-                 .filter(ee.Filter.lte('CLOUDY_PIXEL_PERCENTAGE', cloud_pixel_percentage)))
-
-    # Function to mask clouds using the SCL band
-    # تابع برای پوشاندن ابرها با استفاده از باند SCL
-    def mask_s2_clouds(image):
-        scl = image.select('SCL')
-        # Cloud Shadow (3), Cloud Medium Probability (8), Cloud High Probability (9), Cirrus (10)
-        # سایه ابر (3)، ابر با احتمال متوسط (8)، ابر با احتمال بالا (9)، سیروس (10)
-        cloud_mask = scl.eq(3).Or(scl.eq(8)).Or(scl.eq(9)).Or(scl.eq(10))
-        # Apply the mask - pixels that are clouds become masked
-        # اعمال ماسک - پیکسل‌هایی که ابر هستند ماسک می‌شوند
-        return image.updateMask(cloud_mask.Not())
-
-    # Apply cloud masking and select/scale bands
-    # اعمال ماسک ابر و انتخاب/مقیاس‌بندی باندها
-    return s2_sr_col.map(mask_s2_clouds).map(lambda img: img.select(
-            ['B2', 'B3', 'B4', 'B8', 'B11', 'B12'], # Blue, Green, Red, NIR, SWIR1, SWIR2
-            ['Blue', 'Green', 'Red', 'NIR', 'SWIR1', 'SWIR2']
-        ).multiply(0.0001).copyProperties(img, ['system:time_start'])) # Scale factor
-
-def calculate_ndvi(image):
-    """Calculates NDVI."""
-    """محاسبه NDVI."""
-    return image.normalizedDifference(['NIR', 'Red']).rename('NDVI')
-
-def calculate_evi(image):
-    """Calculates EVI."""
-    """محاسبه EVI."""
-    evi = image.expression(
-        '2.5 * (NIR - Red) / (NIR + 6 * Red - 7.5 * Blue + 1)', {
-            'NIR': image.select('NIR'),
-            'Red': image.select('Red'),
-            'Blue': image.select('Blue')
-    }).rename('EVI')
-    return evi
-
-def calculate_ndmi(image):
-    """Calculates NDMI (Normalized Difference Moisture Index)."""
-    """محاسبه NDMI (شاخص نرمال شده تفاوت رطوبت)."""
-    return image.normalizedDifference(['NIR', 'SWIR1']).rename('NDMI')
-
-def calculate_msi(image):
-    """Calculates MSI (Moisture Stress Index)."""
-    """محاسبه MSI (شاخص تنش رطوبتی)."""
-    # Using the formula MSI = SWIR1 / NIR
-    # استفاده از فرمول MSI = SWIR1 / NIR
-    return image.select('SWIR1').divide(image.select('NIR')).rename('MSI')
-
-# Note: LAI, Biomass, ET, Chlorophyll often require more complex models or specific GEE apps/modules.
-# توجه: LAI، Biomass، ET، کلروفیل اغلب به مدل‌های پیچیده‌تر یا برنامه‌ها/ماژول‌های خاص GEE نیاز دارند.
-# Implementing basic versions or placeholders here.
-# پیاده‌سازی نسخه‌های پایه یا جایگزین در اینجا.
-
-def calculate_lai_simple(image):
-    """Placeholder/Simple LAI calculation (e.g., related to NDVI). Needs calibration."""
-    """محاسبه LAI ساده/جایگزین (مثلاً مرتبط با NDVI). نیاز به کالیبراسیون دارد."""
-    # Example: Simple linear relationship with NDVI (highly approximate)
-    # مثال: رابطه خطی ساده با NDVI (بسیار تقریبی)
-    return calculate_ndvi(image).multiply(5.0).rename('LAI') # Needs proper coefficients
-
-def calculate_biomass_simple(image):
-    """Placeholder/Simple Biomass calculation based on LAI. Needs calibration."""
-    """محاسبه Biomass ساده/جایگزین بر اساس LAI. نیاز به کالیبراسیون دارد."""
-    # Example: Biomass = a * LAI + b. Using placeholder coefficients.
-    # مثال: Biomass = a * LAI + b. استفاده از ضرایب جایگزین.
-    a = 1000 # Placeholder coefficient (e.g., kg/ha per LAI unit) - نیاز به کالیبراسیون
-    b = 50   # Placeholder coefficient (e.g., base biomass kg/ha) - نیاز به کالیبراسیون
-    lai = calculate_lai_simple(image)
-    return lai.multiply(a).add(b).rename('Biomass')
-
-# Dictionary mapping index names to calculation functions
-# دیکشنری نگاشت نام شاخص‌ها به توابع محاسبه
-INDEX_FUNCTIONS = {
-    'NDVI': calculate_ndvi,
-    'EVI': calculate_evi,
-    'NDMI': calculate_ndmi,
-    'MSI': calculate_msi,
-    'LAI': calculate_lai_simple, # Using simple version
-    'Biomass': calculate_biomass_simple, # Using simple version
-    # 'ET': calculate_et, # Requires specific ET model implementation
-    # 'Chlorophyll': calculate_chlorophyll # Requires specific Chlorophyll model
-}
-
-# Dictionary for index visualization parameters (min, max, palette)
-# دیکشنری برای پارامترهای تجسم شاخص (حداقل، حداکثر، پالت)
-# These ranges might need adjustment based on typical values for sugarcane
-# این محدوده‌ها ممکن است نیاز به تنظیم بر اساس مقادیر معمول برای نیشکر داشته باشند
-VIS_PARAMS = {
-    'NDVI': {'min': 0, 'max': 1, 'palette': 'RdYlGn'},
-    'EVI': {'min': 0, 'max': 1, 'palette': 'RdYlGn'},
-    'NDMI': {'min': -1, 'max': 1, 'palette': 'viridis'},
-    'MSI': {'min': 0, 'max': 3, 'palette': 'RdBu'}, # Lower MSI indicates less moisture stress
-    'LAI': {'min': 0, 'max': 8, 'palette': 'Greens'},
-    'Biomass': {'min': 0, 'max': 15000, 'palette': 'YlGn'}, # Example range in kg/ha
-}
-
-def get_latest_image_value(geometry, index_name='NDVI', days_back=90):
-    """Gets the value of a specific index from the latest cloud-free image."""
-    """دریافت مقدار یک شاخص خاص از آخرین تصویر بدون ابر."""
-    try:
-        end_date = datetime.datetime.now()
-        start_date = end_date - datetime.timedelta(days=days_back)
-
-        collection = get_sentinel2_collection(start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), geometry)
-
-        # Check if the index function exists
-        # بررسی وجود تابع شاخص
-        if index_name not in INDEX_FUNCTIONS:
-            st.warning(f"تابع محاسبه برای شاخص '{index_name}' تعریف نشده است.")
-            return None, None # Return None for value and date
-
-        # Calculate the desired index
-        # محاسبه شاخص مورد نظر
-        index_collection = collection.map(INDEX_FUNCTIONS[index_name])
-
-        # Get the latest image
-        # دریافت آخرین تصویر
-        latest_image = index_collection.sort('system:time_start', False).first()
-
-        if latest_image is None:
-            # st.warning(f"هیچ تصویر بدون ابری در {days_back} روز گذشته برای این مکان یافت نشد.")
-            return None, None # Return None for value and date
-
-        # Reduce the region to get the mean value
-        # کاهش منطقه برای دریافت مقدار میانگین
-        # Use a small buffer around the point for calculation
-        # استفاده از یک بافر کوچک اطراف نقطه برای محاسبه
-        mean_value = latest_image.reduceRegion(
-            reducer=ee.Reducer.mean(),
-            geometry=geometry.buffer(10), # Buffer by 10 meters
-            scale=10, # Sentinel-2 scale for relevant bands
-            maxPixels=1e9
-        ).get(index_name) # Get the calculated index value
-
-        # Need to evaluate the result
-        # نیاز به ارزیابی نتیجه
-        value = mean_value.getInfo()
-        date = ee.Date(latest_image.get('system:time_start')).format('YYYY-MM-dd').getInfo()
-
-        return value, date
-    except ee.EEException as e:
-        # Log the error instead of stopping the app for every GEE issue
-        # لاگ کردن خطا به جای متوقف کردن برنامه برای هر مشکل GEE
-        print(f"GEE Error in get_latest_image_value for {geometry.getInfo()}: {e}") # Log to console/server logs
-        # Optionally show a less intrusive warning in UI
-        # st.warning(f"خطای GEE هنگام دریافت آخرین مقدار شاخص رخ داد. ممکن است برخی داده‌ها نمایش داده نشوند.")
-        return None, None
-    except Exception as e:
-        print(f"Unexpected Error in get_latest_image_value for {geometry.getInfo()}: {e}") # Log to console/server logs
-        # st.error(f"خطای غیرمنتظره هنگام دریافت آخرین مقدار شاخص: {e}") # Avoid stopping if possible
-        return None, None
-
-def get_recent_mean_value(geometry, index_name='NDVI', days=7):
-    """Calculates the mean value of an index over the specified recent period."""
-    """محاسبه مقدار میانگین یک شاخص در دوره اخیر مشخص شده."""
-    try:
-        end_date = datetime.datetime.now()
-        start_date = end_date - datetime.timedelta(days=days)
-
-        collection = get_sentinel2_collection(start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), geometry)
-
-        if index_name not in INDEX_FUNCTIONS:
-            st.warning(f"تابع محاسبه برای شاخص '{index_name}' تعریف نشده است.")
-            return None
-
-        index_collection = collection.map(INDEX_FUNCTIONS[index_name])
-
-        # Calculate the mean over the collection
-        # محاسبه میانگین در مجموعه
-        mean_image = index_collection.mean() # Creates a single image representing the mean
-
-        # Check if the mean image has the required band (it might be empty if no images were found)
-        # بررسی اینکه آیا تصویر میانگین باند مورد نیاز را دارد (ممکن است خالی باشد اگر تصویری یافت نشود)
-        if mean_image is None or not mean_image.bandNames().getInfo():
-             # st.warning(f"هیچ تصویری در {days} روز گذشته برای محاسبه میانگین یافت نشد.")
-             return None
-
-        # Reduce the region
-        # کاهش منطقه
-        mean_value = mean_image.reduceRegion(
-            reducer=ee.Reducer.mean(),
-            geometry=geometry.buffer(10),
-            scale=10,
-            maxPixels=1e9
-        ).get(index_name)
-
-        value = mean_value.getInfo()
-        return value
-    except ee.EEException as e:
-        # Don't flood the UI with errors for every farm, maybe log instead
-        # رابط کاربری را با خطا برای هر مزرعه پر نکنید، شاید به جای آن لاگ کنید
-        print(f"GEE Error calculating recent mean for {index_name} at {geometry.getInfo()}: {e}")
+        st.error(f"❌ فایل '{csv_path}' یافت نشد. لطفاً فایل CSV داده‌های مزارع را در مسیر صحیح قرار دهید.")
         return None
     except Exception as e:
-        print(f"Unexpected Error calculating recent mean for {index_name} at {geometry.getInfo()}: {e}")
+        st.error(f"❌ خطا در بارگذاری یا پردازش فایل CSV: {e}")
+        st.error(traceback.format_exc())
         return None
 
+# Initialize GEE and Load Data
+if initialize_gee():
+    farm_data_df = load_farm_data()
+else:
+    st.error("❌ امکان ادامه کار بدون اتصال به Google Earth Engine وجود ندارد.")
+    st.stop() # Stop if GEE initialization failed
 
-def get_index_time_series(geometry, index_name, start_date, end_date):
-    """Gets time series data for a specific index."""
-    """دریافت داده‌های سری زمانی برای یک شاخص خاص."""
-    try:
-        if index_name not in INDEX_FUNCTIONS:
-            st.error(f"تابع محاسبه برای شاخص '{index_name}' تعریف نشده است.")
-            return None
+if farm_data_df is None:
+    st.error("❌ امکان ادامه کار بدون داده‌های مزارع وجود ندارد.")
+    st.stop() # Stop if data loading failed
 
-        collection = get_sentinel2_collection(start_date, end_date, geometry)
-        index_collection = collection.map(INDEX_FUNCTIONS[index_name])
 
-        def get_value(image):
-            # Calculate the mean value for the geometry
-            # محاسبه مقدار میانگین برای هندسه
-            mean_val = image.reduceRegion(
-                reducer=ee.Reducer.mean(),
-                geometry=geometry.buffer(10), # Use buffered point
-                scale=30, # Can use coarser scale for time series
-                maxPixels=1e9
-            ).get(index_name)
-            # Return a feature with null geometry, date and value property
-            # بازگرداندن یک ویژگی با هندسه تهی، تاریخ و ویژگی مقدار
-            return ee.Feature(None, {
-                'date': ee.Date(image.get('system:time_start')).format('YYYY-MM-dd'),
-                index_name: mean_val
-            })
+# ==============================================================================
+# Sidebar Filters
+# ==============================================================================
+st.sidebar.header("تنظیمات نمایش")
 
-        # Map over the collection to get value for each image
-        # نگاشت روی مجموعه برای دریافت مقدار برای هر تصویر
-        ts_features = index_collection.map(get_value)
-
-        # Filter out null values which can occur if the entire region was masked or computation failed
-        # فیلتر کردن مقادیر تهی که ممکن است در صورت ماسک شدن کل منطقه یا شکست محاسبه رخ دهد
-        ts_features = ts_features.filter(ee.Filter.NotNull([index_name]))
-
-        # Evaluate the results
-        # ارزیابی نتایج
-        info = ts_features.getInfo()
-
-        # Convert to Pandas DataFrame
-        # تبدیل به DataFrame پانداس
-        data = []
-        for f in info['features']:
-            props = f['properties']
-            # Ensure the index value exists and is not None
-            # اطمینان از وجود مقدار شاخص و تهی نبودن آن
-            if index_name in props and props[index_name] is not None:
-                 data.append({
-                    'date': props['date'],
-                    index_name: props[index_name]
-                 })
-
-        if not data:
-            # This is not necessarily an error, just no data found
-            # این لزوماً یک خطا نیست، فقط داده‌ای یافت نشد
-            # st.warning(f"داده‌ای برای سری زمانی شاخص '{index_name}' در محدوده تاریخ مشخص شده یافت نشد.")
-            return pd.DataFrame(columns=['date', index_name]) # Return empty DataFrame
-
-        df = pd.DataFrame(data)
-        df['date'] = pd.to_datetime(df['date'])
-        df = df.sort_values(by='date')
-        return df
-
-    except ee.EEException as e:
-        st.error(f"خطای GEE هنگام دریافت سری زمانی برای {index_name}: {e}")
-        return None # Indicate error with None
-    except Exception as e:
-        st.error(f"خطای غیرمنتظره هنگام دریافت سری زمانی برای {index_name}: {e}")
-        return None # Indicate error with None
-
-# --- Streamlit App Layout ---
-
-st.set_page_config(page_title=APP_TITLE, layout="wide")
-st.title(APP_TITLE)
-
-# Initialize GEE
-# راه اندازی اولیه GEE
-if not initialize_gee():
-    st.stop() # Stop execution if GEE fails
-
-# Load Data
-# بارگذاری داده‌ها
-farm_data = load_data(CSV_FILE_PATH)
-if farm_data is None or farm_data.empty:
-    st.warning("داده‌های مزارع بارگذاری نشد یا خالی است.")
-    st.stop()
-
-# --- Sidebar ---
-st.sidebar.header("فیلترها و تنظیمات")
-
-# Day of the week selection
-# انتخاب روز هفته
+# --- Day of the Week Selection ---
+available_days = sorted(farm_data_df['روزهای هفته'].unique())
 selected_day = st.sidebar.selectbox(
-    "انتخاب روز هفته:",
-    options=DAYS_OF_WEEK_FA,
-    index=0 # Default to Saturday
+    "📅 روز هفته را انتخاب کنید:",
+    options=available_days,
+    index=0, # Default to the first day
+    help="داده‌های مزارع بر اساس این روز فیلتر می‌شوند."
 )
 
-# Filter data based on selected day
-# فیلتر داده‌ها بر اساس روز انتخاب شده
-# Handle cases where 'روزهای هفته' might contain multiple days or need cleaning
-# مدیریت مواردی که 'روزهای هفته' ممکن است شامل چند روز باشد یا نیاز به پاکسازی داشته باشد
+# --- Filter Data Based on Selected Day ---
+filtered_farms_df = farm_data_df[farm_data_df['روزهای هفته'] == selected_day].copy()
+
+if filtered_farms_df.empty:
+    st.warning(f"⚠️ هیچ مزرعه‌ای برای روز '{selected_day}' یافت نشد.")
+    st.stop()
+
+# --- Farm Selection ---
+available_farms = sorted(filtered_farms_df['مزرعه'].unique())
+# Add an option for "All Farms"
+farm_options = ["همه مزارع"] + available_farms
+selected_farm_name = st.sidebar.selectbox(
+    "🌾 مزرعه مورد نظر را انتخاب کنید:",
+    options=farm_options,
+    index=0, # Default to "All Farms"
+    help="مزرعه‌ای که می‌خواهید جزئیات آن را ببینید یا 'همه مزارع' برای نمایش کلی."
+)
+
+# --- Index Selection ---
+index_options = {
+    "NDVI": "شاخص پوشش گیاهی تفاضلی نرمال شده",
+    "EVI": "شاخص پوشش گیاهی بهبود یافته",
+    "NDMI": "شاخص رطوبت تفاضلی نرمال شده",
+    "LAI": "شاخص سطح برگ (تخمینی)",
+    "MSI": "شاخص تنش رطوبتی",
+    "CVI": "شاخص کلروفیل (تخمینی)",
+    # Add more indices if needed and implemented
+    # "Biomass": "زیست‌توده (تخمینی)",
+    # "ET": "تبخیر و تعرق (تخمینی)",
+}
+selected_index = st.sidebar.selectbox(
+    "📈 شاخص مورد نظر برای نمایش روی نقشه:",
+    options=list(index_options.keys()),
+    format_func=lambda x: f"{x} ({index_options[x]})",
+    index=0 # Default to NDVI
+)
+
+# --- Date Range Calculation ---
+today = datetime.date.today()
+# Find the most recent date corresponding to the selected day of the week
+# Map Persian day names to Python's weekday() (Monday=0, Sunday=6) - Adjust if needed
+persian_to_weekday = {
+    "شنبه": 5,
+    "یکشنبه": 6,
+    "دوشنبه": 0,
+    "سه شنبه": 1, # Assuming space is correct
+    "چهارشنبه": 2,
+    "پنجشنبه": 3,
+    "جمعه": 4,
+}
 try:
-    # Assuming the column contains the exact Persian day name
-    # فرض بر اینکه ستون حاوی نام دقیق روز فارسی است
-    filtered_farms = farm_data[farm_data['روزهای هفته'].str.contains(selected_day, na=False)].copy()
+    target_weekday = persian_to_weekday[selected_day]
+    days_ago = (today.weekday() - target_weekday + 7) % 7
+    if days_ago == 0: # If today is the selected day, use today
+         end_date_current = today
+    else:
+         end_date_current = today - datetime.timedelta(days=days_ago)
+
+    start_date_current = end_date_current - datetime.timedelta(days=6)
+    end_date_previous = start_date_current - datetime.timedelta(days=1)
+    start_date_previous = end_date_previous - datetime.timedelta(days=6)
+
+    # Convert to strings for GEE
+    start_date_current_str = start_date_current.strftime('%Y-%m-%d')
+    end_date_current_str = end_date_current.strftime('%Y-%m-%d')
+    start_date_previous_str = start_date_previous.strftime('%Y-%m-%d')
+    end_date_previous_str = end_date_previous.strftime('%Y-%m-%d')
+
+    st.sidebar.info(f"بازه زمانی فعلی: {start_date_current_str} تا {end_date_current_str}")
+    st.sidebar.info(f"بازه زمانی قبلی: {start_date_previous_str} تا {end_date_previous_str}")
+
 except KeyError:
-    st.error("خطا: ستون 'روزهای هفته' در فایل CSV یافت نشد.")
+    st.sidebar.error(f"نام روز هفته '{selected_day}' قابل شناسایی نیست.")
     st.stop()
 except Exception as e:
-    st.error(f"خطا در فیلتر کردن داده‌ها بر اساس روز: {e}")
+    st.sidebar.error(f"خطا در محاسبه بازه زمانی: {e}")
     st.stop()
 
 
-if filtered_farms.empty:
-    st.sidebar.warning(f"هیچ مزرعه‌ای برای '{selected_day}' یافت نشد.")
-    # Display map anyway, but maybe centered without markers?
-    # نمایش نقشه به هر حال، اما شاید متمرکز و بدون نشانگر؟
+# ==============================================================================
+# Google Earth Engine Functions
+# ==============================================================================
+
+# --- Cloud Masking Function for Sentinel-2 ---
+def maskS2clouds(image):
+    """Masks clouds in a Sentinel-2 SR image using the QA band."""
+    qa = image.select('QA60')
+    # Bits 10 and 11 are clouds and cirrus, respectively.
+    cloudBitMask = 1 << 10
+    cirrusBitMask = 1 << 11
+    # Both flags should be set to zero, indicating clear conditions.
+    mask = qa.bitwiseAnd(cloudBitMask).eq(0).And(
+             qa.bitwiseAnd(cirrusBitMask).eq(0))
+    # Also mask based on SCL band if available (more robust)
+    scl = image.select('SCL')
+    # Keep 'Vegetation', 'Not Vegetated', 'Water', 'Snow/Ice', 'Bare Soil'
+    # Mask out 'Cloud Medium Probability', 'Cloud High Probability', 'Cirrus', 'Cloud Shadow'
+    good_quality = scl.remap([4, 5, 6, 7, 11], [1, 1, 1, 1, 1], 0) # Map good classes to 1, others to 0
+
+    # Scale and offset factors for Sentinel-2 SR bands
+    opticalBands = image.select('B.*').multiply(0.0001)
+    thermalBands = image.select('ST_B.*').multiply(0.00341802).add(149.0) # If using thermal
+
+    return image.addBands(opticalBands, None, True)\
+                .addBands(thermalBands, None, True)\
+                .updateMask(mask).updateMask(good_quality) # Apply both masks
+
+
+# --- Index Calculation Functions ---
+def add_indices(image):
+    """Calculates and adds various indices as bands to an image."""
+    # NDVI: (NIR - Red) / (NIR + Red) | Sentinel-2: (B8 - B4) / (B8 + B4)
+    ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI')
+
+    # EVI: 2.5 * (NIR - Red) / (NIR + 6 * Red - 7.5 * Blue + 1) | S2: 2.5 * (B8 - B4) / (B8 + 6 * B4 - 7.5 * B2 + 1)
+    evi = image.expression(
+        '2.5 * (NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1)', {
+            'NIR': image.select('B8'),
+            'RED': image.select('B4'),
+            'BLUE': image.select('B2')
+        }).rename('EVI')
+
+    # NDMI (Normalized Difference Moisture Index): (NIR - SWIR1) / (NIR + SWIR1) | S2: (B8 - B11) / (B8 + B11)
+    ndmi = image.normalizedDifference(['B8', 'B11']).rename('NDMI')
+
+    # MSI (Moisture Stress Index): SWIR1 / NIR | S2: B11 / B8
+    msi = image.expression('SWIR1 / NIR', {
+        'SWIR1': image.select('B11'),
+        'NIR': image.select('B8')
+    }).rename('MSI')
+
+    # LAI (Leaf Area Index) - Simple estimation using NDVI (Needs calibration for accuracy)
+    # Example formula: LAI = a * exp(b * NDVI) or simpler linear/polynomial fits
+    # Using a very basic placeholder: LAI = 3.618 * EVI - 0.118 (adjust based on research/calibration)
+    # Or even simpler: LAI proportional to NDVI
+    lai = ndvi.multiply(3.5).rename('LAI') # Placeholder - Needs proper calibration
+
+    # CVI (Chlorophyll Vegetation Index) - (NIR / Green) * (Red / Green) | S2: (B8 / B3) * (B4 / B3)
+    # Handle potential division by zero if Green band is 0
+    green_safe = image.select('B3').max(ee.Image(0.0001)) # Avoid division by zero
+    cvi = image.expression('(NIR / GREEN) * (RED / GREEN)', {
+        'NIR': image.select('B8'),
+        'GREEN': green_safe,
+        'RED': image.select('B4')
+    }).rename('CVI')
+
+    # Biomass - Placeholder: Needs calibration (e.g., Biomass = a * LAI + b)
+    # biomass = lai.multiply(1.5).add(0.5).rename('Biomass') # Example: a=1.5, b=0.5
+
+    # ET (Evapotranspiration) - Complex: Requires meteorological data or specialized models/datasets (e.g., MODIS ET, SSEBop)
+    # Not calculating directly here, would typically use a pre-existing GEE product if available.
+
+    return image.addBands([ndvi, evi, ndmi, msi, lai, cvi]) # Add calculated indices
+
+# --- Function to get processed image for a date range and geometry ---
+@st.cache_data(show_spinner="در حال پردازش تصاویر ماهواره‌ای...", persist=True)
+def get_processed_image(_geometry, start_date, end_date, index_name):
+    """
+    Gets cloud-masked, index-calculated Sentinel-2 median composite for a given geometry and date range.
+    _geometry: ee.Geometry (Point or Polygon)
+    start_date, end_date: YYYY-MM-DD strings
+    index_name: Name of the primary index band to return (e.g., 'NDVI')
+    """
+    try:
+        s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+                     .filterBounds(_geometry)
+                     .filterDate(start_date, end_date)
+                     .map(maskS2clouds)) # Apply cloud masking
+
+        # Check if any images are available after filtering
+        count = s2_sr_col.size().getInfo()
+        if count == 0:
+            # st.warning(f"هیچ تصویر Sentinel-2 بدون ابر در بازه {start_date} تا {end_date} یافت نشد.")
+            return None, f"No cloud-free Sentinel-2 images found for {start_date} to {end_date}."
+
+        # Calculate indices for each image in the collection
+        indexed_col = s2_sr_col.map(add_indices)
+
+        # Create a median composite image
+        median_image = indexed_col.median() # Use median to reduce noise/outliers
+
+        # Select the desired index band
+        output_image = median_image.select(index_name)
+
+        return output_image, None # Return the image and no error message
+    except ee.EEException as e:
+        # Handle GEE specific errors
+        error_message = f"خطای Google Earth Engine: {e}"
+        st.error(error_message)
+        # Try to extract more details if available
+        try:
+            # GEE errors sometimes have details nested
+            error_details = e.args[0] if e.args else str(e)
+            if isinstance(error_details, str) and 'computation timed out' in error_details.lower():
+                 error_message += "\n(احتمالاً به دلیل حجم بالای پردازش یا بازه زمانی طولانی)"
+            elif isinstance(error_details, str) and 'user memory limit exceeded' in error_details.lower():
+                 error_message += "\n(احتمالاً به دلیل پردازش منطقه بزرگ یا عملیات پیچیده)"
+        except Exception:
+            pass # Ignore errors during error detail extraction
+        return None, error_message
+    except Exception as e:
+        error_message = f"خطای ناشناخته در پردازش GEE: {e}\n{traceback.format_exc()}"
+        st.error(error_message)
+        return None, error_message
+
+# --- Function to get time series data for a point ---
+@st.cache_data(show_spinner="در حال دریافت سری زمانی شاخص...", persist=True)
+def get_index_time_series(_point_geom, index_name, start_date='2023-01-01', end_date=today.strftime('%Y-%m-%d')):
+    """Gets a time series of a specified index for a point geometry."""
+    try:
+        s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+                     .filterBounds(_point_geom)
+                     .filterDate(start_date, end_date)
+                     .map(maskS2clouds)
+                     .map(add_indices))
+
+        def extract_value(image):
+            # Extract the index value at the point
+            # Use reduceRegion for points; scale should match sensor resolution (e.g., 10m for S2 NDVI)
+            value = image.reduceRegion(
+                reducer=ee.Reducer.first(), # Use 'first' or 'mean' if point covers multiple pixels
+                geometry=_point_geom,
+                scale=10 # Scale in meters (10m for Sentinel-2 RGB/NIR)
+            ).get(index_name)
+            # Return a feature with the value and the image date
+            return ee.Feature(None, {
+                'date': image.date().format('YYYY-MM-dd'),
+                index_name: value
+            })
+
+        # Map over the collection and remove features with null values
+        ts_features = s2_sr_col.map(extract_value).filter(ee.Filter.notNull([index_name]))
+
+        # Convert the FeatureCollection to a list of dictionaries
+        ts_info = ts_features.getInfo()['features']
+
+        if not ts_info:
+            return pd.DataFrame(columns=['date', index_name]), "داده‌ای برای سری زمانی یافت نشد."
+
+        # Convert to Pandas DataFrame
+        ts_data = [{'date': f['properties']['date'], index_name: f['properties'][index_name]} for f in ts_info]
+        ts_df = pd.DataFrame(ts_data)
+        ts_df['date'] = pd.to_datetime(ts_df['date'])
+        ts_df = ts_df.sort_values('date').set_index('date')
+
+        return ts_df, None # Return DataFrame and no error
+    except ee.EEException as e:
+        error_message = f"خطای GEE در دریافت سری زمانی: {e}"
+        st.error(error_message)
+        return pd.DataFrame(columns=['date', index_name]), error_message
+    except Exception as e:
+        error_message = f"خطای ناشناخته در دریافت سری زمانی: {e}\n{traceback.format_exc()}"
+        st.error(error_message)
+        return pd.DataFrame(columns=['date', index_name]), error_message
+
+
+# ==============================================================================
+# Main Panel Display
+# ==============================================================================
+
+# --- Get Selected Farm Geometry and Details ---
+selected_farm_details = None
+selected_farm_geom = None
+
+if selected_farm_name == "همه مزارع":
+    # Use the bounding box of all filtered farms for the map view
+    min_lon, min_lat = filtered_farms_df['طول جغرافیایی'].min(), filtered_farms_df['عرض جغرافیایی'].min()
+    max_lon, max_lat = filtered_farms_df['طول جغرافیایی'].max(), filtered_farms_df['عرض جغرافیایی'].max()
+    # Create a bounding box geometry
+    selected_farm_geom = ee.Geometry.Rectangle([min_lon, min_lat, max_lon, max_lat])
+    st.subheader(f"نمایش کلی مزارع برای روز: {selected_day}")
+    st.info(f"تعداد مزارع در این روز: {len(filtered_farms_df)}")
 else:
-    st.sidebar.info(f"تعداد مزارع فیلتر شده برای {selected_day}: {len(filtered_farms)}")
+    selected_farm_details = filtered_farms_df[filtered_farms_df['مزرعه'] == selected_farm_name].iloc[0]
+    lat = selected_farm_details['عرض جغرافیایی']
+    lon = selected_farm_details['طول جغرافیایی']
+    selected_farm_geom = ee.Geometry.Point([lon, lat])
+    st.subheader(f"جزئیات مزرعه: {selected_farm_name} (روز: {selected_day})")
+    # Display farm details
+    details_cols = st.columns(3)
+    with details_cols[0]:
+        st.metric("مساحت داشت (هکتار)", f"{selected_farm_details.get('مساحت', 'N/A'):,.2f}" if pd.notna(selected_farm_details.get('مساحت')) else "N/A")
+        st.metric("واریته", f"{selected_farm_details.get('واریته', 'N/A')}")
+    with details_cols[1]:
+        st.metric("کانال", f"{selected_farm_details.get('کانال', 'N/A')}")
+        st.metric("سن", f"{selected_farm_details.get('سن', 'N/A')}")
+    with details_cols[2]:
+        st.metric("اداره", f"{selected_farm_details.get('اداره', 'N/A')}")
+        st.metric("مختصات", f"{lat:.5f}, {lon:.5f}")
 
 
-# --- Main Panel ---
-tab1, tab2, tab3 = st.tabs(["نقشه مزارع (آخرین NDVI)", "رتبه‌بندی مزارع (NDVI اخیر)", "نمودار سری زمانی"])
+# --- Map Display ---
+st.markdown("---")
+st.subheader(" نقشه وضعیت مزارع")
 
-with tab1:
-    st.header(f"نقشه مزارع برای {selected_day} (بر اساس آخرین NDVI)")
+# Define visualization parameters based on the selected index
+vis_params = {
+    'NDVI': {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']},
+    'EVI': {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']},
+    'NDMI': {'min': -1, 'max': 1, 'palette': ['brown', 'white', 'blue']},
+    'LAI': {'min': 0, 'max': 6, 'palette': ['white', 'lightgreen', 'darkgreen']}, # Adjust max based on expected values
+    'MSI': {'min': 0, 'max': 3, 'palette': ['blue', 'white', 'brown']}, # Lower values = more moisture
+    'CVI': {'min': 0, 'max': 20, 'palette': ['yellow', 'lightgreen', 'darkgreen']}, # Adjust max based on expected values
+    # Add vis params for other indices if implemented
+}
 
-    if not filtered_farms.empty:
-        # Create Map
-        # ایجاد نقشه
-        Map = geemap.Map(location=[INITIAL_LAT, INITIAL_LON], zoom=INITIAL_ZOOM)
+map_center_lat = 31.534442
+map_center_lon = 48.724416
+initial_zoom = 11
 
-        # Add farms to map, colored by latest NDVI
-        # اضافه کردن مزارع به نقشه، رنگ‌آمیزی شده بر اساس آخرین NDVI
-        ndvi_values = []
-        farms_added_to_map = 0
-        st.write("در حال محاسبه آخرین NDVI و افزودن مزارع به نقشه...")
-        progress_bar_map = st.progress(0)
+# Create a geemap Map instance
+m = geemap.Map(
+    location=[map_center_lat, map_center_lon],
+    zoom=initial_zoom,
+    add_google_map=False # Start clean
+)
+m.add_basemap("HYBRID") # Add Google Satellite Hybrid basemap
 
-        # Use itertuples for potentially better performance and cleaner access
-        # استفاده از itertuples برای عملکرد بالقوه بهتر و دسترسی تمیزتر
-        for i, row in enumerate(filtered_farms.itertuples(index=False)): # index=False prevents adding index to tuple
-            farm_name = None # Initialize farm_name for the except block
-            row_dict = row._asdict() # Convert namedtuple to dict once
+# Get the processed image for the current week
+if selected_farm_geom:
+    gee_image_current, error_msg_current = get_processed_image(
+        selected_farm_geom, start_date_current_str, end_date_current_str, selected_index
+    )
 
-            try:
-                # Get farm name safely using .get() with a default value
-                # دریافت نام مزرعه به صورت ایمن با استفاده از .get() با مقدار پیش‌فرض
-                farm_name = row_dict.get('مزرعه', f'ردیف ناشناس {i+1}')
+    if gee_image_current:
+        # Add the GEE layer to the map
+        try:
+            m.addLayer(
+                gee_image_current,
+                vis_params.get(selected_index, {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']}), # Default vis
+                f"{selected_index} ({start_date_current_str} to {end_date_current_str})"
+            )
 
-                lat = row_dict.get('عرض جغرافیایی')
-                lon = row_dict.get('طول جغرافیایی')
+            # Add legend
+            m.add_legend(
+                title=f"{selected_index} Legend",
+                builtin_legend=None, # Use custom labels if needed or rely on palette
+                palette=vis_params.get(selected_index, {}).get('palette', []),
+                labels=['بحرانی/پایین', 'متوسط', 'سالم/بالا'] if selected_index in ['NDVI', 'EVI', 'LAI', 'CVI'] else ['مرطوب/بالا', 'متوسط', 'خشک/پایین'] if selected_index in ['NDMI', 'MSI'] else None, # Basic labels
+                position='bottomright'
+            )
 
-                # Check for valid coordinates earlier
-                # بررسی مختصات معتبر زودتر
-                if pd.isna(lat) or pd.isna(lon):
-                    st.warning(f"مختصات نامعتبر یا گمشده برای مزرعه: '{farm_name}'. این ردیف رد شد.")
-                    continue # Skip to the next iteration
-
-                # Create GEE geometry (Point)
-                # ایجاد هندسه GEE (نقطه)
-                farm_geom = ee.Geometry.Point([lon, lat])
-
-                # Get latest NDVI value
-                # دریافت آخرین مقدار NDVI
-                latest_ndvi, image_date = get_latest_image_value(farm_geom, 'NDVI', days_back=90) # Look back 90 days
-
-                if latest_ndvi is not None and image_date is not None:
-                    ndvi_values.append(latest_ndvi)
-                    # Ensure latest_ndvi is float for palette function
-                    # اطمینان از اینکه latest_ndvi از نوع float برای تابع پالت است
-                    try:
-                        ndvi_float = float(latest_ndvi)
-                        color = geemap.normalized_difference_palette(ndvi_float, min=0, max=1, palette=NDVI_PALETTE) # Get color from palette
-                    except (ValueError, TypeError):
-                         st.warning(f"مقدار NDVI نامعتبر ({latest_ndvi}) برای رنگ‌آمیزی مزرعه {farm_name}. از رنگ پیش‌فرض استفاده می‌شود.")
-                         color = 'gray' # Default color if conversion fails
-
-                    tooltip_text = f"""
-                    <b>مزرعه:</b> {farm_name}<br>
-                    <b>آخرین NDVI:</b> {latest_ndvi:.3f}<br>
-                    <b>تاریخ تصویر:</b> {image_date}<br>
-                    <b>روز هفته:</b> {row_dict.get('روزهای هفته', 'N/A')}<br>
-                    <b>عرض جغرافیایی:</b> {lat:.5f}<br>
-                    <b>طول جغرافیایی:</b> {lon:.5f}
-                    """
-                    # Add marker to map
-                    # اضافه کردن نشانگر به نقشه
-                    Map.add_marker(
-                        location=[lat, lon],
-                        tooltip=tooltip_text,
-                        icon=folium.Icon(color='white', icon_color=color, icon='leaf', prefix='fa') # Use leaf icon
-                    )
-                    farms_added_to_map += 1
-                else:
-                    # Mark farms with no recent data differently
-                    # مزارعی که داده اخیر ندارند را متفاوت علامت‌گذاری کنید
-                     Map.add_marker(
-                        location=[lat, lon],
-                        tooltip=f"مزرعه: {farm_name}\n (داده NDVI اخیر یافت نشد)",
-                        icon=folium.Icon(color='gray', icon='question-circle', prefix='fa')
-                    )
-
-            # Specific exception for missing keys (columns)
-            # استثنای خاص برای کلیدهای (ستون‌های) گمشده
-            except KeyError as ke:
-                 st.warning(f"خطا: ستون ضروری '{ke}' در داده‌های مزرعه '{farm_name or f'ردیف {i+1}'}' یافت نشد. این ردیف رد شد.")
-            # Catch other potential errors during processing a single farm
-            # گرفتن خطاهای احتمالی دیگر هنگام پردازش یک مزرعه واحد
-            except Exception as e:
-                # Use farm_name if available, otherwise use the fallback name
-                # استفاده از farm_name در صورت وجود، در غیر این صورت از نام جایگزین استفاده کنید
-                st.warning(f"خطا در پردازش مزرعه '{farm_name or f'ردیف ناشناس {i+1}'}': {e}")
-
-            # Update progress bar outside the try/except for each iteration
-            # به‌روزرسانی نوار پیشرفت خارج از try/except برای هر تکرار
-            progress_bar_map.progress((i + 1) / len(filtered_farms))
-
-        if farms_added_to_map > 0:
-            # Add NDVI color bar legend
-            # اضافه کردن راهنمای نوار رنگی NDVI
-             Map.add_colorbar(VIS_PARAMS['NDVI'], label="NDVI (آخرین تصویر)", layer_name="NDVI")
-        elif not filtered_farms.empty: # Only show warning if there were farms to process
-             st.warning("هیچ داده NDVI معتبری برای نمایش روی نقشه یافت نشد (ممکن است تصاویر اخیر بدون ابر نباشند).")
-
-
-        # Display Map
-        # نمایش نقشه
-        Map.to_streamlit(height=600)
-    else:
-        st.info("هیچ مزرعه‌ای برای نمایش روی نقشه برای روز انتخاب شده وجود ندارد.")
-        # Display an empty map centered on the region
-        # نمایش یک نقشه خالی متمرکز بر منطقه
-        Map = geemap.Map(location=[INITIAL_LAT, INITIAL_LON], zoom=INITIAL_ZOOM)
-        Map.to_streamlit(height=600)
-
-
-with tab2:
-    st.header(f"رتبه‌بندی مزارع برای {selected_day} (بر اساس میانگین NDVI 7 روز اخیر)")
-
-    if not filtered_farms.empty:
-        ranking_data = []
-        st.write("در حال محاسبه میانگین NDVI 7 روز اخیر برای رتبه‌بندی...")
-        progress_bar_rank = st.progress(0)
-
-        # Use itertuples for potentially better performance
-        # استفاده از itertuples برای عملکرد بالقوه بهتر
-        for i, row in enumerate(filtered_farms.itertuples(index=False)):
-            farm_name_rank = None # Initialize for except block
-            row_dict_rank = row._asdict()
-            try:
-                farm_name_rank = row_dict_rank.get('مزرعه', f'ردیف ناشناس {i+1}')
-                lat = row_dict_rank.get('عرض جغرافیایی')
-                lon = row_dict_rank.get('طول جغرافیایی')
-
-                if pd.isna(lat) or pd.isna(lon):
-                    st.warning(f"مختصات نامعتبر برای رتبه‌بندی مزرعه: '{farm_name_rank}'. رد شد.")
-                    # Add entry with N/A to keep row count consistent? Or skip? Skipping for now.
-                    # اضافه کردن ورودی با N/A برای حفظ شمارش ردیف؟ یا رد کردن؟ فعلاً رد می‌شود.
-                    continue # Skip this farm
-
-                farm_geom = ee.Geometry.Point([lon, lat])
-
-                # Get recent mean NDVI
-                # دریافت میانگین NDVI اخیر
-                recent_ndvi = get_recent_mean_value(farm_geom, 'NDVI', days=7)
-
-                ranking_data.append({
-                    'مزرعه': farm_name_rank,
-                    'عرض جغرافیایی': lat,
-                    'طول جغرافیایی': lon,
-                    'میانگین NDVI (7 روز اخیر)': recent_ndvi # Keep None if calculation failed
-                })
-            except KeyError as ke:
-                 st.warning(f"خطا در ستون مورد نیاز '{ke}' برای رتبه‌بندی مزرعه '{farm_name_rank or f'ردیف {i+1}'}'")
-                 # Optionally add a row indicating the error
-                 ranking_data.append({
-                    'مزرعه': farm_name_rank or f'ردیف {i+1}',
-                    'عرض جغرافیایی': row_dict_rank.get('عرض جغرافیایی'), # Keep coords if available
-                    'طول جغرافیایی': row_dict_rank.get('طول جغرافیایی'),
-                    'میانگین NDVI (7 روز اخیر)': 'خطای ستون'
-                 })
-            except Exception as e:
-                 st.warning(f"خطا در محاسبه NDVI اخیر برای رتبه‌بندی مزرعه '{farm_name_rank or f'ردیف {i+1}'}': {e}")
-                 ranking_data.append({
-                    'مزرعه': farm_name_rank or f'ردیف {i+1}',
-                    'عرض جغرافیایی': lat if 'lat' in locals() else None, # Include coords if available
-                    'طول جغرافیایی': lon if 'lon' in locals() else None,
-                    'میانگین NDVI (7 روز اخیر)': 'خطای محاسبه'
-                })
-            # Update progress bar
-            # به‌روزرسانی نوار پیشرفت
-            progress_bar_rank.progress((i + 1) / len(filtered_farms))
-
-
-        if ranking_data:
-            rank_df = pd.DataFrame(ranking_data)
-            # Convert NDVI column to numeric, coercing errors (like None, 'خطا') to NaN
-            # تبدیل ستون NDVI به عددی، تبدیل خطاها (مانند None، 'خطا') به NaN
-            rank_df['میانگین NDVI (7 روز اخیر)'] = pd.to_numeric(rank_df['میانگین NDVI (7 روز اخیر)'], errors='coerce')
-
-            # Sort by NDVI (descending), NaNs will be placed last by default
-            # مرتب‌سازی بر اساس NDVI (نزولی)، NaN ها به طور پیش‌فرض در آخر قرار می‌گیرند
-            rank_df = rank_df.sort_values(by='میانگین NDVI (7 روز اخیر)', ascending=False, na_position='last')
-
-            # Reset index for display ranking
-            # بازنشانی ایندکس برای نمایش رتبه‌بندی
-            rank_df.reset_index(drop=True, inplace=True)
-            rank_df.index += 1 # Start ranking from 1
-
-            st.dataframe(rank_df.style.format({'عرض جغرافیایی': "{:.5f}",
-                                               'طول جغرافیایی': "{:.5f}",
-                                               'میانگین NDVI (7 روز اخیر)': "{:.3f}"},
-                                              na_rep='N/A') # Display NaN as N/A
-                                     .highlight_null(null_color='lightgrey') # Highlight missing/failed values
-                                     .background_gradient(cmap=NDVI_PALETTE, subset=['میانگین NDVI (7 روز اخیر)'], vmin=0, vmax=1) # Add color gradient
-                        , use_container_width=True)
-        else:
-            st.info("داده‌ای برای رتبه‌بندی مزارع یافت نشد (ممکن است به دلیل خطاهای پردازش یا مختصات نامعتبر باشد).")
-
-    else:
-        st.info("هیچ مزرعه‌ای برای رتبه‌بندی برای روز انتخاب شده وجود ندارد.")
-
-
-with tab3:
-    st.header("نمودار سری زمانی شاخص‌ها")
-
-    if not filtered_farms.empty:
-        # Select farm for time series analysis
-        # انتخاب مزرعه برای تحلیل سری زمانی
-        # Use unique farm names in case of duplicates
-        # استفاده از نام‌های منحصر به فرد مزارع در صورت وجود تکرار
-        farm_names = filtered_farms['مزرعه'].unique().tolist()
-        selected_farm_name = st.selectbox("انتخاب مزرعه برای نمایش سری زمانی:", farm_names)
-
-        # Select index for time series analysis
-        # انتخاب شاخص برای تحلیل سری زمانی
-        available_indices = list(INDEX_FUNCTIONS.keys())
-        # Default to NDVI if available, otherwise first index
-        # پیش‌فرض به NDVI در صورت وجود، در غیر این صورت اولین شاخص
-        default_index_ts = available_indices.index('NDVI') if 'NDVI' in available_indices else 0
-        selected_index = st.selectbox("انتخاب شاخص:", available_indices, index=default_index_ts)
-
-        # Select time range
-        # انتخاب محدوده زمانی
-        today = datetime.date.today()
-        default_start = today - relativedelta(years=1) # Default to last 1 year
-
-        col1, col2 = st.columns(2)
-        with col1:
-            start_date_ts = st.date_input("تاریخ شروع:", value=default_start, max_value=today - datetime.timedelta(days=1))
-        with col2:
-            end_date_ts = st.date_input("تاریخ پایان:", value=today, min_value=start_date_ts + datetime.timedelta(days=1), max_value=today)
-
-        # Button to trigger time series calculation
-        # دکمه برای شروع محاسبه سری زمانی
-        if st.button(f"نمایش نمودار سری زمانی {selected_index} برای {selected_farm_name}"):
-            if selected_farm_name and selected_index and start_date_ts < end_date_ts:
-                # Get the first matching farm's info (in case of duplicate names)
-                # دریافت اطلاعات اولین مزرعه منطبق (در صورت وجود نام‌های تکراری)
-                farm_info_list = filtered_farms[filtered_farms['مزرعه'] == selected_farm_name]
-                if not farm_info_list.empty:
-                    farm_info = farm_info_list.iloc[0]
-                    lat = farm_info['عرض جغرافیایی']
-                    lon = farm_info['طول جغرافیایی']
-
-                    if pd.notna(lat) and pd.notna(lon):
-                        farm_geom_ts = ee.Geometry.Point([lon, lat])
-
-                        with st.spinner(f"در حال محاسبه سری زمانی {selected_index} برای {selected_farm_name}..."):
-                            ts_df = get_index_time_series(farm_geom_ts, selected_index,
-                                                          start_date_ts.strftime('%Y-%m-%d'),
-                                                          end_date_ts.strftime('%Y-%m-%d'))
-
-                        # Check if ts_df is a DataFrame (even if empty) or None (indicating error)
-                        # بررسی اینکه آیا ts_df یک DataFrame است (حتی اگر خالی باشد) یا None (نشان دهنده خطا)
-                        if isinstance(ts_df, pd.DataFrame):
-                            if not ts_df.empty:
-                                fig = px.line(ts_df, x='date', y=selected_index,
-                                              title=f"روند زمانی شاخص {selected_index} برای مزرعه {selected_farm_name}",
-                                              labels={'date': 'تاریخ', selected_index: f'مقدار {selected_index}'},
-                                              markers=True) # Add markers to see individual points
-                                fig.update_layout(xaxis_title="تاریخ", yaxis_title=f"مقدار {selected_index}")
-                                st.plotly_chart(fig, use_container_width=True)
-                            else:
-                                # No error, but no data points found
-                                # بدون خطا، اما هیچ نقطه داده‌ای یافت نشد
-                                st.warning(f"هیچ داده‌ای برای سری زمانی {selected_index} در محدوده تاریخ انتخاب شده برای مزرعه {selected_farm_name} یافت نشد (ممکن است تصاویر بدون ابر وجود نداشته باشند).")
-                        else:
-                            # An error occurred during time series fetching (already shown by get_index_time_series)
-                            # خطایی هنگام دریافت سری زمانی رخ داده است (قبلاً توسط get_index_time_series نشان داده شده است)
-                            st.error("خطا در دریافت داده‌های سری زمانی.")
-                    else:
-                        st.error(f"مختصات نامعتبر برای مزرعه {selected_farm_name}.")
-                else:
-                     st.error(f"اطلاعات مزرعه برای {selected_farm_name} یافت نشد.") # Should not happen if name is from list
+            # Add markers for farms
+            if selected_farm_name == "همه مزارع":
+                 # Add markers for all filtered farms
+                 for idx, farm in filtered_farms_df.iterrows():
+                     folium.Marker(
+                         location=[farm['عرض جغرافیایی'], farm['طول جغرافیایی']],
+                         popup=f"مزرعه: {farm['مزرعه']}\nکانال: {farm['کانال']}\nاداره: {farm['اداره']}",
+                         tooltip=farm['مزرعه'],
+                         icon=folium.Icon(color='blue', icon='info-sign')
+                     ).add_to(m)
+                 # Adjust map bounds if showing all farms
+                 m.center_object(selected_farm_geom, zoom=initial_zoom) # Center on the bounding box
             else:
-                st.warning("لطفاً یک مزرعه، شاخص و محدوده تاریخ معتبر انتخاب کنید (تاریخ شروع باید قبل از تاریخ پایان باشد).")
-    else:
-        st.info("هیچ مزرعه‌ای برای تحلیل سری زمانی برای روز انتخاب شده وجود ندارد.")
+                 # Add marker for the single selected farm
+                 folium.Marker(
+                     location=[lat, lon],
+                     popup=f"مزرعه: {selected_farm_name}\n{selected_index} (هفته جاری): محاسبه می‌شود...", # Placeholder popup
+                     tooltip=selected_farm_name,
+                     icon=folium.Icon(color='red', icon='star')
+                 ).add_to(m)
+                 m.center_object(selected_farm_geom, zoom=14) # Zoom closer for a single farm
 
+            m.add_layer_control() # Add layer control to toggle base maps and layers
+
+        except Exception as map_err:
+            st.error(f"خطا در افزودن لایه به نقشه: {map_err}")
+            st.error(traceback.format_exc())
+    else:
+        st.warning(f"تصویری برای نمایش روی نقشه یافت نشد. {error_msg_current}")
+
+# Display the map in Streamlit
+st_folium(m, width=None, height=500, use_container_width=True)
+st.caption("برای مشاهده جزئیات روی مارکرها کلیک کنید. از کنترل لایه‌ها برای تغییر نقشه پایه استفاده کنید.")
+# Note: Direct PNG download from st_folium/geemap isn't built-in easily.
+st.info("💡 برای ذخیره نقشه، می‌توانید از ابزار عکس گرفتن از صفحه (Screenshot) مرورگر یا سیستم عامل خود استفاده کنید.")
+
+
+# --- Time Series Chart ---
+st.markdown("---")
+st.subheader(f"📈 نمودار روند زمانی شاخص {selected_index}")
+
+if selected_farm_name == "همه مزارع":
+    st.info("لطفاً یک مزرعه خاص را از پنل کناری انتخاب کنید تا نمودار روند زمانی آن نمایش داده شود.")
+elif selected_farm_geom and isinstance(selected_farm_geom, ee.Geometry.Point):
+    # Define a longer period for the time series chart (e.g., last 6 months)
+    timeseries_end_date = today.strftime('%Y-%m-%d')
+    timeseries_start_date = (today - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
+
+    ts_df, ts_error = get_index_time_series(
+        selected_farm_geom,
+        selected_index,
+        start_date=timeseries_start_date,
+        end_date=timeseries_end_date
+    )
+
+    if ts_error:
+        st.warning(f"خطا در دریافت داده‌های سری زمانی: {ts_error}")
+    elif not ts_df.empty:
+        st.line_chart(ts_df[selected_index])
+        st.caption(f"نمودار تغییرات شاخص {selected_index} برای مزرعه {selected_farm_name} در 6 ماه گذشته.")
+    else:
+        st.info(f"داده‌ای برای نمایش نمودار سری زمانی {selected_index} در بازه مشخص شده یافت نشد.")
+else:
+    st.warning("نوع هندسه مزرعه برای نمودار سری زمانی پشتیبانی نمی‌شود (فقط نقطه).")
+
+
+# --- Ranking Table ---
+st.markdown("---")
+st.subheader(f"📊 جدول رتبه‌بندی مزارع بر اساس {selected_index} (روز: {selected_day})")
+st.markdown("مقایسه مقادیر متوسط شاخص در هفته جاری با هفته قبل.")
+
+@st.cache_data(show_spinner=f"در حال محاسبه {selected_index} برای مزارع...", persist=True)
+def calculate_weekly_indices(_farms_df, index_name, start_curr, end_curr, start_prev, end_prev):
+    """Calculates the average index value for the current and previous week for a list of farms."""
+    results = []
+    errors = []
+    total_farms = len(_farms_df)
+    progress_bar = st.progress(0)
+
+    for i, (idx, farm) in enumerate(_farms_df.iterrows()):
+        farm_name = farm['مزرعه']
+        lat = farm['عرض جغرافیایی']
+        lon = farm['طول جغرافیایی']
+        point_geom = ee.Geometry.Point([lon, lat])
+
+        def get_mean_value(start, end):
+            try:
+                image, error = get_processed_image(point_geom, start, end, index_name)
+                if image:
+                    # Reduce region to get the mean value at the point
+                    mean_dict = image.reduceRegion(
+                        reducer=ee.Reducer.mean(),
+                        geometry=point_geom,
+                        scale=10  # Scale in meters
+                    ).getInfo()
+                    return mean_dict.get(index_name) if mean_dict else None, None
+                else:
+                    return None, error
+            except Exception as e:
+                 # Catch errors during reduceRegion or getInfo
+                 error_msg = f"خطا در محاسبه مقدار برای {farm_name} ({start}-{end}): {e}"
+                 # errors.append(error_msg) # Collect errors
+                 # st.warning(error_msg) # Show warning immediately
+                 return None, error_msg
+
+
+        # Calculate for current week
+        current_val, err_curr = get_mean_value(start_curr, end_curr)
+        if err_curr: errors.append(f"{farm_name} (هفته جاری): {err_curr}")
+
+        # Calculate for previous week
+        previous_val, err_prev = get_mean_value(start_prev, end_prev)
+        if err_prev: errors.append(f"{farm_name} (هفته قبل): {err_prev}")
+
+
+        # Calculate change
+        change = None
+        if current_val is not None and previous_val is not None:
+            try:
+                change = current_val - previous_val
+            except TypeError: # Handle cases where values might not be numeric unexpectedly
+                change = None
+
+        results.append({
+            'مزرعه': farm_name,
+            'کانال': farm.get('کانال', 'N/A'),
+            'اداره': farm.get('اداره', 'N/A'),
+            f'{index_name} (هفته جاری)': current_val,
+            f'{index_name} (هفته قبل)': previous_val,
+            'تغییر': change
+        })
+
+        # Update progress bar
+        progress_bar.progress((i + 1) / total_farms)
+
+    progress_bar.empty() # Remove progress bar after completion
+    return pd.DataFrame(results), errors
+
+# Calculate and display the ranking table
+ranking_df, calculation_errors = calculate_weekly_indices(
+    filtered_farms_df,
+    selected_index,
+    start_date_current_str,
+    end_date_current_str,
+    start_date_previous_str,
+    end_date_previous_str
+)
+
+# Display any errors that occurred during calculation
+if calculation_errors:
+    st.warning("⚠️ برخی خطاها در حین محاسبه شاخص‌ها رخ داد:")
+    for error in calculation_errors[:10]: # Show first 10 errors
+        st.warning(f"- {error}")
+    if len(calculation_errors) > 10:
+        st.warning(f"... و {len(calculation_errors) - 10} خطای دیگر.")
+
+
+if not ranking_df.empty:
+    # Sort by the current week's index value (descending for NDVI/EVI/LAI/CVI, ascending for MSI?)
+    # Adjust sorting based on index meaning
+    ascending_sort = selected_index in ['MSI'] # Indices where lower is better
+    ranking_df_sorted = ranking_df.sort_values(
+        by=f'{selected_index} (هفته جاری)',
+        ascending=ascending_sort,
+        na_position='last' # Put farms with no data at the bottom
+    ).reset_index(drop=True)
+
+    # Add rank number
+    ranking_df_sorted.index = ranking_df_sorted.index + 1
+    ranking_df_sorted.index.name = 'رتبه'
+
+    # Format numbers for better readability
+    cols_to_format = [f'{selected_index} (هفته جاری)', f'{selected_index} (هفته قبل)', 'تغییر']
+    for col in cols_to_format:
+        if col in ranking_df_sorted.columns:
+             # Check if column exists before formatting
+             ranking_df_sorted[col] = ranking_df_sorted[col].map(lambda x: f"{x:.3f}" if pd.notna(x) else "N/A")
+
+
+    st.dataframe(ranking_df_sorted, use_container_width=True)
+
+    # Add download button for the table
+    csv_data = ranking_df_sorted.to_csv(index=True).encode('utf-8')
+    st.download_button(
+        label="📥 دانلود جدول رتبه‌بندی (CSV)",
+        data=csv_data,
+        file_name=f'ranking_{selected_index}_{selected_day}_{end_date_current_str}.csv',
+        mime='text/csv',
+    )
+else:
+    st.info(f"داده‌ای برای جدول رتبه‌بندی بر اساس {selected_index} در این بازه زمانی یافت نشد.")
+
+
+st.markdown("---")
 st.sidebar.markdown("---")
-st.sidebar.info("ساخته شده با Streamlit و Google Earth Engine")
+st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap")
