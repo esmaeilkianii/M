@@ -444,7 +444,7 @@ if selected_farm_geom:
             m.add_legend(
                 title=f"{selected_index} Legend",
                 builtin_legend=None, # Use custom labels if needed or rely on palette
-                labels=['بحرانی/پایین', 'متوسط', 'سالم/بالا'] if selected_index in ['NDVI', 'EVI', 'LAI', 'CVI'] else ['مرطوب/بالا', 'متوسط', 'خشک/پایین'] if selected_index in ['NDMI', 'MSI'] else None, # Basic labels
+                labels=['بحرانی/پایین', 'متوسط', 'سالم/بالا'] if selected_index in ['NDVI', 'EVI', 'LAI', 'CVI'] else ['مرطوب/بالا', 'متوسط', 'خشک/پایین'] if selected_index in ['NDMI', 'MSI'] else [], # Provide empty list instead of None
                 position='bottomright'
             )
 
