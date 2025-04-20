@@ -8,130 +8,268 @@ import datetime
 import plotly.express as px
 import os
 from io import BytesIO
-import requests
-import traceback
-from streamlit_folium import st_folium
-import pickle
-from pathlib import Path
+import requests # Needed for getThumbUrl download
+import traceback  # Add missing traceback import
+from streamlit_folium import st_folium  # Add missing st_folium import
+import base64
+
+# --- Custom CSS ---
+st.set_page_config(
+    page_title="سامانه پایش هوشمند نیشکر",
+    page_icon="🌾",
+    layout="wide"
+)
+
+# Custom CSS for Persian text alignment and professional styling
+st.markdown("""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap');
+        
+        /* Main container */
+        .main {
+            font-family: 'Vazirmatn', sans-serif;
+            background-color: #f8f9fa;
+        }
+        
+        /* Headers */
+        h1, h2, h3 {
+            font-family: 'Vazirmatn', sans-serif;
+            color: #2c3e50;
+            text-align: right;
+        }
+        
+        /* Custom header with logo */
+        .header-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 2rem;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            border-radius: 10px;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header-title {
+            color: white;
+            margin: 0;
+            font-size: 1.8rem;
+            font-weight: 700;
+        }
+        
+        .header-subtitle {
+            color: rgba(255, 255, 255, 0.9);
+            margin: 0.5rem 0 0 0;
+            font-size: 1rem;
+            font-weight: 500;
+        }
+        
+        .header-logo {
+            height: 60px;
+            margin-left: 1rem;
+        }
+        
+        /* Metrics */
+        .css-1xarl3l {
+            font-family: 'Vazirmatn', sans-serif;
+            background-color: white;
+            border-radius: 10px;
+            padding: 1.2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .css-1xarl3l:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        /* Tabs */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 2px;
+            direction: rtl;
+            background-color: #f1f3f5;
+            padding: 0.5rem;
+            border-radius: 10px;
+        }
+        
+        .stTabs [data-baseweb="tab"] {
+            height: 50px;
+            padding: 10px 20px;
+            background-color: white;
+            border-radius: 8px;
+            font-family: 'Vazirmatn', sans-serif;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .stTabs [data-baseweb="tab"][aria-selected="true"] {
+            background-color: #1e3c72;
+            color: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        /* Tables */
+        .dataframe {
+            font-family: 'Vazirmatn', sans-serif;
+            text-align: right;
+            border-collapse: separate;
+            border-spacing: 0;
+            width: 100%;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .dataframe th {
+            background-color: #1e3c72;
+            color: white;
+            padding: 12px 15px;
+            font-weight: 600;
+        }
+        
+        .dataframe td {
+            padding: 10px 15px;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .dataframe tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        
+        .dataframe tr:hover {
+            background-color: #e9ecef;
+        }
+        
+        /* Sidebar */
+        .css-1d391kg {
+            font-family: 'Vazirmatn', sans-serif;
+            direction: rtl;
+            background-color: #f8f9fa;
+            padding: 1rem;
+            border-radius: 10px;
+        }
+        
+        /* Custom status badges */
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 15px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        .status-positive {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status-neutral {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .status-negative {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        /* Buttons */
+        .stButton button {
+            background-color: #1e3c72;
+            color: white;
+            border-radius: 8px;
+            padding: 0.5rem 1rem;
+            font-family: 'Vazirmatn', sans-serif;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            border: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .stButton button:hover {
+            background-color: #2a5298;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        /* Charts */
+        .stPlotlyChart {
+            background-color: white;
+            border-radius: 10px;
+            padding: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        /* Download buttons */
+        .download-button {
+            display: inline-flex;
+            align-items: center;
+            background-color: #28a745;
+            color: white;
+            border-radius: 8px;
+            padding: 0.5rem 1rem;
+            font-family: 'Vazirmatn', sans-serif;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            border: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            text-decoration: none;
+        }
+        
+        .download-button:hover {
+            background-color: #218838;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .download-button i {
+            margin-left: 0.5rem;
+        }
+        
+        /* Summary cards */
+        .summary-card {
+            background-color: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .summary-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        .summary-card-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #6c757d;
+            margin-bottom: 0.5rem;
+        }
+        
+        .summary-card-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #1e3c72;
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease forwards;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
 # --- Configuration ---
-APP_TITLE = "داشبورد مانیتورینگ مزارع نیشکر دهخدا"
+APP_TITLE = "سامانه پایش هوشمند نیشکر"
+APP_SUBTITLE = "مطالعات کاربردی شرکت کشت و صنعت دهخدا"
 INITIAL_LAT = 31.534442
 INITIAL_LON = 48.724416
 INITIAL_ZOOM = 12
 
-# --- Theme Configuration ---
-THEME_COLORS = {
-    'primary': '#2E86C1',  # آبی اصلی
-    'secondary': '#27AE60',  # سبز
-    'accent': '#E74C3C',  # قرمز
-    'background': '#F8F9F9',  # پس‌زمینه روشن
-    'text': '#2C3E50',  # متن تیره
-    'success': '#2ECC71',  # سبز موفقیت
-    'warning': '#F1C40F',  # زرد هشدار
-    'danger': '#E74C3C',  # قرمز خطا
-}
-
-# --- Custom CSS ---
-st.markdown(f"""
-    <style>
-        /* RTL Support */
-        .stApp {{
-            direction: rtl;
-            text-align: right;
-        }}
-        
-        /* Modern Theme */
-        .stApp {{
-            background-color: {THEME_COLORS['background']};
-            color: {THEME_COLORS['text']};
-        }}
-        
-        /* Headers */
-        h1, h2, h3 {{
-            color: {THEME_COLORS['primary']};
-            font-weight: 600;
-        }}
-        
-        /* Metrics */
-        .stMetric {{
-            background-color: white;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }}
-        
-        /* DataFrames */
-        .dataframe {{
-            direction: rtl;
-            text-align: right;
-        }}
-        
-        /* Buttons */
-        .stButton>button {{
-            background-color: {THEME_COLORS['primary']};
-            color: white;
-            border-radius: 0.5rem;
-            padding: 0.5rem 1rem;
-            border: none;
-            transition: all 0.3s ease;
-        }}
-        
-        .stButton>button:hover {{
-            background-color: {THEME_COLORS['secondary']};
-            transform: translateY(-2px);
-        }}
-        
-        /* Sidebar */
-        .css-1d391kg {{
-            background-color: white;
-        }}
-        
-        /* Progress Bar */
-        .stProgress > div > div {{
-            background-color: {THEME_COLORS['primary']};
-        }}
-    </style>
-""", unsafe_allow_html=True)
-
 # --- File Paths (Relative to the script location in Hugging Face) ---
 CSV_FILE_PATH = 'cleaned_output.csv'
 SERVICE_ACCOUNT_FILE = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json'
-CACHE_DIR = Path('cache')
-INDEX_DATA_FILE = CACHE_DIR / 'index_data.pkl'
-LAST_UPDATE_FILE = CACHE_DIR / 'last_update.txt'
-
-# Create cache directory if it doesn't exist
-CACHE_DIR.mkdir(exist_ok=True)
-
-# --- Data Caching Functions ---
-def load_cached_data():
-    """Load cached index data if available and not expired."""
-    try:
-        if not INDEX_DATA_FILE.exists() or not LAST_UPDATE_FILE.exists():
-            return None, None
-        
-        # Check if data is less than 24 hours old
-        last_update = datetime.datetime.fromtimestamp(float(LAST_UPDATE_FILE.read_text()))
-        if datetime.datetime.now() - last_update > datetime.timedelta(hours=24):
-            return None, None
-        
-        with open(INDEX_DATA_FILE, 'rb') as f:
-            return pickle.load(f), last_update
-    except Exception as e:
-        st.warning(f"خطا در بارگذاری داده‌های کش شده: {e}")
-        return None, None
-
-def save_cached_data(data):
-    """Save index data to cache."""
-    try:
-        with open(INDEX_DATA_FILE, 'wb') as f:
-            pickle.dump(data, f)
-        LAST_UPDATE_FILE.write_text(str(datetime.datetime.now().timestamp()))
-        return True
-    except Exception as e:
-        st.error(f"خطا در ذخیره داده‌ها: {e}")
-        return False
 
 # --- GEE Authentication ---
 @st.cache_resource # Cache the GEE initialization
@@ -160,178 +298,40 @@ def load_farm_data(csv_path=CSV_FILE_PATH):
     """Loads farm data from the specified CSV file."""
     try:
         df = pd.read_csv(csv_path)
-        required_cols = ['مزرعه', 'طول جغرافیایی', 'عرض جغرافیایی', 'کانال', 'اداره', 'مساحت', 'واریته', 'سن', 'روزهای هفته', 'coordinates_missing']
+        # Basic validation
+        required_cols = ['مزرعه', 'طول جغرافیایی', 'عرض جغرافیایی', 'روزهای هفته', 'coordinates_missing']
         if not all(col in df.columns for col in required_cols):
             st.error(f"❌ فایل CSV باید شامل ستون‌های ضروری باشد: {', '.join(required_cols)}")
             return None
-        
-        # تبدیل ستون‌های عددی
-        numeric_cols = ['طول جغرافیایی', 'عرض جغرافیایی', 'مساحت', 'سن']
-        for col in numeric_cols:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-        
+        # Convert coordinate columns to numeric, coercing errors
+        df['طول جغرافیایی'] = pd.to_numeric(df['طول جغرافیایی'], errors='coerce')
+        df['عرض جغرافیایی'] = pd.to_numeric(df['عرض جغرافیایی'], errors='coerce')
+        # Handle missing coordinates flag explicitly if needed
         df['coordinates_missing'] = df['coordinates_missing'].fillna(False).astype(bool)
+        # Drop rows where coordinates are actually missing after coercion or flagged
         df = df.dropna(subset=['طول جغرافیایی', 'عرض جغرافیایی'])
         df = df[~df['coordinates_missing']]
 
         if df.empty:
-            st.warning("⚠️ داده معتبری برای مزارع یافت نشد.")
+            st.warning("⚠️ داده معتبری برای مزارع یافت نشد (پس از حذف رکوردهای بدون مختصات).")
             return None
 
+        # Ensure 'روزهای هفته' is string type for consistent filtering
         df['روزهای هفته'] = df['روزهای هفته'].astype(str).str.strip()
-        # حذف مقادیر خالی از روزهای هفته
-        df = df[df['روزهای هفته'].str.len() > 0]
-        
+
         st.success(f"✅ داده‌های {len(df)} مزرعه با موفقیت بارگذاری شد.")
         return df
+    except FileNotFoundError:
+        st.error(f"❌ فایل '{csv_path}' یافت نشد. لطفاً فایل CSV داده‌های مزارع را در مسیر صحیح قرار دهید.")
+        return None
     except Exception as e:
         st.error(f"❌ خطا در بارگذاری یا پردازش فایل CSV: {e}")
         st.error(traceback.format_exc())
         return None
 
-# --- Date Range Calculation ---
-today = datetime.date.today()
-# Find the most recent date corresponding to the selected day of the week
-persian_to_weekday = {
-    "شنبه": 5,
-    "یکشنبه": 6,
-    "دوشنبه": 0,
-    "سه شنبه": 1,
-    "چهارشنبه": 2,
-    "پنجشنبه": 3,
-    "جمعه": 4,
-}
-
-def get_date_range(selected_day):
-    """Calculate date range for the selected day of the week."""
-    try:
-        target_weekday = persian_to_weekday[selected_day]
-        days_ago = (today.weekday() - target_weekday + 7) % 7
-        if days_ago == 0:
-            end_date_current = today
-        else:
-            end_date_current = today - datetime.timedelta(days=days_ago)
-
-        start_date_current = end_date_current - datetime.timedelta(days=6)
-        end_date_previous = start_date_current - datetime.timedelta(days=1)
-        start_date_previous = end_date_previous - datetime.timedelta(days=6)
-
-        return {
-            'start_date_current': start_date_current.strftime('%Y-%m-%d'),
-            'end_date_current': end_date_current.strftime('%Y-%m-%d'),
-            'start_date_previous': start_date_previous.strftime('%Y-%m-%d'),
-            'end_date_previous': end_date_previous.strftime('%Y-%m-%d')
-        }
-    except KeyError:
-        st.error(f"نام روز هفته '{selected_day}' قابل شناسایی نیست.")
-        return None
-    except Exception as e:
-        st.error(f"خطا در محاسبه بازه زمانی: {e}")
-        return None
-
-# --- Data Update Function ---
-def update_index_data(selected_day):
-    """Update cached index data if needed."""
-    cached_data, last_update = load_cached_data()
-    
-    if cached_data is not None:
-        st.info(f"✅ داده‌ها به‌روز هستند (آخرین به‌روزرسانی: {last_update.strftime('%Y-%m-%d %H:%M')})")
-        return cached_data
-    
-    st.info("🔄 در حال به‌روزرسانی داده‌ها...")
-    
-    # Get date range
-    date_range = get_date_range(selected_day)
-    if date_range is None:
-        return None
-    
-    # Calculate new data
-    new_data = {}
-    farm_data_df = load_farm_data()
-    if farm_data_df is None:
-        st.error("❌ امکان به‌روزرسانی داده‌ها وجود ندارد.")
-        return None
-    
-    # Calculate indices for each farm
-    progress_bar = st.progress(0)
-    total_farms = len(farm_data_df)
-    
-    for i, (idx, farm) in enumerate(farm_data_df.iterrows()):
-        farm_name = farm['مزرعه']
-        indices, error = calculate_indices_for_farm(farm, date_range['start_date_current'], date_range['end_date_current'])
-        
-        if indices:
-            new_data[farm_name] = indices
-        progress_bar.progress((i + 1) / total_farms)
-    
-    progress_bar.empty()
-    
-    # Save new data
-    if save_cached_data(new_data):
-        st.success("✅ داده‌ها با موفقیت به‌روز شدند.")
-        return new_data
-    else:
-        st.error("❌ خطا در ذخیره داده‌های جدید.")
-        return None
-
-# --- Index Calculation Functions ---
-def calculate_indices_for_farm(farm_data, start_date, end_date):
-    """Calculate indices for a single farm."""
-    try:
-        lat = farm_data['عرض جغرافیایی']
-        lon = farm_data['طول جغرافیایی']
-        point_geom = ee.Geometry.Point([lon, lat])
-        
-        # Get processed image
-        image, error = get_processed_image(point_geom, start_date, end_date, 'NDVI')
-        if error:
-            return None, error
-            
-        # Calculate mean values for all indices
-        mean_dict = image.reduceRegion(
-            reducer=ee.Reducer.mean(),
-            geometry=point_geom,
-            scale=10
-        ).getInfo()
-        
-        return mean_dict, None
-    except Exception as e:
-        return None, str(e)
-
-# --- Main Application ---
-st.title(APP_TITLE)
-
-# Initialize GEE and load data
+# Initialize GEE and Load Data
 if initialize_gee():
-    # Load farm data first to get available days
     farm_data_df = load_farm_data()
-    if farm_data_df is None:
-        st.error("❌ امکان ادامه کار بدون داده‌های مزارع وجود ندارد.")
-        st.stop()
-    
-    # Get available days from farm data
-    available_days = sorted(farm_data_df['روزهای هفته'].unique())
-    if not available_days:
-        st.error("❌ هیچ روز هفته‌ای در داده‌ها یافت نشد.")
-        st.stop()
-    
-    # Get initial date range
-    date_range = get_date_range(available_days[0])  # Use first available day
-    if date_range is None:
-        st.stop()
-    
-    # Update index data
-    index_data = update_index_data(available_days[0])
-    
-    if index_data is not None:
-        # Continue with the rest of the application
-        farm_data_df = load_farm_data()
-        if farm_data_df is not None:
-            # ... (rest of the existing application code) ...
-            pass
-    else:
-        st.error("❌ امکان ادامه کار بدون داده‌های شاخص وجود ندارد.")
-        st.stop()
 else:
     st.error("❌ امکان ادامه کار بدون اتصال به Google Earth Engine وجود ندارد.")
     st.stop()
@@ -381,7 +381,9 @@ index_options = {
     "LAI": "شاخص سطح برگ (تخمینی)",
     "MSI": "شاخص تنش رطوبتی",
     "CVI": "شاخص کلروفیل (تخمینی)",
-    "NIT": "شاخص ازت (تخمینی)",
+    # Add more indices if needed and implemented
+    # "Biomass": "زیست‌توده (تخمینی)",
+    # "ET": "تبخیر و تعرق (تخمینی)",
 }
 selected_index = st.sidebar.selectbox(
     "📈 شاخص مورد نظر برای نمایش روی نقشه:",
@@ -500,19 +502,13 @@ def add_indices(image):
         'RED': image.select('B4')
     }).rename('CVI')
 
-    # NIT (Nitrogen Index) - (NIR - Red) / (NIR + Red + 0.5)
-    nit = image.expression('(NIR - RED) / (NIR + RED + 0.5)', {
-        'NIR': image.select('B8'),
-        'RED': image.select('B4')
-    }).rename('NIT')
-
     # Biomass - Placeholder: Needs calibration (e.g., Biomass = a * LAI + b)
     # biomass = lai.multiply(1.5).add(0.5).rename('Biomass') # Example: a=1.5, b=0.5
 
     # ET (Evapotranspiration) - Complex: Requires meteorological data or specialized models/datasets (e.g., MODIS ET, SSEBop)
     # Not calculating directly here, would typically use a pre-existing GEE product if available.
 
-    return image.addBands([ndvi, evi, ndmi, msi, lai, cvi, nit]) # Add calculated indices
+    return image.addBands([ndvi, evi, ndmi, msi, lai, cvi]) # Add calculated indices
 
 # --- Function to get processed image for a date range and geometry ---
 @st.cache_data(show_spinner="در حال پردازش تصاویر ماهواره‌ای...", persist=True)
@@ -620,6 +616,35 @@ def get_index_time_series(_point_geom, index_name, start_date='2023-01-01', end_
 # Main Panel Display
 # ==============================================================================
 
+# --- Header with Logo ---
+logo_path = "logo (1).png"
+if os.path.exists(logo_path):
+    # Read the logo file and encode it as base64
+    with open(logo_path, "rb") as f:
+        logo_data = f.read()
+        logo_base64 = base64.b64encode(logo_data).decode()
+    
+    # Create the header with logo
+    st.markdown(f"""
+    <div class="header-container animate-fade-in">
+        <div>
+            <h1 class="header-title">{APP_TITLE}</h1>
+            <p class="header-subtitle">{APP_SUBTITLE}</p>
+        </div>
+        <img src="data:image/png;base64,{logo_base64}" class="header-logo" alt="Logo">
+    </div>
+    """, unsafe_allow_html=True)
+else:
+    # Fallback header without logo
+    st.markdown(f"""
+    <div class="header-container animate-fade-in">
+        <div>
+            <h1 class="header-title">{APP_TITLE}</h1>
+            <p class="header-subtitle">{APP_SUBTITLE}</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
 # --- Get Selected Farm Geometry and Details ---
 selected_farm_details = None
 selected_farm_geom = None
@@ -630,372 +655,877 @@ if selected_farm_name == "همه مزارع":
     max_lon, max_lat = filtered_farms_df['طول جغرافیایی'].max(), filtered_farms_df['عرض جغرافیایی'].max()
     # Create a bounding box geometry
     selected_farm_geom = ee.Geometry.Rectangle([min_lon, min_lat, max_lon, max_lat])
-    st.subheader(f"نمایش کلی مزارع برای روز: {selected_day}")
+    
+    # Display summary statistics
+    st.markdown("### 📊 خلاصه آماری")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.markdown(f"""
+        <div class="summary-card animate-fade-in">
+            <div class="summary-card-title">تعداد مزارع</div>
+            <div class="summary-card-value">{len(filtered_farms_df)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        # Calculate average area if available
+        avg_area = filtered_farms_df['مساحت'].mean() if 'مساحت' in filtered_farms_df.columns else None
+        area_text = f"{avg_area:.2f}" if avg_area is not None else "N/A"
+        st.markdown(f"""
+        <div class="summary-card animate-fade-in">
+            <div class="summary-card-title">میانگین مساحت (هکتار)</div>
+            <div class="summary-card-value">{area_text}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        # Count unique varieties if available
+        unique_varieties = filtered_farms_df['واریته'].nunique() if 'واریته' in filtered_farms_df.columns else 0
+        st.markdown(f"""
+        <div class="summary-card animate-fade-in">
+            <div class="summary-card-title">تعداد واریته‌ها</div>
+            <div class="summary-card-value">{unique_varieties}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        # Count unique channels if available
+        unique_channels = filtered_farms_df['کانال'].nunique() if 'کانال' in filtered_farms_df.columns else 0
+        st.markdown(f"""
+        <div class="summary-card animate-fade-in">
+            <div class="summary-card-title">تعداد کانال‌ها</div>
+            <div class="summary-card-value">{unique_channels}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown(f"### نمایش کلی مزارع برای روز: {selected_day}")
     st.info(f"تعداد مزارع در این روز: {len(filtered_farms_df)}")
 else:
     selected_farm_details = filtered_farms_df[filtered_farms_df['مزرعه'] == selected_farm_name].iloc[0]
     lat = selected_farm_details['عرض جغرافیایی']
     lon = selected_farm_details['طول جغرافیایی']
     selected_farm_geom = ee.Geometry.Point([lon, lat])
-    st.subheader(f"جزئیات مزرعه: {selected_farm_name} (روز: {selected_day})")
-    # Display farm details
-    display_farm_details(selected_farm_details)
-
-
-# --- Map Display ---
-st.markdown("---")
-st.subheader(" نقشه وضعیت مزارع")
-
-# Define visualization parameters based on the selected index
-vis_params = {
-    'NDVI': {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']},
-    'EVI': {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']},
-    'NDMI': {'min': -1, 'max': 1, 'palette': ['brown', 'white', 'blue']},
-    'LAI': {'min': 0, 'max': 6, 'palette': ['white', 'lightgreen', 'darkgreen']}, # Adjust max based on expected values
-    'MSI': {'min': 0, 'max': 3, 'palette': ['blue', 'white', 'brown']}, # Lower values = more moisture
-    'CVI': {'min': 0, 'max': 20, 'palette': ['yellow', 'lightgreen', 'darkgreen']}, # Adjust max based on expected values
-    'NIT': {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']},
-    # Add vis params for other indices if implemented
-}
-
-map_center_lat = 31.534442
-map_center_lon = 48.724416
-initial_zoom = 11
-
-# Create a geemap Map instance
-m = geemap.Map(
-    location=[map_center_lat, map_center_lon],
-    zoom=initial_zoom,
-    add_google_map=False # Start clean
-)
-m.add_basemap("HYBRID") # Add Google Satellite Hybrid basemap
-
-# Get the processed image for the current week
-if selected_farm_geom:
-    gee_image_current, error_msg_current = get_processed_image(
-        selected_farm_geom, start_date_current_str, end_date_current_str, selected_index
-    )
-
-    if gee_image_current:
-        # Add the GEE layer to the map
-        try:
-            m.addLayer(
-                gee_image_current,
-                vis_params.get(selected_index, {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']}), # Default vis
-                f"{selected_index} ({start_date_current_str} to {end_date_current_str})"
-            )
-
-            # Remove the problematic add_legend call and replace with a custom legend
-            # Create a custom legend using folium
-            if selected_index in ['NDVI', 'EVI', 'LAI', 'CVI']:
-                legend_html = '''
-                <div style="position: fixed; bottom: 50px; right: 50px; z-index: 1000; background-color: white; padding: 10px; border: 2px solid grey; border-radius: 5px;">
-                    <p style="margin: 0;"><strong>{} Legend</strong></p>
-                    <p style="margin: 0; color: red;">بحرانی/پایین</p>
-                    <p style="margin: 0; color: yellow;">متوسط</p>
-                    <p style="margin: 0; color: green;">سالم/بالا</p>
-                </div>
-                '''.format(selected_index)
-            elif selected_index in ['NDMI', 'MSI']:
-                legend_html = '''
-                <div style="position: fixed; bottom: 50px; right: 50px; z-index: 1000; background-color: white; padding: 10px; border: 2px solid grey; border-radius: 5px;">
-                    <p style="margin: 0;"><strong>{} Legend</strong></p>
-                    <p style="margin: 0; color: blue;">مرطوب/بالا</p>
-                    <p style="margin: 0; color: white;">متوسط</p>
-                    <p style="margin: 0; color: brown;">خشک/پایین</p>
-                </div>
-                '''.format(selected_index)
-            else:
-                # Default legend for other indices
-                legend_html = '''
-                <div style="position: fixed; bottom: 50px; right: 50px; z-index: 1000; background-color: white; padding: 10px; border: 2px solid grey; border-radius: 5px;">
-                    <p style="margin: 0;"><strong>{} Legend</strong></p>
-                    <p style="margin: 0;">Low</p>
-                    <p style="margin: 0;">Medium</p>
-                    <p style="margin: 0;">High</p>
-                </div>
-                '''.format(selected_index)
-            
-            # Add the custom legend to the map
-            m.get_root().html.add_child(folium.Element(legend_html))
-
-            # Add markers for farms
-            if selected_farm_name == "همه مزارع":
-                 # Add markers for all filtered farms
-                 for idx, farm in filtered_farms_df.iterrows():
-                     folium.Marker(
-                         location=[farm['عرض جغرافیایی'], farm['طول جغرافیایی']],
-                         popup=f"مزرعه: {farm['مزرعه']}\nکانال: {farm['کانال']}\nاداره: {farm['اداره']}",
-                         tooltip=farm['مزرعه'],
-                         icon=folium.Icon(color='blue', icon='info-sign')
-                     ).add_to(m)
-                 # Adjust map bounds if showing all farms
-                 m.center_object(selected_farm_geom, zoom=initial_zoom) # Center on the bounding box
-            else:
-                 # Add marker for the single selected farm
-                 folium.Marker(
-                     location=[lat, lon],
-                     popup=f"مزرعه: {selected_farm_name}\n{selected_index} (هفته جاری): محاسبه می‌شود...", # Placeholder popup
-                     tooltip=selected_farm_name,
-                     icon=folium.Icon(color='red', icon='star')
-                 ).add_to(m)
-                 m.center_object(selected_farm_geom, zoom=14) # Zoom closer for a single farm
-
-            m.add_layer_control() # Add layer control to toggle base maps and layers
-
-        except Exception as map_err:
-            st.error(f"خطا در افزودن لایه به نقشه: {map_err}")
-            st.error(traceback.format_exc())
-    else:
-        st.warning(f"تصویری برای نمایش روی نقشه یافت نشد. {error_msg_current}")
-
-# Display the map in Streamlit
-st_folium(m, width=None, height=500, use_container_width=True)
-st.caption("برای مشاهده جزئیات روی مارکرها کلیک کنید. از کنترل لایه‌ها برای تغییر نقشه پایه استفاده کنید.")
-# Note: Direct PNG download from st_folium/geemap isn't built-in easily.
-st.info("💡 برای ذخیره نقشه، می‌توانید از ابزار عکس گرفتن از صفحه (Screenshot) مرورگر یا سیستم عامل خود استفاده کنید.")
-
-
-# --- Time Series Chart ---
-st.markdown("---")
-st.subheader(f"📈 نمودار روند زمانی شاخص {selected_index}")
-
-if selected_farm_name == "همه مزارع":
-    st.info("لطفاً یک مزرعه خاص را از پنل کناری انتخاب کنید تا نمودار روند زمانی آن نمایش داده شود.")
-elif selected_farm_geom:
-    # Fix the isinstance check - use string comparison instead
-    # Check if the geometry type is Point by converting to string and checking
-    is_point = str(selected_farm_geom).find('Point') >= 0
     
-    if is_point:
-        # Define a longer period for the time series chart (e.g., last 6 months)
-        timeseries_end_date = today.strftime('%Y-%m-%d')
-        timeseries_start_date = (today - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
+    # Display summary statistics
+    st.markdown("### 📊 خلاصه آماری")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.markdown(f"""
+        <div class="summary-card animate-fade-in">
+            <div class="summary-card-title">نام مزرعه</div>
+            <div class="summary-card-value">{selected_farm_name}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        area = selected_farm_details.get('مساحت', 'N/A')
+        area_text = f"{area:.2f}" if pd.notna(area) else "N/A"
+        st.markdown(f"""
+        <div class="summary-card animate-fade-in">
+            <div class="summary-card-title">مساحت (هکتار)</div>
+            <div class="summary-card-value">{area_text}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        variety = selected_farm_details.get('واریته', 'N/A')
+        st.markdown(f"""
+        <div class="summary-card animate-fade-in">
+            <div class="summary-card-title">واریته</div>
+            <div class="summary-card-value">{variety}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        channel = selected_farm_details.get('کانال', 'N/A')
+        st.markdown(f"""
+        <div class="summary-card animate-fade-in">
+            <div class="summary-card-title">کانال</div>
+            <div class="summary-card-value">{channel}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown(f"### جزئیات مزرعه: {selected_farm_name} (روز: {selected_day})")
+    # Display farm details
+    details_cols = st.columns(3)
+    with details_cols[0]:
+        st.metric("مساحت داشت (هکتار)", f"{selected_farm_details.get('مساحت', 'N/A'):,.2f}" if pd.notna(selected_farm_details.get('مساحت')) else "N/A")
+        st.metric("واریته", f"{selected_farm_details.get('واریته', 'N/A')}")
+    with details_cols[1]:
+        st.metric("کانال", f"{selected_farm_details.get('کانال', 'N/A')}")
+        st.metric("سن", f"{selected_farm_details.get('سن', 'N/A')}")
+    with details_cols[2]:
+        st.metric("اداره", f"{selected_farm_details.get('اداره', 'N/A')}")
+        st.metric("مختصات", f"{lat:.5f}, {lon:.5f}")
 
-        ts_df, ts_error = get_index_time_series(
-            selected_farm_geom,
-            selected_index,
-            start_date=timeseries_start_date,
-            end_date=timeseries_end_date
+# --- Tabs Structure ---
+st.markdown("---")
+tab1, tab2, tab3, tab4 = st.tabs(["🗺️ نقشه", "📈 نمودارها", "📊 جدول رتبه‌بندی", "📋 گزارش‌ها"])
+
+with tab1:
+    st.markdown("### نقشه وضعیت مزارع")
+    
+    # Define visualization parameters based on the selected index
+    vis_params = {
+        'NDVI': {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']},
+        'EVI': {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']},
+        'NDMI': {'min': -1, 'max': 1, 'palette': ['brown', 'white', 'blue']},
+        'LAI': {'min': 0, 'max': 6, 'palette': ['white', 'lightgreen', 'darkgreen']}, # Adjust max based on expected values
+        'MSI': {'min': 0, 'max': 3, 'palette': ['blue', 'white', 'brown']}, # Lower values = more moisture
+        'CVI': {'min': 0, 'max': 20, 'palette': ['yellow', 'lightgreen', 'darkgreen']}, # Adjust max based on expected values
+        # Add vis params for other indices if implemented
+    }
+
+    map_center_lat = 31.534442
+    map_center_lon = 48.724416
+    initial_zoom = 11
+
+    # Create a geemap Map instance
+    m = geemap.Map(
+        location=[map_center_lat, map_center_lon],
+        zoom=initial_zoom,
+        add_google_map=False # Start clean
+    )
+    m.add_basemap("HYBRID") # Add Google Satellite Hybrid basemap
+
+    # Get the processed image for the current week
+    if selected_farm_geom:
+        gee_image_current, error_msg_current = get_processed_image(
+            selected_farm_geom, start_date_current_str, end_date_current_str, selected_index
         )
 
-        if ts_error:
-            st.warning(f"خطا در دریافت داده‌های سری زمانی: {ts_error}")
-        elif not ts_df.empty:
-            st.line_chart(ts_df[selected_index])
-            st.caption(f"نمودار تغییرات شاخص {selected_index} برای مزرعه {selected_farm_name} در 6 ماه گذشته.")
-        else:
-            st.info(f"داده‌ای برای نمایش نمودار سری زمانی {selected_index} در بازه مشخص شده یافت نشد.")
-    else:
-        st.warning("نوع هندسه مزرعه برای نمودار سری زمانی پشتیبانی نمی‌شود (فقط نقطه).")
-else:
-    st.warning("هندسه مزرعه برای نمودار سری زمانی در دسترس نیست.")
-
-
-# --- Ranking Table ---
-st.markdown("---")
-st.subheader(f"📊 جدول رتبه‌بندی مزارع بر اساس {selected_index} (روز: {selected_day})")
-st.markdown("مقایسه مقادیر متوسط شاخص در هفته جاری با هفته قبل.")
-
-@st.cache_data(show_spinner=f"در حال محاسبه {selected_index} برای مزارع...", persist=True)
-def calculate_weekly_indices(_farms_df, index_name, start_curr, end_curr, start_prev, end_prev):
-    """Calculates the average index value for the current and previous week for a list of farms."""
-    results = []
-    errors = []
-    total_farms = len(_farms_df)
-    progress_bar = st.progress(0)
-
-    for i, (idx, farm) in enumerate(_farms_df.iterrows()):
-        farm_name = farm['مزرعه']
-        lat = farm['عرض جغرافیایی']
-        lon = farm['طول جغرافیایی']
-        point_geom = ee.Geometry.Point([lon, lat])
-
-        def get_mean_value(start, end):
+        if gee_image_current:
+            # Add the GEE layer to the map
             try:
-                image, error = get_processed_image(point_geom, start, end, index_name)
-                if image:
-                    # Reduce region to get the mean value at the point
-                    mean_dict = image.reduceRegion(
-                        reducer=ee.Reducer.mean(),
-                        geometry=point_geom,
-                        scale=10  # Scale in meters
-                    ).getInfo()
-                    return mean_dict.get(index_name) if mean_dict else None, None
+                m.addLayer(
+                    gee_image_current,
+                    vis_params.get(selected_index, {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']}), # Default vis
+                    f"{selected_index} ({start_date_current_str} to {end_date_current_str})"
+                )
+
+                # Remove the problematic add_legend call and replace with a custom legend
+                # Create a custom legend using folium
+                if selected_index in ['NDVI', 'EVI', 'LAI', 'CVI']:
+                    legend_html = '''
+                    <div style="position: fixed; bottom: 50px; right: 50px; z-index: 1000; background-color: white; padding: 10px; border: 2px solid grey; border-radius: 5px;">
+                        <p style="margin: 0;"><strong>{} Legend</strong></p>
+                        <p style="margin: 0; color: red;">بحرانی/پایین</p>
+                        <p style="margin: 0; color: yellow;">متوسط</p>
+                        <p style="margin: 0; color: green;">سالم/بالا</p>
+                    </div>
+                    '''.format(selected_index)
+                elif selected_index in ['NDMI', 'MSI']:
+                    legend_html = '''
+                    <div style="position: fixed; bottom: 50px; right: 50px; z-index: 1000; background-color: white; padding: 10px; border: 2px solid grey; border-radius: 5px;">
+                        <p style="margin: 0;"><strong>{} Legend</strong></p>
+                        <p style="margin: 0; color: blue;">مرطوب/بالا</p>
+                        <p style="margin: 0; color: white;">متوسط</p>
+                        <p style="margin: 0; color: brown;">خشک/پایین</p>
+                    </div>
+                    '''.format(selected_index)
                 else:
-                    return None, error
-            except Exception as e:
-                 # Catch errors during reduceRegion or getInfo
-                 error_msg = f"خطا در محاسبه مقدار برای {farm_name} ({start}-{end}): {e}"
-                 # errors.append(error_msg) # Collect errors
-                 # st.warning(error_msg) # Show warning immediately
-                 return None, error_msg
+                    # Default legend for other indices
+                    legend_html = '''
+                    <div style="position: fixed; bottom: 50px; right: 50px; z-index: 1000; background-color: white; padding: 10px; border: 2px solid grey; border-radius: 5px;">
+                        <p style="margin: 0;"><strong>{} Legend</strong></p>
+                        <p style="margin: 0;">Low</p>
+                        <p style="margin: 0;">Medium</p>
+                        <p style="margin: 0;">High</p>
+                    </div>
+                    '''.format(selected_index)
+                
+                # Add the custom legend to the map
+                m.get_root().html.add_child(folium.Element(legend_html))
 
+                # Add markers for farms
+                if selected_farm_name == "همه مزارع":
+                     # Add markers for all filtered farms
+                     for idx, farm in filtered_farms_df.iterrows():
+                         folium.Marker(
+                             location=[farm['عرض جغرافیایی'], farm['طول جغرافیایی']],
+                             popup=f"مزرعه: {farm['مزرعه']}\nکانال: {farm['کانال']}\nاداره: {farm['اداره']}",
+                             tooltip=farm['مزرعه'],
+                             icon=folium.Icon(color='blue', icon='info-sign')
+                         ).add_to(m)
+                     # Adjust map bounds if showing all farms
+                     m.center_object(selected_farm_geom, zoom=initial_zoom) # Center on the bounding box
+                else:
+                     # Add marker for the single selected farm
+                     folium.Marker(
+                         location=[lat, lon],
+                         popup=f"مزرعه: {selected_farm_name}\n{selected_index} (هفته جاری): محاسبه می‌شود...", # Placeholder popup
+                         tooltip=selected_farm_name,
+                         icon=folium.Icon(color='red', icon='star')
+                     ).add_to(m)
+                     m.center_object(selected_farm_geom, zoom=14) # Zoom closer for a single farm
 
-        # Calculate for current week
-        current_val, err_curr = get_mean_value(start_curr, end_curr)
-        if err_curr: errors.append(f"{farm_name} (هفته جاری): {err_curr}")
+                m.add_layer_control() # Add layer control to toggle base maps and layers
 
-        # Calculate for previous week
-        previous_val, err_prev = get_mean_value(start_prev, end_prev)
-        if err_prev: errors.append(f"{farm_name} (هفته قبل): {err_prev}")
-
-
-        # Calculate change
-        change = None
-        if current_val is not None and previous_val is not None:
-            try:
-                change = current_val - previous_val
-            except TypeError: # Handle cases where values might not be numeric unexpectedly
-                change = None
-
-        results.append({
-            'مزرعه': farm_name,
-            'کانال': farm.get('کانال', 'N/A'),
-            'اداره': farm.get('اداره', 'N/A'),
-            f'{index_name} (هفته جاری)': current_val,
-            f'{index_name} (هفته قبل)': previous_val,
-            'تغییر': change
-        })
-
-        # Update progress bar
-        progress_bar.progress((i + 1) / total_farms)
-
-    progress_bar.empty() # Remove progress bar after completion
-    return pd.DataFrame(results), errors
-
-# Calculate and display the ranking table
-ranking_df, calculation_errors = calculate_weekly_indices(
-    filtered_farms_df,
-    selected_index,
-    start_date_current_str,
-    end_date_current_str,
-    start_date_previous_str,
-    end_date_previous_str
-)
-
-# Display any errors that occurred during calculation
-if calculation_errors:
-    st.warning("⚠️ برخی خطاها در حین محاسبه شاخص‌ها رخ داد:")
-    for error in calculation_errors[:10]: # Show first 10 errors
-        st.warning(f"- {error}")
-    if len(calculation_errors) > 10:
-        st.warning(f"... و {len(calculation_errors) - 10} خطای دیگر.")
-
-
-if not ranking_df.empty:
-    # Sort by the current week's index value (descending for NDVI/EVI/LAI/CVI, ascending for MSI?)
-    # Adjust sorting based on index meaning
-    ascending_sort = selected_index in ['MSI'] # Indices where lower is better
-    ranking_df_sorted = ranking_df.sort_values(
-        by=f'{selected_index} (هفته جاری)',
-        ascending=ascending_sort,
-        na_position='last' # Put farms with no data at the bottom
-    ).reset_index(drop=True)
-
-    # Add rank number
-    ranking_df_sorted.index = ranking_df_sorted.index + 1
-    ranking_df_sorted.index.name = 'رتبه'
-
-    # Add a status column to indicate growth or stress
-    # For NDVI, EVI, LAI, CVI: higher is better
-    # For MSI, NDMI: lower is better
-    def determine_status(row, index_name):
-        if pd.isna(row['تغییر']) or pd.isna(row[f'{index_name} (هفته جاری)']) or pd.isna(row[f'{index_name} (هفته قبل)']):
-            return "بدون داده"
-        
-        # For indices where higher is better (NDVI, EVI, LAI, CVI)
-        if index_name in ['NDVI', 'EVI', 'LAI', 'CVI']:
-            if row['تغییر'] > 0.05:  # Significant growth
-                return "رشد مثبت"
-            elif row['تغییر'] < -0.05:  # Significant decline
-                return "تنش/کاهش"
-            else:
-                return "ثابت"
-        # For indices where lower is better (MSI, NDMI)
-        elif index_name in ['MSI', 'NDMI']:
-            if row['تغییر'] < -0.05:  # Significant improvement
-                return "بهبود"
-            elif row['تغییر'] > 0.05:  # Significant deterioration
-                return "تنش/بدتر شدن"
-            else:
-                return "ثابت"
+            except Exception as map_err:
+                st.error(f"خطا در افزودن لایه به نقشه: {map_err}")
+                st.error(traceback.format_exc())
         else:
-            return "نامشخص"
+            st.warning(f"تصویری برای نمایش روی نقشه یافت نشد. {error_msg_current}")
 
-    # Add status column
-    ranking_df_sorted['وضعیت'] = ranking_df_sorted.apply(lambda row: determine_status(row, selected_index), axis=1)
+    # Display the map in Streamlit
+    st_folium(m, width=None, height=500, use_container_width=True)
+    st.caption("برای مشاهده جزئیات روی مارکرها کلیک کنید. از کنترل لایه‌ها برای تغییر نقشه پایه استفاده کنید.")
     
-    # Format numbers for better readability
-    cols_to_format = [f'{selected_index} (هفته جاری)', f'{selected_index} (هفته قبل)', 'تغییر']
-    for col in cols_to_format:
-        if col in ranking_df_sorted.columns:
-             # Check if column exists before formatting
-             ranking_df_sorted[col] = ranking_df_sorted[col].map(lambda x: f"{x:.3f}" if pd.notna(x) else "N/A")
+    # Add download button for the map
+    st.markdown("""
+    <div style="text-align: center; margin-top: 10px;">
+        <a href="#" class="download-button">
+            <i class="fas fa-download"></i> دانلود نقشه
+        </a>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.info("💡 برای ذخیره نقشه، می‌توانید از ابزار عکس گرفتن از صفحه (Screenshot) مرورگر یا سیستم عامل خود استفاده کنید.")
 
-    # Display the table with color coding
-    st.dataframe(ranking_df_sorted, use_container_width=True)
-    
-    # Add a summary of farm statuses
-    st.subheader("📊 خلاصه وضعیت مزارع")
-    
-    # Display status counts with appropriate colors
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        if "رشد مثبت" in ranking_df_sorted['وضعیت'].value_counts() or "بهبود" in ranking_df_sorted['وضعیت'].value_counts():
-            status = "رشد مثبت" if "رشد مثبت" in ranking_df_sorted['وضعیت'].value_counts() else "بهبود"
-            count = ranking_df_sorted['وضعیت'].value_counts()[status]
-            st.metric(f"🟢 {status}", count)
-    
-    with col2:
-        if "ثابت" in ranking_df_sorted['وضعیت'].value_counts():
-            count = ranking_df_sorted['وضعیت'].value_counts()["ثابت"]
-            st.metric("⚪ ثابت", count)
-    
-    with col3:
-        if "تنش/کاهش" in ranking_df_sorted['وضعیت'].value_counts() or "تنش/بدتر شدن" in ranking_df_sorted['وضعیت'].value_counts():
-            status = "تنش/کاهش" if "تنش/کاهش" in ranking_df_sorted['وضعیت'].value_counts() else "تنش/بدتر شدن"
-            count = ranking_df_sorted['وضعیت'].value_counts()[status]
-            st.metric(f"🔴 {status}", count)
-    
-    # Add explanation
-    st.info(f"""
-    **توضیحات:**
-    - **🟢 رشد مثبت/بهبود**: مزارعی که نسبت به هفته قبل بهبود داشته‌اند
-    - **⚪ ثابت**: مزارعی که تغییر معناداری نداشته‌اند
-    - **🔴 تنش/کاهش**: مزارعی که نسبت به هفته قبل وضعیت بدتری داشته‌اند
-    """)
+with tab2:
+    st.markdown("### 📈 نمودار روند زمانی شاخص {selected_index}")
 
-    # Add download button for the table
-    csv_data = ranking_df_sorted.to_csv(index=True).encode('utf-8')
-    st.download_button(
-        label="📥 دانلود جدول رتبه‌بندی (CSV)",
-        data=csv_data,
-        file_name=f'ranking_{selected_index}_{selected_day}_{end_date_current_str}.csv',
-        mime='text/csv',
+    if selected_farm_name == "همه مزارع":
+        st.info("لطفاً یک مزرعه خاص را از پنل کناری انتخاب کنید تا نمودار روند زمانی آن نمایش داده شود.")
+    elif selected_farm_geom:
+        # Fix the isinstance check - use string comparison instead
+        # Check if the geometry type is Point by converting to string and checking
+        is_point = str(selected_farm_geom).find('Point') >= 0
+        
+        if is_point:
+            # Define a longer period for the time series chart (e.g., last 6 months)
+            timeseries_end_date = today.strftime('%Y-%m-%d')
+            timeseries_start_date = (today - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
+
+            ts_df, ts_error = get_index_time_series(
+                selected_farm_geom,
+                selected_index,
+                start_date=timeseries_start_date,
+                end_date=timeseries_end_date
+            )
+
+            if ts_error:
+                st.warning(f"خطا در دریافت داده‌های سری زمانی: {ts_error}")
+            elif not ts_df.empty:
+                # Create a more visually appealing chart with Plotly
+                fig = px.line(
+                    ts_df, 
+                    y=selected_index,
+                    title=f"روند تغییرات شاخص {selected_index} برای مزرعه {selected_farm_name}",
+                    labels={selected_index: f"مقدار {selected_index}", "index": "تاریخ"},
+                    template="plotly_white"
+                )
+                
+                # Customize the chart
+                fig.update_layout(
+                    font=dict(family="Vazirmatn"),
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    xaxis=dict(
+                        title="تاریخ",
+                        gridcolor="rgba(0,0,0,0.1)",
+                        showgrid=True
+                    ),
+                    yaxis=dict(
+                        title=f"مقدار {selected_index}",
+                        gridcolor="rgba(0,0,0,0.1)",
+                        showgrid=True
+                    ),
+                    hovermode="x unified"
+                )
+                
+                # Display the chart
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Add download button for the chart data
+                csv_data = ts_df.reset_index().to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 دانلود داده‌های نمودار (CSV)",
+                    data=csv_data,
+                    file_name=f'timeseries_{selected_index}_{selected_farm_name}_{timeseries_end_date}.csv',
+                    mime='text/csv',
+                )
+                
+                st.caption(f"نمودار تغییرات شاخص {selected_index} برای مزرعه {selected_farm_name} در 6 ماه گذشته.")
+            else:
+                st.info(f"داده‌ای برای نمایش نمودار سری زمانی {selected_index} در بازه مشخص شده یافت نشد.")
+        else:
+            st.warning("نوع هندسه مزرعه برای نمودار سری زمانی پشتیبانی نمی‌شود (فقط نقطه).")
+    else:
+        st.warning("هندسه مزرعه برای نمودار سری زمانی در دسترس نیست.")
+
+with tab3:
+    st.markdown(f"### 📊 جدول رتبه‌بندی مزارع بر اساس {selected_index} (روز: {selected_day})")
+    st.markdown("مقایسه مقادیر متوسط شاخص در هفته جاری با هفته قبل.")
+
+    @st.cache_data(show_spinner=f"در حال محاسبه {selected_index} برای مزارع...", persist=True)
+    def calculate_weekly_indices(_farms_df, index_name, start_curr, end_curr, start_prev, end_prev):
+        """Calculates the average index value for the current and previous week for a list of farms."""
+        results = []
+        errors = []
+        total_farms = len(_farms_df)
+        progress_bar = st.progress(0)
+
+        for i, (idx, farm) in enumerate(_farms_df.iterrows()):
+            farm_name = farm['مزرعه']
+            lat = farm['عرض جغرافیایی']
+            lon = farm['طول جغرافیایی']
+            point_geom = ee.Geometry.Point([lon, lat])
+
+            def get_mean_value(start, end):
+                try:
+                    image, error = get_processed_image(point_geom, start, end, index_name)
+                    if image:
+                        # Reduce region to get the mean value at the point
+                        mean_dict = image.reduceRegion(
+                            reducer=ee.Reducer.mean(),
+                            geometry=point_geom,
+                            scale=10  # Scale in meters
+                        ).getInfo()
+                        return mean_dict.get(index_name) if mean_dict else None, None
+                    else:
+                        return None, error
+                except Exception as e:
+                     # Catch errors during reduceRegion or getInfo
+                     error_msg = f"خطا در محاسبه مقدار برای {farm_name} ({start}-{end}): {e}"
+                     # errors.append(error_msg) # Collect errors
+                     # st.warning(error_msg) # Show warning immediately
+                     return None, error_msg
+
+
+            # Calculate for current week
+            current_val, err_curr = get_mean_value(start_curr, end_curr)
+            if err_curr: errors.append(f"{farm_name} (هفته جاری): {err_curr}")
+
+            # Calculate for previous week
+            previous_val, err_prev = get_mean_value(start_prev, end_prev)
+            if err_prev: errors.append(f"{farm_name} (هفته قبل): {err_prev}")
+
+
+            # Calculate change
+            change = None
+            if current_val is not None and previous_val is not None:
+                try:
+                    change = current_val - previous_val
+                except TypeError: # Handle cases where values might not be numeric unexpectedly
+                    change = None
+
+            results.append({
+                'مزرعه': farm_name,
+                'کانال': farm.get('کانال', 'N/A'),
+                'اداره': farm.get('اداره', 'N/A'),
+                f'{index_name} (هفته جاری)': current_val,
+                f'{index_name} (هفته قبل)': previous_val,
+                'تغییر': change
+            })
+
+            # Update progress bar
+            progress_bar.progress((i + 1) / total_farms)
+
+        progress_bar.empty() # Remove progress bar after completion
+        return pd.DataFrame(results), errors
+
+    # Calculate and display the ranking table
+    ranking_df, calculation_errors = calculate_weekly_indices(
+        filtered_farms_df,
+        selected_index,
+        start_date_current_str,
+        end_date_current_str,
+        start_date_previous_str,
+        end_date_previous_str
     )
-else:
-    st.info(f"داده‌ای برای جدول رتبه‌بندی بر اساس {selected_index} در این بازه زمانی یافت نشد.")
+
+    # Display any errors that occurred during calculation
+    if calculation_errors:
+        st.warning("⚠️ برخی خطاها در حین محاسبه شاخص‌ها رخ داد:")
+        for error in calculation_errors[:10]: # Show first 10 errors
+            st.warning(f"- {error}")
+        if len(calculation_errors) > 10:
+            st.warning(f"... و {len(calculation_errors) - 10} خطای دیگر.")
 
 
+    if not ranking_df.empty:
+        # Sort by the current week's index value (descending for NDVI/EVI/LAI/CVI, ascending for MSI?)
+        # Adjust sorting based on index meaning
+        ascending_sort = selected_index in ['MSI'] # Indices where lower is better
+        ranking_df_sorted = ranking_df.sort_values(
+            by=f'{selected_index} (هفته جاری)',
+            ascending=ascending_sort,
+            na_position='last' # Put farms with no data at the bottom
+        ).reset_index(drop=True)
+
+        # Add rank number
+        ranking_df_sorted.index = ranking_df_sorted.index + 1
+        ranking_df_sorted.index.name = 'رتبه'
+
+        # Add a status column to indicate growth or stress
+        # For NDVI, EVI, LAI, CVI: higher is better
+        # For MSI, NDMI: lower is better
+        def determine_status(row, index_name):
+            if pd.isna(row['تغییر']) or pd.isna(row[f'{index_name} (هفته جاری)']) or pd.isna(row[f'{index_name} (هفته قبل)']):
+                return "بدون داده"
+            
+            # For indices where higher is better (NDVI, EVI, LAI, CVI)
+            if index_name in ['NDVI', 'EVI', 'LAI', 'CVI']:
+                if row['تغییر'] > 0.05:  # Significant growth
+                    return "رشد مثبت"
+                elif row['تغییر'] < -0.05:  # Significant decline
+                    return "تنش/کاهش"
+                else:
+                    return "ثابت"
+            # For indices where lower is better (MSI, NDMI)
+            elif index_name in ['MSI', 'NDMI']:
+                if row['تغییر'] < -0.05:  # Significant improvement
+                    return "بهبود"
+                elif row['تغییر'] > 0.05:  # Significant deterioration
+                    return "تنش/بدتر شدن"
+                else:
+                    return "ثابت"
+            else:
+                return "نامشخص"
+
+        # Add status column
+        ranking_df_sorted['وضعیت'] = ranking_df_sorted.apply(lambda row: determine_status(row, selected_index), axis=1)
+        
+        # Format numbers for better readability
+        cols_to_format = [f'{selected_index} (هفته جاری)', f'{selected_index} (هفته قبل)', 'تغییر']
+        for col in cols_to_format:
+            if col in ranking_df_sorted.columns:
+                 # Check if column exists before formatting
+                 ranking_df_sorted[col] = ranking_df_sorted[col].map(lambda x: f"{x:.3f}" if pd.notna(x) else "N/A")
+
+        # Apply custom styling to the table
+        def highlight_status(val):
+            if val == "رشد مثبت" or val == "بهبود":
+                return 'background-color: #d4edda; color: #155724;'
+            elif val == "ثابت":
+                return 'background-color: #fff3cd; color: #856404;'
+            elif val == "تنش/کاهش" or val == "تنش/بدتر شدن":
+                return 'background-color: #f8d7da; color: #721c24;'
+            elif val == "بدون داده":
+                return 'background-color: #e9ecef; color: #495057;'
+            return ''
+
+        # Apply the styling
+        styled_df = ranking_df_sorted.style.applymap(highlight_status, subset=['وضعیت'])
+
+        # Display the styled table
+        st.dataframe(styled_df, use_container_width=True)
+        
+        # Add a summary of farm statuses
+        st.markdown("### 📊 خلاصه وضعیت مزارع")
+        
+        # Display status counts with appropriate colors
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            if "رشد مثبت" in ranking_df_sorted['وضعیت'].value_counts() or "بهبود" in ranking_df_sorted['وضعیت'].value_counts():
+                status = "رشد مثبت" if "رشد مثبت" in ranking_df_sorted['وضعیت'].value_counts() else "بهبود"
+                count = ranking_df_sorted['وضعیت'].value_counts()[status]
+                st.markdown(f"""
+                <div class="summary-card animate-fade-in" style="background-color: #d4edda; color: #155724;">
+                    <div class="summary-card-title">🟢 {status}</div>
+                    <div class="summary-card-value">{count}</div>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        with col2:
+            if "ثابت" in ranking_df_sorted['وضعیت'].value_counts():
+                count = ranking_df_sorted['وضعیت'].value_counts()["ثابت"]
+                st.markdown(f"""
+                <div class="summary-card animate-fade-in" style="background-color: #fff3cd; color: #856404;">
+                    <div class="summary-card-title">⚪ ثابت</div>
+                    <div class="summary-card-value">{count}</div>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        with col3:
+            if "تنش/کاهش" in ranking_df_sorted['وضعیت'].value_counts() or "تنش/بدتر شدن" in ranking_df_sorted['وضعیت'].value_counts():
+                status = "تنش/کاهش" if "تنش/کاهش" in ranking_df_sorted['وضعیت'].value_counts() else "تنش/بدتر شدن"
+                count = ranking_df_sorted['وضعیت'].value_counts()[status]
+                st.markdown(f"""
+                <div class="summary-card animate-fade-in" style="background-color: #f8d7da; color: #721c24;">
+                    <div class="summary-card-title">🔴 {status}</div>
+                    <div class="summary-card-value">{count}</div>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        with col4:
+            if "بدون داده" in ranking_df_sorted['وضعیت'].value_counts():
+                count = ranking_df_sorted['وضعیت'].value_counts()["بدون داده"]
+                st.markdown(f"""
+                <div class="summary-card animate-fade-in" style="background-color: #e9ecef; color: #495057;">
+                    <div class="summary-card-title">⚫ بدون داده</div>
+                    <div class="summary-card-value">{count}</div>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        # Add explanation
+        st.info(f"""
+        **توضیحات:**
+        - **🟢 رشد مثبت/بهبود**: مزارعی که نسبت به هفته قبل بهبود داشته‌اند
+        - **⚪ ثابت**: مزارعی که تغییر معناداری نداشته‌اند
+        - **🔴 تنش/کاهش**: مزارعی که نسبت به هفته قبل وضعیت بدتری داشته‌اند
+        """)
+
+        # Add download button for the table
+        csv_data = ranking_df_sorted.to_csv(index=True).encode('utf-8')
+        st.download_button(
+            label="📥 دانلود جدول رتبه‌بندی (CSV)",
+            data=csv_data,
+            file_name=f'ranking_{selected_index}_{selected_day}_{end_date_current_str}.csv',
+            mime='text/csv',
+        )
+    else:
+        st.info(f"داده‌ای برای جدول رتبه‌بندی بر اساس {selected_index} در این بازه زمانی یافت نشد.")
+
+with tab4:
+    st.markdown("### 📋 گزارش‌ها و تحلیل‌ها")
+    
+    # Create a report section with multiple subsections
+    report_tab1, report_tab2, report_tab3 = st.tabs(["📊 تحلیل آماری", "📈 روند تغییرات", "📑 گزارش‌های سفارشی"])
+    
+    with report_tab1:
+        st.markdown("#### تحلیل آماری شاخص‌های مزارع")
+        
+        if not ranking_df.empty:
+            # Calculate basic statistics
+            current_values = ranking_df[f'{selected_index} (هفته جاری)'].dropna()
+            
+            if not current_values.empty:
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.markdown(f"""
+                    <div class="summary-card animate-fade-in">
+                        <div class="summary-card-title">میانگین {selected_index}</div>
+                        <div class="summary-card-value">{current_values.mean():.3f}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col2:
+                    st.markdown(f"""
+                    <div class="summary-card animate-fade-in">
+                        <div class="summary-card-title">حداقل {selected_index}</div>
+                        <div class="summary-card-value">{current_values.min():.3f}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col3:
+                    st.markdown(f"""
+                    <div class="summary-card animate-fade-in">
+                        <div class="summary-card-title">حداکثر {selected_index}</div>
+                        <div class="summary-card-value">{current_values.max():.3f}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                # Create a histogram of the current values
+                fig = px.histogram(
+                    current_values, 
+                    title=f"توزیع مقادیر {selected_index}",
+                    labels={f'{selected_index} (هفته جاری)': f"مقدار {selected_index}", "count": "تعداد مزارع"},
+                    template="plotly_white"
+                )
+                
+                # Customize the chart
+                fig.update_layout(
+                    font=dict(family="Vazirmatn"),
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    xaxis=dict(
+                        gridcolor="rgba(0,0,0,0.1)",
+                        showgrid=True
+                    ),
+                    yaxis=dict(
+                        gridcolor="rgba(0,0,0,0.1)",
+                        showgrid=True
+                    )
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info(f"داده‌ای برای تحلیل آماری {selected_index} در دسترس نیست.")
+        else:
+            st.info("داده‌ای برای تحلیل آماری در دسترس نیست.")
+    
+    with report_tab2:
+        st.markdown("#### روند تغییرات شاخص‌ها")
+        
+        if not ranking_df.empty:
+            # Calculate the percentage of farms with positive, neutral, and negative changes
+            status_counts = ranking_df_sorted['وضعیت'].value_counts()
+            
+            # Create a pie chart of the status distribution
+            fig = px.pie(
+                values=status_counts.values, 
+                names=status_counts.index,
+                title="توزیع وضعیت مزارع",
+                template="plotly_white",
+                color_discrete_sequence=px.colors.qualitative.Set3
+            )
+            
+            # Customize the chart
+            fig.update_layout(
+                font=dict(family="Vazirmatn"),
+                plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)"
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Add a summary of the changes
+            st.markdown("##### خلاصه تغییرات")
+            
+            # Calculate the average change
+            changes = ranking_df['تغییر'].dropna()
+            if not changes.empty:
+                avg_change = changes.mean()
+                change_direction = "افزایش" if avg_change > 0 else "کاهش"
+                
+                st.markdown(f"""
+                <div style="background-color: white; padding: 1.5rem; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                    <h4 style="margin-top: 0;">میانگین تغییر {selected_index}</h4>
+                    <p style="font-size: 1.2rem;">در هفته جاری نسبت به هفته قبل، میانگین {selected_index} 
+                    <strong>{change_direction}</strong> یافته است (تغییر: {avg_change:.3f}).</p>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.info("داده‌ای برای محاسبه میانگین تغییرات در دسترس نیست.")
+        else:
+            st.info("داده‌ای برای تحلیل روند تغییرات در دسترس نیست.")
+    
+    with report_tab3:
+        st.markdown("#### گزارش‌های سفارشی")
+        
+        # Add options for custom reports
+        report_type = st.selectbox(
+            "نوع گزارش",
+            options=["گزارش مقایسه‌ای مزارع", "گزارش روند زمانی", "گزارش وضعیت کلی"]
+        )
+        
+        if report_type == "گزارش مقایسه‌ای مزارع":
+            st.markdown("##### گزارش مقایسه‌ای مزارع")
+            
+            # Add options for comparison
+            compare_by = st.selectbox(
+                "مقایسه بر اساس",
+                options=["کانال", "واریته", "اداره"]
+            )
+            
+            if not ranking_df.empty and compare_by in ranking_df.columns:
+                # Group by the selected column and calculate statistics
+                grouped = ranking_df.groupby(compare_by)[f'{selected_index} (هفته جاری)'].agg(['mean', 'min', 'max', 'count']).reset_index()
+                
+                # Sort by mean value
+                ascending_sort = selected_index in ['MSI'] # Indices where lower is better
+                grouped = grouped.sort_values('mean', ascending=ascending_sort)
+                
+                # Display the comparison table
+                st.dataframe(grouped, use_container_width=True)
+                
+                # Create a bar chart of the comparison
+                fig = px.bar(
+                    grouped, 
+                    x=compare_by, 
+                    y='mean',
+                    title=f"میانگین {selected_index} بر اساس {compare_by}",
+                    labels={'mean': f"میانگین {selected_index}", compare_by: compare_by},
+                    template="plotly_white"
+                )
+                
+                # Customize the chart
+                fig.update_layout(
+                    font=dict(family="Vazirmatn"),
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    xaxis=dict(
+                        gridcolor="rgba(0,0,0,0.1)",
+                        showgrid=True
+                    ),
+                    yaxis=dict(
+                        gridcolor="rgba(0,0,0,0.1)",
+                        showgrid=True
+                    )
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info(f"داده‌ای برای مقایسه بر اساس {compare_by} در دسترس نیست.")
+        
+        elif report_type == "گزارش روند زمانی":
+            st.markdown("##### گزارش روند زمانی")
+            
+            # Add options for time series report
+            time_period = st.selectbox(
+                "بازه زمانی",
+                options=["1 ماه گذشته", "3 ماه گذشته", "6 ماه گذشته", "1 سال گذشته"]
+            )
+            
+            # Map time period to days
+            days_map = {
+                "1 ماه گذشته": 30,
+                "3 ماه گذشته": 90,
+                "6 ماه گذشته": 180,
+                "1 سال گذشته": 365
+            }
+            
+            days = days_map[time_period]
+            
+            if selected_farm_name != "همه مزارع" and selected_farm_geom:
+                # Get time series data for the selected farm
+                timeseries_end_date = today.strftime('%Y-%m-%d')
+                timeseries_start_date = (today - datetime.timedelta(days=days)).strftime('%Y-%m-%d')
+                
+                ts_df, ts_error = get_index_time_series(
+                    selected_farm_geom,
+                    selected_index,
+                    start_date=timeseries_start_date,
+                    end_date=timeseries_end_date
+                )
+                
+                if not ts_error and not ts_df.empty:
+                    # Create a time series chart
+                    fig = px.line(
+                        ts_df, 
+                        y=selected_index,
+                        title=f"روند تغییرات {selected_index} برای مزرعه {selected_farm_name}",
+                        labels={selected_index: f"مقدار {selected_index}", "index": "تاریخ"},
+                        template="plotly_white"
+                    )
+                    
+                    # Customize the chart
+                    fig.update_layout(
+                        font=dict(family="Vazirmatn"),
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        xaxis=dict(
+                            title="تاریخ",
+                            gridcolor="rgba(0,0,0,0.1)",
+                            showgrid=True
+                        ),
+                        yaxis=dict(
+                            title=f"مقدار {selected_index}",
+                            gridcolor="rgba(0,0,0,0.1)",
+                            showgrid=True
+                        ),
+                        hovermode="x unified"
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Add statistics about the time series
+                    st.markdown("##### آمار توصیفی سری زمانی")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.markdown(f"""
+                        <div class="summary-card animate-fade-in">
+                            <div class="summary-card-title">میانگین {selected_index}</div>
+                            <div class="summary-card-value">{ts_df[selected_index].mean():.3f}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col2:
+                        st.markdown(f"""
+                        <div class="summary-card animate-fade-in">
+                            <div class="summary-card-title">حداقل {selected_index}</div>
+                            <div class="summary-card-value">{ts_df[selected_index].min():.3f}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col3:
+                        st.markdown(f"""
+                        <div class="summary-card animate-fade-in">
+                            <div class="summary-card-title">حداکثر {selected_index}</div>
+                            <div class="summary-card-value">{ts_df[selected_index].max():.3f}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.info(f"داده‌ای برای نمایش روند زمانی {selected_index} در بازه {time_period} یافت نشد.")
+            else:
+                st.info("لطفاً یک مزرعه خاص را از پنل کناری انتخاب کنید تا گزارش روند زمانی آن نمایش داده شود.")
+        
+        elif report_type == "گزارش وضعیت کلی":
+            st.markdown("##### گزارش وضعیت کلی مزارع")
+            
+            if not ranking_df.empty:
+                # Create a summary of the overall status
+                status_summary = ranking_df_sorted['وضعیت'].value_counts()
+                
+                # Calculate percentages
+                total_farms = len(ranking_df_sorted)
+                status_percentages = {status: (count / total_farms) * 100 for status, count in status_summary.items()}
+                
+                # Display the summary
+                st.markdown("##### توزیع وضعیت مزارع")
+                
+                for status, count in status_summary.items():
+                    percentage = status_percentages[status]
+                    
+                    # Determine color based on status
+                    if status in ["رشد مثبت", "بهبود"]:
+                        color = "#d4edda"
+                        text_color = "#155724"
+                    elif status == "ثابت":
+                        color = "#fff3cd"
+                        text_color = "#856404"
+                    elif status in ["تنش/کاهش", "تنش/بدتر شدن"]:
+                        color = "#f8d7da"
+                        text_color = "#721c24"
+                    else:
+                        color = "#e9ecef"
+                        text_color = "#495057"
+                    
+                    st.markdown(f"""
+                    <div style="background-color: {color}; color: {text_color}; padding: 1rem; border-radius: 8px; margin-bottom: 0.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div style="font-weight: bold;">{status}</div>
+                            <div>{count} مزرعه ({percentage:.1f}%)</div>
+                        </div>
+                        <div style="background-color: rgba(0,0,0,0.1); height: 8px; border-radius: 4px; margin-top: 0.5rem;">
+                            <div style="background-color: {text_color}; height: 100%; width: {percentage}%; border-radius: 4px;"></div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                # Add recommendations based on the status
+                st.markdown("##### توصیه‌ها")
+                
+                if "تنش/کاهش" in status_summary or "تنش/بدتر شدن" in status_summary:
+                    st.warning("""
+                    **توصیه برای مزارع با وضعیت تنش/کاهش:**
+                    - بررسی وضعیت آبیاری و اطمینان از تامین آب کافی
+                    - بررسی وجود آفات و بیماری‌ها
+                    - بررسی وضعیت خاک و تغذیه گیاه
+                    - در صورت نیاز، مشاوره با کارشناسان کشاورزی
+                    """)
+                
+                if "رشد مثبت" in status_summary or "بهبود" in status_summary:
+                    st.success("""
+                    **توصیه برای مزارع با وضعیت رشد مثبت/بهبود:**
+                    - ادامه روند فعلی مدیریت مزرعه
+                    - ثبت و مستندسازی روش‌های موفق
+                    - به اشتراک‌گذاری تجربیات با سایر مزارع
+                    """)
+                
+                if "ثابت" in status_summary:
+                    st.info("""
+                    **توصیه برای مزارع با وضعیت ثابت:**
+                    - بررسی پتانسیل‌های بهبود وضعیت
+                    - مقایسه با مزارع مشابه با وضعیت بهتر
+                    - شناسایی عوامل محدودکننده رشد
+                    """)
+            else:
+                st.info("داده‌ای برای گزارش وضعیت کلی در دسترس نیست.")
+
+# Add footer
 st.markdown("---")
-st.sidebar.markdown("---")
-st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap")
-
-# --- Display Functions ---
-def display_farm_details(farm_data):
-    """Display farm details in a modern card layout."""
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric("مساحت (هکتار)", f"{farm_data.get('مساحت', 'N/A'):,.2f}" if pd.notna(farm_data.get('مساحت')) else "N/A")
-        st.metric("واریته", farm_data.get('واریته', 'N/A'))
-    
-    with col2:
-        st.metric("کانال", farm_data.get('کانال', 'N/A'))
-        st.metric("اداره", farm_data.get('اداره', 'N/A'))
-    
-    with col3:
-        st.metric("سن", f"{farm_data.get('سن', 'N/A')}" if pd.notna(farm_data.get('سن')) else "N/A")
-        st.metric("مختصات", f"{farm_data['عرض جغرافیایی']:.5f}, {farm_data['طول جغرافیایی']:.5f}")
+st.markdown("""
+<div style="text-align: center; padding: 1rem; color: #6c757d; font-size: 0.9rem;">
+    <p>سامانه پایش هوشمند نیشکر | مطالعات کاربردی شرکت کشت و صنعت دهخدا</p>
+    <p>ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap</p>
+</div>
+""", unsafe_allow_html=True)
