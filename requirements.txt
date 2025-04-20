@@ -5,3 +5,4 @@ geemap
 folium
 plotly
 requests
+streamlit_folium
