@@ -160,32 +160,27 @@ def load_farm_data(csv_path=CSV_FILE_PATH):
     """Loads farm data from the specified CSV file."""
     try:
         df = pd.read_csv(csv_path)
-        # Basic validation
         required_cols = ['مزرعه', 'طول جغرافیایی', 'عرض جغرافیایی', 'روزهای هفته', 'coordinates_missing']
         if not all(col in df.columns for col in required_cols):
             st.error(f"❌ فایل CSV باید شامل ستون‌های ضروری باشد: {', '.join(required_cols)}")
             return None
-        # Convert coordinate columns to numeric, coercing errors
+        
         df['طول جغرافیایی'] = pd.to_numeric(df['طول جغرافیایی'], errors='coerce')
         df['عرض جغرافیایی'] = pd.to_numeric(df['عرض جغرافیایی'], errors='coerce')
-        # Handle missing coordinates flag explicitly if needed
         df['coordinates_missing'] = df['coordinates_missing'].fillna(False).astype(bool)
-        # Drop rows where coordinates are actually missing after coercion or flagged
         df = df.dropna(subset=['طول جغرافیایی', 'عرض جغرافیایی'])
         df = df[~df['coordinates_missing']]
 
         if df.empty:
-            st.warning("⚠️ داده معتبری برای مزارع یافت نشد (پس از حذف رکوردهای بدون مختصات).")
+            st.warning("⚠️ داده معتبری برای مزارع یافت نشد.")
             return None
 
-        # Ensure 'روزهای هفته' is string type for consistent filtering
         df['روزهای هفته'] = df['روزهای هفته'].astype(str).str.strip()
-
+        # حذف مقادیر خالی از روزهای هفته
+        df = df[df['روزهای هفته'].str.len() > 0]
+        
         st.success(f"✅ داده‌های {len(df)} مزرعه با موفقیت بارگذاری شد.")
         return df
-    except FileNotFoundError:
-        st.error(f"❌ فایل '{csv_path}' یافت نشد. لطفاً فایل CSV داده‌های مزارع را در مسیر صحیح قرار دهید.")
-        return None
     except Exception as e:
         st.error(f"❌ خطا در بارگذاری یا پردازش فایل CSV: {e}")
         st.error(traceback.format_exc())
@@ -305,6 +300,18 @@ st.title(APP_TITLE)
 
 # Initialize GEE and load data
 if initialize_gee():
+    # Load farm data first to get available days
+    farm_data_df = load_farm_data()
+    if farm_data_df is None:
+        st.error("❌ امکان ادامه کار بدون داده‌های مزارع وجود ندارد.")
+        st.stop()
+    
+    # Get available days from farm data
+    available_days = sorted(farm_data_df['روزهای هفته'].unique())
+    if not available_days:
+        st.error("❌ هیچ روز هفته‌ای در داده‌ها یافت نشد.")
+        st.stop()
+    
     # Get initial date range
     date_range = get_date_range(available_days[0])  # Use first available day
     if date_range is None:
