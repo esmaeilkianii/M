@@ -17,7 +17,7 @@ INITIAL_LON = 48.724416
 INITIAL_ZOOM = 12
 
 # --- File Paths (Relative to the script location in Hugging Face) ---
-CSV_FILE_PATH = 'output (1).csv'
+CSV_FILE_PATH = 'cleaned_output.csv'
 SERVICE_ACCOUNT_FILE = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json'
 
 # --- GEE Authentication ---
