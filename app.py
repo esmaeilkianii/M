@@ -160,13 +160,16 @@ def load_farm_data(csv_path=CSV_FILE_PATH):
     """Loads farm data from the specified CSV file."""
     try:
         df = pd.read_csv(csv_path)
-        required_cols = ['مزرعه', 'طول جغرافیایی', 'عرض جغرافیایی', 'روزهای هفته', 'coordinates_missing']
+        required_cols = ['مزرعه', 'طول جغرافیایی', 'عرض جغرافیایی', 'کانال', 'اداره', 'مساحت', 'واریته', 'سن', 'روزهای هفته', 'coordinates_missing']
         if not all(col in df.columns for col in required_cols):
             st.error(f"❌ فایل CSV باید شامل ستون‌های ضروری باشد: {', '.join(required_cols)}")
             return None
         
-        df['طول جغرافیایی'] = pd.to_numeric(df['طول جغرافیایی'], errors='coerce')
-        df['عرض جغرافیایی'] = pd.to_numeric(df['عرض جغرافیایی'], errors='coerce')
+        # تبدیل ستون‌های عددی
+        numeric_cols = ['طول جغرافیایی', 'عرض جغرافیایی', 'مساحت', 'سن']
+        for col in numeric_cols:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+        
         df['coordinates_missing'] = df['coordinates_missing'].fillna(False).astype(bool)
         df = df.dropna(subset=['طول جغرافیایی', 'عرض جغرافیایی'])
         df = df[~df['coordinates_missing']]
@@ -636,16 +639,7 @@ else:
     selected_farm_geom = ee.Geometry.Point([lon, lat])
     st.subheader(f"جزئیات مزرعه: {selected_farm_name} (روز: {selected_day})")
     # Display farm details
-    details_cols = st.columns(3)
-    with details_cols[0]:
-        st.metric("مساحت داشت (هکتار)", f"{selected_farm_details.get('مساحت', 'N/A'):,.2f}" if pd.notna(selected_farm_details.get('مساحت')) else "N/A")
-        st.metric("واریته", f"{selected_farm_details.get('واریته', 'N/A')}")
-    with details_cols[1]:
-        st.metric("کانال", f"{selected_farm_details.get('کانال', 'N/A')}")
-        st.metric("سن", f"{selected_farm_details.get('سن', 'N/A')}")
-    with details_cols[2]:
-        st.metric("اداره", f"{selected_farm_details.get('اداره', 'N/A')}")
-        st.metric("مختصات", f"{lat:.5f}, {lon:.5f}")
+    display_farm_details(selected_farm_details)
 
 
 # --- Map Display ---
@@ -988,3 +982,20 @@ else:
 st.markdown("---")
 st.sidebar.markdown("---")
 st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap")
+
+# --- Display Functions ---
+def display_farm_details(farm_data):
+    """Display farm details in a modern card layout."""
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("مساحت (هکتار)", f"{farm_data.get('مساحت', 'N/A'):,.2f}" if pd.notna(farm_data.get('مساحت')) else "N/A")
+        st.metric("واریته", farm_data.get('واریته', 'N/A'))
+    
+    with col2:
+        st.metric("کانال", farm_data.get('کانال', 'N/A'))
+        st.metric("اداره", farm_data.get('اداره', 'N/A'))
+    
+    with col3:
+        st.metric("سن", f"{farm_data.get('سن', 'N/A')}" if pd.notna(farm_data.get('سن')) else "N/A")
+        st.metric("مختصات", f"{farm_data['عرض جغرافیایی']:.5f}, {farm_data['طول جغرافیایی']:.5f}")
