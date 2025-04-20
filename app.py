@@ -12,6 +12,7 @@ import requests # Needed for getThumbUrl download
 import traceback  # Add missing traceback import
 from streamlit_folium import st_folium  # Add missing st_folium import
 import base64
+import logging
 
 # --- Custom CSS ---
 st.set_page_config(
@@ -520,41 +521,79 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
     index_name: Name of the primary index band to return (e.g., 'NDVI')
     """
     try:
+        st.write(f"Fetching images for date range: {start_date} to {end_date}")
+        
+        # Get the Sentinel-2 collection
         s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
                      .filterBounds(_geometry)
-                     .filterDate(start_date, end_date)
-                     .map(maskS2clouds)) # Apply cloud masking
-
-        # Check if any images are available after filtering
-        count = s2_sr_col.size().getInfo()
-        if count == 0:
-            # st.warning(f"هیچ تصویر Sentinel-2 بدون ابر در بازه {start_date} تا {end_date} یافت نشد.")
+                     .filterDate(start_date, end_date))
+        
+        # Log the initial collection size
+        initial_count = s2_sr_col.size().getInfo()
+        st.write(f"Initial collection size: {initial_count} images")
+        
+        if initial_count == 0:
+            return None, f"No Sentinel-2 images found for {start_date} to {end_date}."
+        
+        # Apply cloud masking
+        st.write("Applying cloud masking...")
+        s2_sr_col = s2_sr_col.map(maskS2clouds)
+        
+        # Check collection size after cloud masking
+        masked_count = s2_sr_col.size().getInfo()
+        st.write(f"Images after cloud masking: {masked_count}")
+        
+        if masked_count == 0:
             return None, f"No cloud-free Sentinel-2 images found for {start_date} to {end_date}."
-
-        # Calculate indices for each image in the collection
+        
+        # Calculate indices for each image
+        st.write("Calculating indices...")
         indexed_col = s2_sr_col.map(add_indices)
-
-        # Create a median composite image
-        median_image = indexed_col.median() # Use median to reduce noise/outliers
-
+        
+        # Create median composite
+        st.write("Creating median composite...")
+        median_image = indexed_col.median()
+        
         # Select the desired index band
+        st.write(f"Selecting {index_name} band...")
         output_image = median_image.select(index_name)
-
-        return output_image, None # Return the image and no error message
+        
+        # Verify the image has data
+        try:
+            # Get a sample of the image to verify it has data
+            sample = output_image.reduceRegion(
+                reducer=ee.Reducer.first(),
+                geometry=_geometry,
+                scale=10
+            ).getInfo()
+            
+            if sample and index_name in sample:
+                st.write(f"Sample data for {index_name}: {sample[index_name]}")
+                if sample[index_name] is None:
+                    st.warning(f"No valid data found for {index_name} in the sample area")
+                    return None, f"No valid data found for {index_name} in the sample area"
+            else:
+                st.warning(f"No {index_name} data found in the sample")
+                return None, f"No {index_name} data found in the sample"
+                
+        except Exception as e:
+            st.write(f"Error getting sample data: {e}")
+            return None, f"Error verifying image data: {e}"
+        
+        return output_image, None
+        
     except ee.EEException as e:
-        # Handle GEE specific errors
         error_message = f"خطای Google Earth Engine: {e}"
         st.error(error_message)
-        # Try to extract more details if available
         try:
-            # GEE errors sometimes have details nested
             error_details = e.args[0] if e.args else str(e)
-            if isinstance(error_details, str) and 'computation timed out' in error_details.lower():
-                 error_message += "\n(احتمالاً به دلیل حجم بالای پردازش یا بازه زمانی طولانی)"
-            elif isinstance(error_details, str) and 'user memory limit exceeded' in error_details.lower():
-                 error_message += "\n(احتمالاً به دلیل پردازش منطقه بزرگ یا عملیات پیچیده)"
+            if isinstance(error_details, str):
+                if 'computation timed out' in error_details.lower():
+                    error_message += "\n(احتمالاً به دلیل حجم بالای پردازش یا بازه زمانی طولانی)"
+                elif 'user memory limit exceeded' in error_details.lower():
+                    error_message += "\n(احتمالاً به دلیل پردازش منطقه بزرگ یا عملیات پیچیده)"
         except Exception:
-            pass # Ignore errors during error detail extraction
+            pass
         return None, error_message
     except Exception as e:
         error_message = f"خطای ناشناخته در پردازش GEE: {e}\n{traceback.format_exc()}"
@@ -769,13 +808,52 @@ with tab1:
     
     # Define visualization parameters based on the selected index
     vis_params = {
-        'NDVI': {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']},
-        'EVI': {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']},
-        'NDMI': {'min': -1, 'max': 1, 'palette': ['brown', 'white', 'blue']},
-        'LAI': {'min': 0, 'max': 6, 'palette': ['white', 'lightgreen', 'darkgreen']}, # Adjust max based on expected values
-        'MSI': {'min': 0, 'max': 3, 'palette': ['blue', 'white', 'brown']}, # Lower values = more moisture
-        'CVI': {'min': 0, 'max': 20, 'palette': ['yellow', 'lightgreen', 'darkgreen']}, # Adjust max based on expected values
-        # Add vis params for other indices if implemented
+        'NDVI': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'NDWI': {'min': -1, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'NDMI': {'min': -1, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'NDBI': {'min': -1, 'max': 1, 'palette': ['blue', 'white', 'red']},
+        'SAVI': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'EVI': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'GNDVI': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'OSAVI': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'MSAVI': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'NDRE': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'MCARI': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'TCARI': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'CARI': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'SIPI': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'PSRI': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'ARI': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'CRI1': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'CRI2': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'MTCI': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'REIP': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'Chlgreen': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'Chlrededge': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'GM1': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'GM2': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'LWCI': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'DWSI': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'MSI': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'NDII': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'NDWI2': {'min': -1, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'SR': {'min': 0, 'max': 30, 'palette': ['blue', 'white', 'green']},
+        'DVI': {'min': -1, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'RVI': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'TVI': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'CTVI': {'min': -1, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'TTVI': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'GDVI': {'min': -1, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'WDVI': {'min': -1, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'TDVI': {'min': -1, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'RDVI': {'min': -1, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'MSR': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'MSAVI2': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'VARI': {'min': -1, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'VIG': {'min': 0, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'GRVI': {'min': -1, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'MGRVI': {'min': -1, 'max': 1, 'palette': ['blue', 'white', 'green']},
+        'RGB': {'bands': ['B4', 'B3', 'B2'], 'min': 0, 'max': 3000}
     }
 
     map_center_lat = 31.534442
@@ -1529,3 +1607,186 @@ st.markdown("""
     <p>ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap</p>
 </div>
 """, unsafe_allow_html=True)
+
+# Visualization parameters for different indices
+VISUALIZATION_PARAMS = {
+    'NDVI': {
+        'min': 0,
+        'max': 1,
+        'palette': ['blue', 'white', 'green']
+    },
+    'NDWI': {
+        'min': -1,
+        'max': 1,
+        'palette': ['blue', 'white', 'green']
+    },
+    'NDMI': {
+        'min': -1,
+        'max': 1,
+        'palette': ['blue', 'white', 'green']
+    },
+    'NDBI': {
+        'min': -1,
+        'max': 1,
+        'palette': ['blue', 'white', 'red']
+    },
+    'NDSI': {
+        'min': -1,
+        'max': 1,
+        'palette': ['blue', 'white', 'red']
+    },
+    'SAVI': {
+        'min': -1,
+        'max': 1,
+        'palette': ['blue', 'white', 'green']
+    },
+    'EVI': {
+        'min': -1,
+        'max': 1,
+        'palette': ['blue', 'white', 'green']
+    },
+    'GNDVI': {
+        'min': -1,
+        'max': 1,
+        'palette': ['blue', 'white', 'green']
+    },
+    'OSAVI': {
+        'min': -1,
+        'max': 1,
+        'palette': ['blue', 'white', 'green']
+    },
+    'MSAVI': {
+        'min': -1,
+        'max': 1,
+        'palette': ['blue', 'white', 'green']
+    },
+    'NDRE': {
+        'min': -1,
+        'max': 1,
+        'palette': ['blue', 'white', 'green']
+    },
+    'NDVI_TS': {
+        'min': 0,
+        'max': 1,
+        'palette': ['blue', 'white', 'green']
+    }
+}
+
+def get_visualization_params(index_name):
+    """
+    Returns visualization parameters for a given index.
+    If the index is not found in the predefined parameters, returns default parameters.
+    """
+    if index_name in VISUALIZATION_PARAMS:
+        return VISUALIZATION_PARAMS[index_name]
+    else:
+        # Default parameters for unknown indices
+        return {
+            'min': -1,
+            'max': 1,
+            'palette': ['blue', 'white', 'green']
+        }
+
+def get_processed_image(roi, date_range, index_type):
+    """
+    Get processed image for visualization with enhanced error handling and logging.
+    
+    Args:
+        roi: Region of interest
+        date_range: Tuple of (start_date, end_date)
+        index_type: Type of index to calculate
+        
+    Returns:
+        Processed image for visualization
+    """
+    try:
+        logging.info(f"Fetching images for date range: {date_range}")
+        start_date, end_date = date_range
+        
+        # Get image collection
+        collection = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2') \
+            .filterBounds(roi) \
+            .filterDate(start_date, end_date) \
+            .sort('CLOUD_COVER')
+            
+        initial_count = collection.size().getInfo()
+        logging.info(f"Initial collection size: {initial_count} images")
+        
+        if initial_count == 0:
+            raise ValueError("No images found for the specified date range and region")
+            
+        # Apply cloud masking
+        def mask_clouds(image):
+            cloudShadowBitMask = 1 << 3
+            cloudsBitMask = 1 << 5
+            qa = image.select('QA_PIXEL')
+            mask = qa.bitwiseAnd(cloudShadowBitMask).eq(0).And(
+                qa.bitwiseAnd(cloudsBitMask).eq(0))
+            return image.updateMask(mask)
+            
+        collection = collection.map(mask_clouds)
+        filtered_count = collection.size().getInfo()
+        logging.info(f"Images after cloud masking: {filtered_count}")
+        
+        if filtered_count == 0:
+            raise ValueError("No clear images available after cloud masking")
+            
+        # Get the least cloudy image
+        image = collection.first()
+        
+        # Calculate the selected index
+        if index_type == 'NDVI':
+            index = calculate_ndvi(image)
+        elif index_type == 'NDWI':
+            index = calculate_ndwi(image)
+        elif index_type == 'NDMI':
+            index = calculate_ndmi(image)
+        elif index_type == 'NDBI':
+            index = calculate_ndbi(image)
+        elif index_type == 'NDSI':
+            index = calculate_ndsi(image)
+        elif index_type == 'SAVI':
+            index = calculate_savi(image)
+        elif index_type == 'EVI':
+            index = calculate_evi(image)
+        elif index_type == 'GNDVI':
+            index = calculate_gndvi(image)
+        elif index_type == 'OSAVI':
+            index = calculate_osavi(image)
+        elif index_type == 'MSAVI':
+            index = calculate_msavi(image)
+        elif index_type == 'NDRE':
+            index = calculate_ndre(image)
+        else:
+            raise ValueError(f"Unsupported index type: {index_type}")
+            
+        # Get visualization parameters
+        vis_params = get_visualization_params(index_type)
+        
+        # Clip to ROI and apply visualization parameters
+        processed_image = index.clip(roi).visualize(vis_params)
+        
+        # Get the URL for the processed image
+        url = processed_image.getThumbURL({
+            'format': 'png',
+            'dimensions': 512
+        })
+        
+        logging.info(f"Successfully processed image for {index_type}")
+        return url
+        
+    except ee.EEException as e:
+        error_msg = str(e)
+        if "Computation timed out" in error_msg:
+            logging.error("Google Earth Engine computation timed out. Try reducing the region size or date range.")
+            raise ValueError("Computation timed out. Please try with a smaller region or shorter date range.")
+        elif "User memory limit exceeded" in error_msg:
+            logging.error("Google Earth Engine memory limit exceeded. Try reducing the region size.")
+            raise ValueError("Memory limit exceeded. Please try with a smaller region.")
+        else:
+            logging.error(f"Google Earth Engine error: {error_msg}")
+            raise ValueError(f"Error processing image: {error_msg}")
+            
+    except Exception as e:
+        logging.error(f"Error in get_processed_image: {str(e)}")
+        raise ValueError(f"Error processing image: {str(e)}")
