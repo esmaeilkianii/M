@@ -8,12 +8,9 @@ import datetime
 import plotly.express as px
 import os
 from io import BytesIO
-import requests # Needed for getThumbUrl download
-import traceback  # Add missing traceback import
-from streamlit_folium import st_folium  # Add missing st_folium import
-import socket
-import socks
-import httplib2
+import requests
+import traceback
+from streamlit_folium import st_folium
 import pickle
 from pathlib import Path
 
