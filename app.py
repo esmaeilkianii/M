@@ -375,87 +375,61 @@ def get_timeseries_for_farm(_farm_geom_geojson, start_date, end_date, index_name
     first_image_bands = ee.Image(collection.first()).bandNames().getInfo()
     index_func_detail = INDEX_FUNCTIONS.get(index_name)
     if not index_func_detail:
-         st.error(f"Index function for {index_name} not found.")
-         return pd.DataFrame(columns=['Date', index_name])
+        st.error(f"Index function for {index_name} not found.")
+        return pd.DataFrame(columns=['Date', index_name])
 
-    # Crude check for band requirements before mapping - prevents unnecessary calculation
-    # Add more specific checks based on index_name if needed
-    bands_needed = ['NIR', 'Red'] # Base requirement for most
-    if index_name == 'EVI': bands_needed.append('Blue')
-    if index_name == 'Chlorophyll' and sensor == 'Sentinel-2': bands_needed.append('RedEdge1') # Only if S2
-
-
-
-
-
+    # Crude check for band requirements before mapping
+    bands_needed = ['NIR', 'Red']  # Base requirement for most
+    if index_name == 'EVI':
+        bands_needed.append('Blue')
+    if index_name == 'Chlorophyll' and sensor == 'Sentinel-2':
+        bands_needed.append('RedEdge1')
 
     if not all(b in first_image_bands for b in bands_needed if b != 'RedEdge1' or sensor == 'Sentinel-2'):
-         st.warning(f"Cannot calculate timeseries for {index_name}: Required bands missing after processing.", icon="⚠️")
-         return pd.DataFrame(columns=['Date', index_name])
+        st.warning(f"Cannot calculate timeseries for {index_name}: Required bands missing after processing.", icon="⚠️")
+        return pd.DataFrame(columns=['Date', index_name])
 
-
-
-
-
-
-
-
-    # Calculate *only* the required index for the timeseries
+    # Calculate only the required index for the timeseries
     indexed_collection = collection.map(index_func_detail['func'])
 
-    # Check if the target index band exists after mapping
-    try:
-         first_img_check = indexed_collection.first()
-         if first_img_check is None or index_name not in first_img_check.bandNames().getInfo():
-              st.warning(f"Index band '{index_name}' not found after calculation for timeseries.", icon="⚠️")
-              return pd.DataFrame(columns=['Date', index_name])
-    except ee.EEException as e:
-         st.error(f"GEE Error checking index band for timeseries: {e}")
-         return pd.DataFrame(columns=['Date', index_name])
-
-
+    # Extract values for time series
     def extract_value(image):
         stats = image.select(index_name).reduceRegion(
-
-
             reducer=ee.Reducer.mean(),
             geometry=farm_geom,
-            scale=30,  # Use 30m for potentially better performance/less timeouts
+            scale=30,
             maxPixels=1e9,
-            tileScale=4 # Increase tileScale to potentially avoid memory errors
+            tileScale=4
         )
         val = stats.get(index_name)
-
-
         return ee.Feature(None, {
             'time': image.get('system:time_start'),
             index_name: ee.Algorithms.If(val, val, -9999)
-            })
-
+        })
 
     try:
         ts_info = indexed_collection.map(extract_value).getInfo()
     except ee.EEException as e:
+        st.error(f"Error getting time series: {e}")
         st.info("This might be due to GEE memory limits or timeouts. Try a smaller date range or area.")
         return pd.DataFrame(columns=['Date', index_name])
 
-
+    # Process the time series data
     data = []
     for feature in ts_info['features']:
         value = feature['properties'].get(index_name)
         time_ms = feature['properties'].get('time')
-        # Check if value and time are valid before processing
         if value is not None and value != -9999 and time_ms is not None:
             try:
                 dt = datetime.datetime.fromtimestamp(time_ms / 1000.0)
                 data.append([dt, value])
             except TypeError:
-                 st.warning(f"Skipping invalid timestamp in timeseries data: {time_ms}", icon="⚠️")
-
-
-
+                st.warning(f"Skipping invalid timestamp in timeseries data: {time_ms}", icon="⚠️")
 
     if not data:
+        return pd.DataFrame(columns=['Date', index_name])
+
+    ts_df = pd.DataFrame(data, columns=['Date', index_name])
     ts_df = ts_df.sort_values(by='Date')
     return ts_df
 
