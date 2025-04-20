@@ -43,7 +43,7 @@ def initialize_gee():
 
 # --- Load Farm Data ---
 @st.cache_data(show_spinner="در حال بارگذاری داده‌های مزارع...")
-def load_farm_data(csv_path="cleaned_output.csv"):
+def load_farm_data(csv_path=CSV_FILE_PATH):
     """Loads farm data from the specified CSV file."""
     try:
         df = pd.read_csv(csv_path)
@@ -83,11 +83,11 @@ if initialize_gee():
     farm_data_df = load_farm_data()
 else:
     st.error("❌ امکان ادامه کار بدون اتصال به Google Earth Engine وجود ندارد.")
-    st.stop() # Stop if GEE initialization failed
+    st.stop()
 
 if farm_data_df is None:
     st.error("❌ امکان ادامه کار بدون داده‌های مزارع وجود ندارد.")
-    st.stop() # Stop if data loading failed
+    st.stop()
 
 
 # ==============================================================================
