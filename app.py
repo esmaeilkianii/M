@@ -191,10 +191,127 @@ def load_farm_data(csv_path=CSV_FILE_PATH):
         st.error(traceback.format_exc())
         return None
 
-# Initialize GEE and Load Data
+# --- Date Range Calculation ---
+today = datetime.date.today()
+# Find the most recent date corresponding to the selected day of the week
+persian_to_weekday = {
+    "شنبه": 5,
+    "یکشنبه": 6,
+    "دوشنبه": 0,
+    "سه شنبه": 1,
+    "چهارشنبه": 2,
+    "پنجشنبه": 3,
+    "جمعه": 4,
+}
+
+def get_date_range(selected_day):
+    """Calculate date range for the selected day of the week."""
+    try:
+        target_weekday = persian_to_weekday[selected_day]
+        days_ago = (today.weekday() - target_weekday + 7) % 7
+        if days_ago == 0:
+            end_date_current = today
+        else:
+            end_date_current = today - datetime.timedelta(days=days_ago)
+
+        start_date_current = end_date_current - datetime.timedelta(days=6)
+        end_date_previous = start_date_current - datetime.timedelta(days=1)
+        start_date_previous = end_date_previous - datetime.timedelta(days=6)
+
+        return {
+            'start_date_current': start_date_current.strftime('%Y-%m-%d'),
+            'end_date_current': end_date_current.strftime('%Y-%m-%d'),
+            'start_date_previous': start_date_previous.strftime('%Y-%m-%d'),
+            'end_date_previous': end_date_previous.strftime('%Y-%m-%d')
+        }
+    except KeyError:
+        st.error(f"نام روز هفته '{selected_day}' قابل شناسایی نیست.")
+        return None
+    except Exception as e:
+        st.error(f"خطا در محاسبه بازه زمانی: {e}")
+        return None
+
+# --- Data Update Function ---
+def update_index_data(selected_day):
+    """Update cached index data if needed."""
+    cached_data, last_update = load_cached_data()
+    
+    if cached_data is not None:
+        st.info(f"✅ داده‌ها به‌روز هستند (آخرین به‌روزرسانی: {last_update.strftime('%Y-%m-%d %H:%M')})")
+        return cached_data
+    
+    st.info("🔄 در حال به‌روزرسانی داده‌ها...")
+    
+    # Get date range
+    date_range = get_date_range(selected_day)
+    if date_range is None:
+        return None
+    
+    # Calculate new data
+    new_data = {}
+    farm_data_df = load_farm_data()
+    if farm_data_df is None:
+        st.error("❌ امکان به‌روزرسانی داده‌ها وجود ندارد.")
+        return None
+    
+    # Calculate indices for each farm
+    progress_bar = st.progress(0)
+    total_farms = len(farm_data_df)
+    
+    for i, (idx, farm) in enumerate(farm_data_df.iterrows()):
+        farm_name = farm['مزرعه']
+        indices, error = calculate_indices_for_farm(farm, date_range['start_date_current'], date_range['end_date_current'])
+        
+        if indices:
+            new_data[farm_name] = indices
+        progress_bar.progress((i + 1) / total_farms)
+    
+    progress_bar.empty()
+    
+    # Save new data
+    if save_cached_data(new_data):
+        st.success("✅ داده‌ها با موفقیت به‌روز شدند.")
+        return new_data
+    else:
+        st.error("❌ خطا در ذخیره داده‌های جدید.")
+        return None
+
+# --- Index Calculation Functions ---
+def calculate_indices_for_farm(farm_data, start_date, end_date):
+    """Calculate indices for a single farm."""
+    try:
+        lat = farm_data['عرض جغرافیایی']
+        lon = farm_data['طول جغرافیایی']
+        point_geom = ee.Geometry.Point([lon, lat])
+        
+        # Get processed image
+        image, error = get_processed_image(point_geom, start_date, end_date, 'NDVI')
+        if error:
+            return None, error
+            
+        # Calculate mean values for all indices
+        mean_dict = image.reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=point_geom,
+            scale=10
+        ).getInfo()
+        
+        return mean_dict, None
+    except Exception as e:
+        return None, str(e)
+
+# --- Main Application ---
+st.title(APP_TITLE)
+
+# Initialize GEE and load data
 if initialize_gee():
+    # Get initial date range
+    date_range = get_date_range(available_days[0])  # Use first available day
+    if date_range is None:
+        st.stop()
+    
     # Update index data
-    index_data = update_index_data()
+    index_data = update_index_data(available_days[0])
     
     if index_data is not None:
         # Continue with the rest of the application
@@ -864,67 +981,3 @@ else:
 st.markdown("---")
 st.sidebar.markdown("---")
 st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap")
-
-# --- Data Update Function ---
-def update_index_data():
-    """Update cached index data if needed."""
-    cached_data, last_update = load_cached_data()
-    
-    if cached_data is not None:
-        st.info(f"✅ داده‌ها به‌روز هستند (آخرین به‌روزرسانی: {last_update.strftime('%Y-%m-%d %H:%M')})")
-        return cached_data
-    
-    st.info("🔄 در حال به‌روزرسانی داده‌ها...")
-    
-    # Calculate new data
-    new_data = {}
-    farm_data_df = load_farm_data()
-    if farm_data_df is None:
-        st.error("❌ امکان به‌روزرسانی داده‌ها وجود ندارد.")
-        return None
-    
-    # Calculate indices for each farm
-    progress_bar = st.progress(0)
-    total_farms = len(farm_data_df)
-    
-    for i, (idx, farm) in enumerate(farm_data_df.iterrows()):
-        farm_name = farm['مزرعه']
-        indices, error = calculate_indices_for_farm(farm, start_date_current_str, end_date_current_str)
-        
-        if indices:
-            new_data[farm_name] = indices
-        progress_bar.progress((i + 1) / total_farms)
-    
-    progress_bar.empty()
-    
-    # Save new data
-    if save_cached_data(new_data):
-        st.success("✅ داده‌ها با موفقیت به‌روز شدند.")
-        return new_data
-    else:
-        st.error("❌ خطا در ذخیره داده‌های جدید.")
-        return None
-
-# --- Index Calculation Functions ---
-def calculate_indices_for_farm(farm_data, start_date, end_date):
-    """Calculate indices for a single farm."""
-    try:
-        lat = farm_data['عرض جغرافیایی']
-        lon = farm_data['طول جغرافیایی']
-        point_geom = ee.Geometry.Point([lon, lat])
-        
-        # Get processed image
-        image, error = get_processed_image(point_geom, start_date, end_date, 'NDVI')
-        if error:
-            return None, error
-            
-        # Calculate mean values for all indices
-        mean_dict = image.reduceRegion(
-            reducer=ee.Reducer.mean(),
-            geometry=point_geom,
-            scale=10
-        ).getInfo()
-        
-        return mean_dict, None
-    except Exception as e:
-        return None, str(e)
