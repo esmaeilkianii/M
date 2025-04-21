@@ -512,7 +512,7 @@ def add_indices(image):
     return image.addBands([ndvi, evi, ndmi, msi, lai, cvi]) # Add calculated indices
 
 # --- Function to get processed image for a date range and geometry ---
-@st.cache_data(show_spinner="در حال پردازش تصاویر ماهواره‌ای...", persist=True)
+@st.cache_data(show_spinner=False, persist=True)
 def get_processed_image(_geometry, start_date, end_date, index_name):
     """
     Gets cloud-masked, index-calculated Sentinel-2 median composite for a given geometry and date range.
@@ -521,46 +521,25 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
     index_name: Name of the primary index band to return (e.g., 'NDVI')
     """
     try:
-        st.write(f"Fetching images for date range: {start_date} to {end_date}")
-        
         # Get the Sentinel-2 collection
         s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
                      .filterBounds(_geometry)
                      .filterDate(start_date, end_date))
         
-        # Log the initial collection size
-        initial_count = s2_sr_col.size().getInfo()
-        st.write(f"Initial collection size: {initial_count} images")
-        
-        if initial_count == 0:
-            return None, f"No Sentinel-2 images found for {start_date} to {end_date}."
-        
         # Apply cloud masking
-        st.write("Applying cloud masking...")
         s2_sr_col = s2_sr_col.map(maskS2clouds)
         
-        # Check collection size after cloud masking
-        masked_count = s2_sr_col.size().getInfo()
-        st.write(f"Images after cloud masking: {masked_count}")
-        
-        if masked_count == 0:
-            return None, f"No cloud-free Sentinel-2 images found for {start_date} to {end_date}."
-        
         # Calculate indices for each image
-        st.write("Calculating indices...")
         indexed_col = s2_sr_col.map(add_indices)
         
         # Create median composite
-        st.write("Creating median composite...")
         median_image = indexed_col.median()
         
         # Select the desired index band
-        st.write(f"Selecting {index_name} band...")
         output_image = median_image.select(index_name)
         
         # Verify the image has data
         try:
-            # Get a sample of the image to verify it has data
             sample = output_image.reduceRegion(
                 reducer=ee.Reducer.first(),
                 geometry=_geometry,
@@ -568,23 +547,18 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
             ).getInfo()
             
             if sample and index_name in sample:
-                st.write(f"Sample data for {index_name}: {sample[index_name]}")
                 if sample[index_name] is None:
-                    st.warning(f"No valid data found for {index_name} in the sample area")
                     return None, f"No valid data found for {index_name} in the sample area"
             else:
-                st.warning(f"No {index_name} data found in the sample")
                 return None, f"No {index_name} data found in the sample"
                 
         except Exception as e:
-            st.write(f"Error getting sample data: {e}")
             return None, f"Error verifying image data: {e}"
         
         return output_image, None
         
     except ee.EEException as e:
         error_message = f"خطای Google Earth Engine: {e}"
-        st.error(error_message)
         try:
             error_details = e.args[0] if e.args else str(e)
             if isinstance(error_details, str):
@@ -597,11 +571,10 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
         return None, error_message
     except Exception as e:
         error_message = f"خطای ناشناخته در پردازش GEE: {e}\n{traceback.format_exc()}"
-        st.error(error_message)
         return None, error_message
 
 # --- Function to get time series data for a point ---
-@st.cache_data(show_spinner="در حال دریافت سری زمانی شاخص...", persist=True)
+@st.cache_data(show_spinner=False, persist=True)
 def get_index_time_series(_point_geom, index_name, start_date='2023-01-01', end_date=today.strftime('%Y-%m-%d')):
     """Gets a time series of a specified index for a point geometry."""
     try:
@@ -612,43 +585,88 @@ def get_index_time_series(_point_geom, index_name, start_date='2023-01-01', end_
                      .map(add_indices))
 
         def extract_value(image):
-            # Extract the index value at the point
-            # Use reduceRegion for points; scale should match sensor resolution (e.g., 10m for S2 NDVI)
             value = image.reduceRegion(
-                reducer=ee.Reducer.first(), # Use 'first' or 'mean' if point covers multiple pixels
+                reducer=ee.Reducer.first(),
                 geometry=_point_geom,
-                scale=10 # Scale in meters (10m for Sentinel-2 RGB/NIR)
+                scale=10
             ).get(index_name)
-            # Return a feature with the value and the image date
             return ee.Feature(None, {
                 'date': image.date().format('YYYY-MM-dd'),
                 index_name: value
             })
 
-        # Map over the collection and remove features with null values
         ts_features = s2_sr_col.map(extract_value).filter(ee.Filter.notNull([index_name]))
-
-        # Convert the FeatureCollection to a list of dictionaries
         ts_info = ts_features.getInfo()['features']
 
         if not ts_info:
             return pd.DataFrame(columns=['date', index_name]), "داده‌ای برای سری زمانی یافت نشد."
 
-        # Convert to Pandas DataFrame
         ts_data = [{'date': f['properties']['date'], index_name: f['properties'][index_name]} for f in ts_info]
         ts_df = pd.DataFrame(ts_data)
         ts_df['date'] = pd.to_datetime(ts_df['date'])
         ts_df = ts_df.sort_values('date').set_index('date')
 
-        return ts_df, None # Return DataFrame and no error
+        return ts_df, None
     except ee.EEException as e:
         error_message = f"خطای GEE در دریافت سری زمانی: {e}"
-        st.error(error_message)
         return pd.DataFrame(columns=['date', index_name]), error_message
     except Exception as e:
         error_message = f"خطای ناشناخته در دریافت سری زمانی: {e}\n{traceback.format_exc()}"
-        st.error(error_message)
         return pd.DataFrame(columns=['date', index_name]), error_message
+
+@st.cache_data(show_spinner=False, persist=True)
+def calculate_weekly_indices(_farms_df, index_name, start_curr, end_curr, start_prev, end_prev):
+    """Calculates the average index value for the current and previous week for a list of farms."""
+    results = []
+    errors = []
+    total_farms = len(_farms_df)
+
+    for i, (idx, farm) in enumerate(_farms_df.iterrows()):
+        farm_name = farm['مزرعه']
+        lat = farm['عرض جغرافیایی']
+        lon = farm['طول جغرافیایی']
+        point_geom = ee.Geometry.Point([lon, lat])
+
+        def get_mean_value(start, end):
+            try:
+                image, error = get_processed_image(point_geom, start, end, index_name)
+                if image:
+                    mean_dict = image.reduceRegion(
+                        reducer=ee.Reducer.mean(),
+                        geometry=point_geom,
+                        scale=10
+                    ).getInfo()
+                    return mean_dict.get(index_name) if mean_dict else None, None
+                else:
+                    return None, error
+            except Exception as e:
+                error_msg = f"خطا در محاسبه مقدار برای {farm_name} ({start}-{end}): {e}"
+                return None, error_msg
+
+        current_val, err_curr = get_mean_value(start_curr, end_curr)
+        if err_curr: errors.append(f"{farm_name} (هفته جاری): {err_curr}")
+
+        previous_val, err_prev = get_mean_value(start_prev, end_prev)
+        if err_prev: errors.append(f"{farm_name} (هفته قبل): {err_prev}")
+
+        change = None
+        if current_val is not None and previous_val is not None:
+            try:
+                change = current_val - previous_val
+            except TypeError:
+                change = None
+
+        results.append({
+            'مزرعه': farm_name,
+            'کانال': farm.get('کانال', 'N/A'),
+            'اداره': farm.get('اداره', 'N/A'),
+            f'{index_name} (هفته جاری)': current_val,
+            f'{index_name} (هفته قبل)': previous_val,
+            'تغییر': change,
+            'اختلاف': f"{change:+.3f}" if change is not None else "N/A"
+        })
+
+    return pd.DataFrame(results), errors
 
 
 # ==============================================================================
@@ -1038,73 +1056,6 @@ with tab3:
     st.markdown(f"### 📊 جدول رتبه‌بندی مزارع بر اساس {selected_index} (روز: {selected_day})")
     st.markdown("مقایسه مقادیر متوسط شاخص در هفته جاری با هفته قبل.")
 
-    @st.cache_data(show_spinner=f"در حال محاسبه {selected_index} برای مزارع...", persist=True)
-    def calculate_weekly_indices(_farms_df, index_name, start_curr, end_curr, start_prev, end_prev):
-        """Calculates the average index value for the current and previous week for a list of farms."""
-        results = []
-        errors = []
-        total_farms = len(_farms_df)
-        progress_bar = st.progress(0)
-
-        for i, (idx, farm) in enumerate(_farms_df.iterrows()):
-            farm_name = farm['مزرعه']
-            lat = farm['عرض جغرافیایی']
-            lon = farm['طول جغرافیایی']
-            point_geom = ee.Geometry.Point([lon, lat])
-
-            def get_mean_value(start, end):
-                try:
-                    image, error = get_processed_image(point_geom, start, end, index_name)
-                    if image:
-                        # Reduce region to get the mean value at the point
-                        mean_dict = image.reduceRegion(
-                            reducer=ee.Reducer.mean(),
-                            geometry=point_geom,
-                            scale=10  # Scale in meters
-                        ).getInfo()
-                        return mean_dict.get(index_name) if mean_dict else None, None
-                    else:
-                        return None, error
-                except Exception as e:
-                     # Catch errors during reduceRegion or getInfo
-                     error_msg = f"خطا در محاسبه مقدار برای {farm_name} ({start}-{end}): {e}"
-                     # errors.append(error_msg) # Collect errors
-                     # st.warning(error_msg) # Show warning immediately
-                     return None, error_msg
-
-
-            # Calculate for current week
-            current_val, err_curr = get_mean_value(start_curr, end_curr)
-            if err_curr: errors.append(f"{farm_name} (هفته جاری): {err_curr}")
-
-            # Calculate for previous week
-            previous_val, err_prev = get_mean_value(start_prev, end_prev)
-            if err_prev: errors.append(f"{farm_name} (هفته قبل): {err_prev}")
-
-
-            # Calculate change
-            change = None
-            if current_val is not None and previous_val is not None:
-                try:
-                    change = current_val - previous_val
-                except TypeError: # Handle cases where values might not be numeric unexpectedly
-                    change = None
-
-            results.append({
-                'مزرعه': farm_name,
-                'کانال': farm.get('کانال', 'N/A'),
-                'اداره': farm.get('اداره', 'N/A'),
-                f'{index_name} (هفته جاری)': current_val,
-                f'{index_name} (هفته قبل)': previous_val,
-                'تغییر': change
-            })
-
-            # Update progress bar
-            progress_bar.progress((i + 1) / total_farms)
-
-        progress_bar.empty() # Remove progress bar after completion
-        return pd.DataFrame(results), errors
-
     # Calculate and display the ranking table
     ranking_df, calculation_errors = calculate_weekly_indices(
         filtered_farms_df,
@@ -1125,54 +1076,23 @@ with tab3:
 
 
     if not ranking_df.empty:
-        # Sort by the current week's index value (descending for NDVI/EVI/LAI/CVI, ascending for MSI?)
-        # Adjust sorting based on index meaning
-        ascending_sort = selected_index in ['MSI'] # Indices where lower is better
+        # Sort by the current week's index value
+        ascending_sort = selected_index in ['MSI']
         ranking_df_sorted = ranking_df.sort_values(
             by=f'{selected_index} (هفته جاری)',
             ascending=ascending_sort,
-            na_position='last' # Put farms with no data at the bottom
+            na_position='last'
         ).reset_index(drop=True)
 
         # Add rank number
         ranking_df_sorted.index = ranking_df_sorted.index + 1
         ranking_df_sorted.index.name = 'رتبه'
 
-        # Add a status column to indicate growth or stress
-        # For NDVI, EVI, LAI, CVI: higher is better
-        # For MSI, NDMI: lower is better
-        def determine_status(row, index_name):
-            if pd.isna(row['تغییر']) or pd.isna(row[f'{index_name} (هفته جاری)']) or pd.isna(row[f'{index_name} (هفته قبل)']):
-                return "بدون داده"
-            
-            # For indices where higher is better (NDVI, EVI, LAI, CVI)
-            if index_name in ['NDVI', 'EVI', 'LAI', 'CVI']:
-                if row['تغییر'] > 0.05:  # Significant growth
-                    return "رشد مثبت"
-                elif row['تغییر'] < -0.05:  # Significant decline
-                    return "تنش/کاهش"
-                else:
-                    return "ثابت"
-            # For indices where lower is better (MSI, NDMI)
-            elif index_name in ['MSI', 'NDMI']:
-                if row['تغییر'] < -0.05:  # Significant improvement
-                    return "بهبود"
-                elif row['تغییر'] > 0.05:  # Significant deterioration
-                    return "تنش/بدتر شدن"
-                else:
-                    return "ثابت"
-            else:
-                return "نامشخص"
-
-        # Add status column
-        ranking_df_sorted['وضعیت'] = ranking_df_sorted.apply(lambda row: determine_status(row, selected_index), axis=1)
-        
         # Format numbers for better readability
-        cols_to_format = [f'{selected_index} (هفته جاری)', f'{selected_index} (هفته قبل)', 'تغییر']
+        cols_to_format = [f'{selected_index} (هفته جاری)', f'{selected_index} (هفته قبل)']
         for col in cols_to_format:
             if col in ranking_df_sorted.columns:
-                 # Check if column exists before formatting
-                 ranking_df_sorted[col] = ranking_df_sorted[col].map(lambda x: f"{x:.3f}" if pd.notna(x) else "N/A")
+                ranking_df_sorted[col] = ranking_df_sorted[col].map(lambda x: f"{x:.3f}" if pd.notna(x) else "N/A")
 
         # Apply custom styling to the table
         def highlight_status(val):
@@ -1613,62 +1533,32 @@ VISUALIZATION_PARAMS = {
     'NDVI': {
         'min': 0,
         'max': 1,
-        'palette': ['blue', 'white', 'green']
-    },
-    'NDWI': {
-        'min': -1,
-        'max': 1,
-        'palette': ['blue', 'white', 'green']
-    },
-    'NDMI': {
-        'min': -1,
-        'max': 1,
-        'palette': ['blue', 'white', 'green']
-    },
-    'NDBI': {
-        'min': -1,
-        'max': 1,
-        'palette': ['blue', 'white', 'red']
-    },
-    'NDSI': {
-        'min': -1,
-        'max': 1,
-        'palette': ['blue', 'white', 'red']
-    },
-    'SAVI': {
-        'min': -1,
-        'max': 1,
-        'palette': ['blue', 'white', 'green']
+        'palette': ['#313695', '#4575b4', '#74add1', '#abd9e9', '#e0f3f8', '#ffffbf', '#fee090', '#fdae61', '#f46d43', '#d73027', '#a50026']
     },
     'EVI': {
         'min': -1,
         'max': 1,
-        'palette': ['blue', 'white', 'green']
+        'palette': ['#313695', '#4575b4', '#74add1', '#abd9e9', '#e0f3f8', '#ffffbf', '#fee090', '#fdae61', '#f46d43', '#d73027', '#a50026']
     },
-    'GNDVI': {
+    'NDMI': {
         'min': -1,
         'max': 1,
-        'palette': ['blue', 'white', 'green']
+        'palette': ['#313695', '#4575b4', '#74add1', '#abd9e9', '#e0f3f8', '#ffffbf', '#fee090', '#fdae61', '#f46d43', '#d73027', '#a50026']
     },
-    'OSAVI': {
-        'min': -1,
-        'max': 1,
-        'palette': ['blue', 'white', 'green']
-    },
-    'MSAVI': {
-        'min': -1,
-        'max': 1,
-        'palette': ['blue', 'white', 'green']
-    },
-    'NDRE': {
-        'min': -1,
-        'max': 1,
-        'palette': ['blue', 'white', 'green']
-    },
-    'NDVI_TS': {
+    'MSI': {
         'min': 0,
         'max': 1,
-        'palette': ['blue', 'white', 'green']
+        'palette': ['#a50026', '#d73027', '#f46d43', '#fdae61', '#fee090', '#ffffbf', '#e0f3f8', '#abd9e9', '#74add1', '#4575b4', '#313695']
+    },
+    'LAI': {
+        'min': 0,
+        'max': 8,
+        'palette': ['#313695', '#4575b4', '#74add1', '#abd9e9', '#e0f3f8', '#ffffbf', '#fee090', '#fdae61', '#f46d43', '#d73027', '#a50026']
+    },
+    'CVI': {
+        'min': 0,
+        'max': 1,
+        'palette': ['#313695', '#4575b4', '#74add1', '#abd9e9', '#e0f3f8', '#ffffbf', '#fee090', '#fdae61', '#f46d43', '#d73027', '#a50026']
     }
 }
 
