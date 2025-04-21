@@ -12,6 +12,9 @@ import requests # Needed for getThumbUrl download
 import traceback  # Add missing traceback import
 from streamlit_folium import st_folium  # Add missing st_folium import
 import base64
+import plotly.graph_objects as go
+import numpy as np
+from plotly.subplots import make_subplots
 
 # --- Custom CSS ---
 st.set_page_config(
@@ -91,6 +94,34 @@ st.markdown("""
         .status-negative {
             background-color: #f8d7da;
             color: #721c24;
+        }
+        
+        .card {
+            background-color: #ffffff;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin: 10px 0;
+            transition: transform 0.3s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .metric-card {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin: 10px 0;
+        }
+        
+        .chart-container {
+            background-color: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+            margin: 10px 0;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -821,3 +852,175 @@ else:
 st.markdown("---")
 st.sidebar.markdown("---")
 st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap")
+
+# ایجاد تب‌ها
+tab1, tab2 = st.tabs(["📊 داشبورد تحلیلی", "🗺️ نقشه و پایش"])
+
+with tab1:
+    # عنوان اصلی
+    st.title("🌾 داشبورد تحلیلی نیشکر")
+    
+    # ایجاد کارت‌های متریک
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        total_area = farm_data_df[farm_data_df['اداره'] == 'Grand Total']['Grand Total'].iloc[0]
+        st.markdown(f"""
+            <div class="metric-card">
+                <h3>کل مساحت (هکتار)</h3>
+                <h2>{total_area:,.2f}</h2>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        varieties = ['CP69', 'CP73', 'CP48', 'CP57', 'CP65', 'CP70', 'IR01-412', 'IRC99-07', 'IRC00-14']
+        st.markdown(f"""
+            <div class="metric-card">
+                <h3>تعداد واریته‌ها</h3>
+                <h2>{len(varieties)}</h2>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        offices = farm_data_df['اداره'].unique()
+        office_count = len(offices[offices != 'Grand Total'])
+        st.markdown(f"""
+            <div class="metric-card">
+                <h3>تعداد ادارات</h3>
+                <h2>{office_count}</h2>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        ages = farm_data_df['سن'].unique()
+        age_count = len(ages[ages != 'total'])
+        st.markdown(f"""
+            <div class="metric-card">
+                <h3>تعداد سن‌ها</h3>
+                <h2>{age_count}</h2>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # نمودار سه بعدی مساحت به تفکیک اداره، سن و واریته
+    st.markdown("""
+        <div class="chart-container">
+            <h3>نمودار سه بعدی مساحت به تفکیک اداره، سن و واریته</h3>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # پردازش داده‌ها برای نمودار سه بعدی
+    def prepare_3d_data(df):
+        data = []
+        for _, row in df.iterrows():
+            if row['اداره'] != 'Grand Total' and row['سن'] != 'total':
+                for col in varieties:
+                    if pd.notna(row[col]) and row[col] != 0:
+                        data.append({
+                            'اداره': row['اداره'],
+                            'سن': row['سن'],
+                            'واریته': col,
+                            'مساحت': row[col]
+                        })
+        return pd.DataFrame(data)
+    
+    df_3d = prepare_3d_data(farm_data_df)
+    
+    # ایجاد نمودار سه بعدی
+    fig = go.Figure(data=[go.Scatter3d(
+        x=df_3d['اداره'],
+        y=df_3d['سن'],
+        z=df_3d['مساحت'],
+        mode='markers',
+        marker=dict(
+            size=df_3d['مساحت']/10,
+            color=df_3d['مساحت'],
+            colorscale='Viridis',
+            opacity=0.8
+        ),
+        text=df_3d['واریته'],
+        hovertemplate="اداره: %{x}<br>سن: %{y}<br>مساحت: %{z:.2f} هکتار<br>واریته: %{text}<extra></extra>"
+    )])
+    
+    fig.update_layout(
+        scene = dict(
+            xaxis_title="اداره",
+            yaxis_title="سن",
+            zaxis_title="مساحت (هکتار)"
+        ),
+        margin=dict(l=0, r=0, b=0, t=30),
+        height=600
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # نمودار هیستوگرام سورفیس
+    st.markdown("""
+        <div class="chart-container">
+            <h3>هیستوگرام سورفیس مساحت به تفکیک اداره و سن</h3>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # پردازش داده‌ها برای هیستوگرام سورفیس
+    def prepare_surface_data(df):
+        data = []
+        for _, row in df.iterrows():
+            if row['اداره'] != 'Grand Total' and row['سن'] != 'total':
+                data.append({
+                    'اداره': row['اداره'],
+                    'سن': row['سن'],
+                    'مساحت': row['Grand Total']
+                })
+        return pd.DataFrame(data)
+    
+    df_surface = prepare_surface_data(farm_data_df)
+    
+    # ایجاد هیستوگرام سورفیس
+    fig_surface = go.Figure(data=[go.Surface(
+        x=df_surface['اداره'].unique(),
+        y=df_surface['سن'].unique(),
+        z=df_surface.pivot(index='سن', columns='اداره', values='مساحت').values
+    )])
+    
+    fig_surface.update_layout(
+        scene = dict(
+            xaxis_title="اداره",
+            yaxis_title="سن",
+            zaxis_title="مساحت (هکتار)"
+        ),
+        margin=dict(l=0, r=0, b=0, t=30),
+        height=600
+    )
+    
+    st.plotly_chart(fig_surface, use_container_width=True)
+    
+    # نمودار مقایسه‌ای واریته‌ها
+    st.markdown("""
+        <div class="chart-container">
+            <h3>مقایسه واریته‌ها در ادارات مختلف</h3>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # پردازش داده‌ها برای نمودار مقایسه‌ای
+    fig_varieties = go.Figure()
+    
+    for variety in varieties:
+        data = farm_data_df[farm_data_df['اداره'] != 'Grand Total'].groupby('اداره')[variety].sum()
+        fig_varieties.add_trace(go.Bar(
+            name=variety,
+            x=data.index,
+            y=data.values
+        ))
+    
+    fig_varieties.update_layout(
+        barmode='group',
+        xaxis_title="اداره",
+        yaxis_title="مساحت (هکتار)",
+        height=400
+    )
+    
+    st.plotly_chart(fig_varieties, use_container_width=True)
+
+with tab2:
+    # کد مربوط به نقشه و پایش از app.py اصلی
+    # ... (کد قبلی app.py را اینجا قرار دهید)
+    pass
