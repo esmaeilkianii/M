@@ -12,6 +12,7 @@ import requests # Needed for getThumbUrl download
 import traceback  # Add missing traceback import
 from streamlit_folium import st_folium  # Add missing st_folium import
 import base64
+from sugarcane_analysis import SugarcaneAnalysis
 
 # --- Custom CSS ---
 st.set_page_config(
@@ -103,7 +104,7 @@ INITIAL_LON = 48.724416
 INITIAL_ZOOM = 12
 
 # --- File Paths (Relative to the script location in Hugging Face) ---
-CSV_FILE_PATH = 'cleaned_output.csv'
+CSV_FILE_PATH = 'updated_farm_data.csv'
 SERVICE_ACCOUNT_FILE = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json'
 
 # --- GEE Authentication ---
@@ -134,15 +135,27 @@ def load_farm_data(csv_path=CSV_FILE_PATH):
     try:
         df = pd.read_csv(csv_path)
         # Basic validation
-        required_cols = ['مزرعه', 'طول جغرافیایی', 'عرض جغرافیایی', 'روزهای هفته', 'coordinates_missing']
+        required_cols = ['مزرعه', 'طول جغرافیایی', 'عرض جغرافیایی', 'روزهای هفته', 
+                        'coordinates_missing', 'NDVI', 'NDMI', 'MSI', 'age_days', 
+                        'area_hectares', 'temperature', 'et0']
         if not all(col in df.columns for col in required_cols):
             st.error(f"❌ فایل CSV باید شامل ستون‌های ضروری باشد: {', '.join(required_cols)}")
             return None
+        
         # Convert coordinate columns to numeric, coercing errors
         df['طول جغرافیایی'] = pd.to_numeric(df['طول جغرافیایی'], errors='coerce')
         df['عرض جغرافیایی'] = pd.to_numeric(df['عرض جغرافیایی'], errors='coerce')
+        
+        # Convert other numeric columns
+        numeric_cols = ['NDVI', 'NDMI', 'MSI', 'age_days', 'area_hectares', 
+                       'temperature', 'et0', 'previous_ndvi', 'days_since_last_measurement']
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        
         # Handle missing coordinates flag explicitly if needed
         df['coordinates_missing'] = df['coordinates_missing'].fillna(False).astype(bool)
+        
         # Drop rows where coordinates are actually missing after coercion or flagged
         df = df.dropna(subset=['طول جغرافیایی', 'عرض جغرافیایی'])
         df = df[~df['coordinates_missing']]
@@ -175,6 +188,11 @@ if farm_data_df is None:
     st.error("❌ امکان ادامه کار بدون داده‌های مزارع وجود ندارد.")
     st.stop()
 
+# Import the new SugarcaneAnalysis class
+from sugarcane_analysis import SugarcaneAnalysis
+
+# Initialize the analysis class
+sugarcane_analyzer = SugarcaneAnalysis()
 
 # ==============================================================================
 # Sidebar Filters
@@ -817,6 +835,109 @@ if not ranking_df.empty:
 else:
     st.info(f"داده‌ای برای جدول رتبه‌بندی بر اساس {selected_index} در این بازه زمانی یافت نشد.")
 
+
+# Add new section for sugarcane-specific analysis
+st.markdown("---")
+st.subheader("📊 تحلیل تخصصی نیشکر")
+
+if selected_farm_name != "همه مزارع":
+    # Get farm details
+    farm_details = filtered_farms_df[filtered_farms_df['مزرعه'] == selected_farm_name].iloc[0]
+    
+    # Create columns for analysis display
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Calculate and display health status
+        health_status = sugarcane_analyzer.analyze_field_health(
+            ndvi=float(farm_details.get('NDVI', 0)),
+            ndmi=float(farm_details.get('NDMI', 0)),
+            msi=float(farm_details.get('MSI', 0)),
+            age_days=int(farm_details.get('age_days', 0))
+        )
+        
+        st.markdown("### وضعیت سلامت مزرعه")
+        st.metric("امتیاز سلامت", f"{health_status['health_score']:.1f}/100")
+        
+        # Display growth stage
+        growth_stage_translation = {
+            'initial': 'مرحله اولیه',
+            'vegetative': 'مرحله رویشی',
+            'grand_growth': 'مرحله رشد اصلی',
+            'maturity': 'مرحله رسیدگی'
+        }
+        st.metric("مرحله رشد", growth_stage_translation.get(health_status['growth_stage'], 'نامشخص'))
+        
+        # Display stresses
+        if health_status['stresses']:
+            st.markdown("### تنش‌های شناسایی شده")
+            for stress_type, severity in health_status['stresses'].items():
+                severity_translation = {
+                    'high': 'شدید',
+                    'moderate': 'متوسط'
+                }
+                stress_translation = {
+                    'water_stress': 'تنش آبی',
+                    'nutrient_stress': 'تنش تغذیه‌ای',
+                    'disease_stress': 'تنش بیماری'
+                }
+                st.warning(f"{stress_translation.get(stress_type, stress_type)}: {severity_translation.get(severity, severity)}")
+    
+    with col2:
+        # Calculate and display yield estimates
+        yield_estimate = sugarcane_analyzer.estimate_yield(
+            ndvi=float(farm_details.get('NDVI', 0)),
+            age_days=int(farm_details.get('age_days', 0)),
+            area_hectares=float(farm_details.get('area_hectares', 0))
+        )
+        
+        st.markdown("### برآورد عملکرد")
+        st.metric("عملکرد تخمینی (تن در هکتار)", f"{yield_estimate:.1f}")
+        
+        # Calculate and display sugar content
+        sugar_content = sugarcane_analyzer.calculate_sugar_content(
+            ndvi=float(farm_details.get('NDVI', 0)),
+            age_days=int(farm_details.get('age_days', 0)),
+            temperature=float(farm_details.get('temperature', 25))
+        )
+        
+        st.metric("درصد قند تخمینی", f"{sugar_content:.1f}%")
+        
+        # Display harvest readiness
+        harvest_readiness = sugarcane_analyzer.calculate_harvest_readiness(
+            ndvi=float(farm_details.get('NDVI', 0)),
+            age_days=int(farm_details.get('age_days', 0)),
+            temperature=float(farm_details.get('temperature', 25))
+        )
+        
+        if harvest_readiness['optimal_harvest']:
+            st.success("✅ زمان مناسب برای برداشت")
+        else:
+            st.info("⏳ هنوز زمان برداشت نرسیده است")
+    
+    # Display recommendations
+    st.markdown("### توصیه‌های مدیریتی")
+    for recommendation in health_status['recommendations']:
+        st.info(f"📌 {recommendation}")
+    
+    # Add water requirement calculation
+    st.markdown("### نیاز آبی")
+    water_requirement = sugarcane_analyzer.calculate_water_requirement(
+        age_days=int(farm_details.get('age_days', 0)),
+        et0=float(farm_details.get('et0', 5))
+    )
+    st.metric("نیاز آبی روزانه (میلی‌متر)", f"{water_requirement:.1f}")
+    
+    # Add growth rate analysis
+    if 'previous_ndvi' in farm_details and 'days_since_last_measurement' in farm_details:
+        growth_rate = sugarcane_analyzer.calculate_growth_rate(
+            current_ndvi=float(farm_details.get('NDVI', 0)),
+            previous_ndvi=float(farm_details.get('previous_ndvi', 0)),
+            days_between=int(farm_details.get('days_since_last_measurement', 0))
+        )
+        st.metric("نرخ رشد روزانه", f"{growth_rate:.4f}")
+else:
+    st.info("لطفاً یک مزرعه خاص را برای مشاهده تحلیل تخصصی انتخاب کنید.")
 
 st.markdown("---")
 st.sidebar.markdown("---")
