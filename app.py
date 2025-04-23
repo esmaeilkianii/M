@@ -103,9 +103,15 @@ INITIAL_LAT = 31.534442
 INITIAL_LON = 48.724416
 INITIAL_ZOOM = 12
 
-# --- File Paths (Relative to the script location in Hugging Face) ---
-CSV_FILE_PATH = 'cleaned_output.csv'
-SERVICE_ACCOUNT_FILE = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json'
+# Update file paths for Hugging Face
+import os
+
+# Get the current directory
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Update file paths
+CSV_FILE_PATH = os.path.join(CURRENT_DIR, 'cleaned_output.csv')
+SERVICE_ACCOUNT_FILE = os.path.join(CURRENT_DIR, 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json')
 
 # --- GEE Authentication ---
 @st.cache_resource # Cache the GEE initialization
@@ -134,13 +140,33 @@ def load_farm_data(csv_path=CSV_FILE_PATH):
     """Loads farm data from the specified CSV file."""
     try:
         df = pd.read_csv(csv_path)
-        # Basic validation
-        required_cols = ['مزرعه', 'طول جغرافیایی', 'عرض جغرافیایی', 'روزهای هفته', 
-                        'coordinates_missing', 'NDVI', 'NDMI', 'MSI', 'age_days', 
-                        'area_hectares', 'temperature', 'et0']
-        if not all(col in df.columns for col in required_cols):
-            st.error(f"❌ فایل CSV باید شامل ستون‌های ضروری باشد: {', '.join(required_cols)}")
+        
+        # Required columns that must exist
+        required_cols = ['مزرعه', 'طول جغرافیایی', 'عرض جغرافیایی', 'روزهای هفته']
+        
+        # Check for required columns
+        missing_required = [col for col in required_cols if col not in df.columns]
+        if missing_required:
+            st.error(f"❌ فایل CSV باید شامل ستون‌های ضروری باشد: {', '.join(missing_required)}")
             return None
+        
+        # Optional columns with default values
+        optional_cols = {
+            'coordinates_missing': False,
+            'NDVI': 0.0,
+            'NDMI': 0.0,
+            'MSI': 0.0,
+            'age_days': 0,
+            'area_hectares': 0.0,
+            'temperature': 25.0,
+            'et0': 5.0
+        }
+        
+        # Add missing optional columns with default values
+        for col, default_value in optional_cols.items():
+            if col not in df.columns:
+                df[col] = default_value
+                st.warning(f"⚠️ ستون '{col}' در فایل CSV یافت نشد. مقدار پیش‌فرض {default_value} استفاده خواهد شد.")
         
         # Convert coordinate columns to numeric, coercing errors
         df['طول جغرافیایی'] = pd.to_numeric(df['طول جغرافیایی'], errors='coerce')
@@ -148,10 +174,9 @@ def load_farm_data(csv_path=CSV_FILE_PATH):
         
         # Convert other numeric columns
         numeric_cols = ['NDVI', 'NDMI', 'MSI', 'age_days', 'area_hectares', 
-                       'temperature', 'et0', 'previous_ndvi', 'days_since_last_measurement']
+                       'temperature', 'et0']
         for col in numeric_cols:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
+            df[col] = pd.to_numeric(df[col], errors='coerce')
         
         # Handle missing coordinates flag explicitly if needed
         df['coordinates_missing'] = df['coordinates_missing'].fillna(False).astype(bool)
