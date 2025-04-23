@@ -134,6 +134,118 @@ def initialize_gee():
         st.stop()
 
 
+# --- Calculate Farm Metrics from GEE ---
+@st.cache_data(show_spinner="در حال محاسبه شاخص‌های مزارع...")
+def calculate_farm_metrics(_farm_df):
+    """Calculates NDVI, NDMI, MSI, temperature, and area for farms using GEE."""
+    try:
+        # Create a copy of the dataframe to avoid modifying the original
+        df = _farm_df.copy()
+        
+        # Get today's date for calculations
+        today = datetime.date.today()
+        
+        # Create a list to store results
+        results = []
+        
+        # Progress bar
+        progress_bar = st.progress(0)
+        total_farms = len(df)
+        
+        for idx, farm in df.iterrows():
+            # Create a point geometry for the farm
+            point = ee.Geometry.Point([farm['طول جغرافیایی'], farm['عرض جغرافیایی']])
+            
+            # Get a 100m buffer around the point to create a farm area
+            farm_area = point.buffer(100)  # 100m buffer
+            
+            # Calculate area in hectares
+            area_hectares = farm_area.area().divide(10000).getInfo()
+            
+            # Get Sentinel-2 data for the last 30 days
+            s2_collection = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+                           .filterBounds(farm_area)
+                           .filterDate(ee.Date(today - datetime.timedelta(days=30)), ee.Date(today))
+                           .map(maskS2clouds))
+            
+            # Get the most recent image
+            latest_image = s2_collection.sort('system:time_start', False).first()
+            
+            # Calculate indices
+            if latest_image:
+                # NDVI = (NIR - Red) / (NIR + Red)
+                ndvi = latest_image.normalizedDifference(['B8', 'B4']).rename('NDVI')
+                
+                # NDMI = (NIR - SWIR1) / (NIR + SWIR1)
+                ndmi = latest_image.normalizedDifference(['B8', 'B11']).rename('NDMI')
+                
+                # MSI = SWIR1 / NIR
+                msi = latest_image.expression('SWIR1 / NIR', {
+                    'SWIR1': latest_image.select('B11'),
+                    'NIR': latest_image.select('B8')
+                }).rename('MSI')
+                
+                # Get mean values for the farm area
+                mean_values = ee.Image.cat([ndvi, ndmi, msi]).reduceRegion(
+                    reducer=ee.Reducer.mean(),
+                    geometry=farm_area,
+                    scale=10
+                ).getInfo()
+                
+                ndvi_value = mean_values.get('NDVI', 0.0)
+                ndmi_value = mean_values.get('NDMI', 0.0)
+                msi_value = mean_values.get('MSI', 0.0)
+            else:
+                ndvi_value = 0.0
+                ndmi_value = 0.0
+                msi_value = 0.0
+            
+            # Get temperature from ERA5
+            era5_collection = (ee.ImageCollection('ECMWF/ERA5_LAND/HOURLY')
+                             .filterBounds(farm_area)
+                             .filterDate(ee.Date(today - datetime.timedelta(days=7)), ee.Date(today))
+                             .select('temperature_2m'))
+            
+            if era5_collection.size().getInfo() > 0:
+                mean_temp = era5_collection.mean().reduceRegion(
+                    reducer=ee.Reducer.mean(),
+                    geometry=farm_area,
+                    scale=10000
+                ).getInfo()
+                temperature = mean_temp.get('temperature_2m', 25.0) - 273.15  # Convert from Kelvin to Celsius
+            else:
+                temperature = 25.0
+            
+            # Estimate age_days based on NDVI (very rough estimation)
+            if ndvi_value > 0.7:
+                age_days = 180  # Mature
+            elif ndvi_value > 0.5:
+                age_days = 120  # Growing
+            elif ndvi_value > 0.3:
+                age_days = 60   # Young
+            else:
+                age_days = 30   # Very young
+            
+            results.append({
+                'مزرعه': farm['مزرعه'],
+                'NDVI': ndvi_value,
+                'NDMI': ndmi_value,
+                'MSI': msi_value,
+                'temperature': temperature,
+                'area_hectares': area_hectares,
+                'age_days': age_days
+            })
+            
+            # Update progress bar
+            progress_bar.progress((idx + 1) / total_farms)
+        
+        progress_bar.empty()
+        return pd.DataFrame(results)
+    except Exception as e:
+        st.error(f"خطا در محاسبه شاخص‌های مزارع: {e}")
+        st.error(traceback.format_exc())
+        return None
+
 # --- Load Farm Data ---
 @st.cache_data(show_spinner="در حال بارگذاری داده‌های مزارع...")
 def load_farm_data(csv_path=CSV_FILE_PATH):
@@ -150,35 +262,13 @@ def load_farm_data(csv_path=CSV_FILE_PATH):
             st.error(f"❌ فایل CSV باید شامل ستون‌های ضروری باشد: {', '.join(missing_required)}")
             return None
         
-        # Optional columns with default values
-        optional_cols = {
-            'coordinates_missing': False,
-            'NDVI': 0.0,
-            'NDMI': 0.0,
-            'MSI': 0.0,
-            'age_days': 0,
-            'area_hectares': 0.0,
-            'temperature': 25.0,
-            'et0': 5.0
-        }
-        
-        # Add missing optional columns with default values
-        for col, default_value in optional_cols.items():
-            if col not in df.columns:
-                df[col] = default_value
-                st.warning(f"⚠️ ستون '{col}' در فایل CSV یافت نشد. مقدار پیش‌فرض {default_value} استفاده خواهد شد.")
-        
         # Convert coordinate columns to numeric, coercing errors
         df['طول جغرافیایی'] = pd.to_numeric(df['طول جغرافیایی'], errors='coerce')
         df['عرض جغرافیایی'] = pd.to_numeric(df['عرض جغرافیایی'], errors='coerce')
         
-        # Convert other numeric columns
-        numeric_cols = ['NDVI', 'NDMI', 'MSI', 'age_days', 'area_hectares', 
-                       'temperature', 'et0']
-        for col in numeric_cols:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-        
         # Handle missing coordinates flag explicitly if needed
+        if 'coordinates_missing' not in df.columns:
+            df['coordinates_missing'] = False
         df['coordinates_missing'] = df['coordinates_missing'].fillna(False).astype(bool)
         
         # Drop rows where coordinates are actually missing after coercion or flagged
@@ -191,9 +281,22 @@ def load_farm_data(csv_path=CSV_FILE_PATH):
 
         # Ensure 'روزهای هفته' is string type for consistent filtering
         df['روزهای هفته'] = df['روزهای هفته'].astype(str).str.strip()
-
-        st.success(f"✅ داده‌های {len(df)} مزرعه با موفقیت بارگذاری شد.")
-        return df
+        
+        # Calculate metrics using GEE
+        metrics_df = calculate_farm_metrics(df)
+        if metrics_df is not None:
+            # Merge the calculated metrics with the original dataframe
+            df = df.merge(metrics_df, on='مزرعه', how='left')
+            
+            # Set default et0 value (this could be calculated from temperature if needed)
+            df['et0'] = 5.0
+            
+            st.success(f"✅ داده‌های {len(df)} مزرعه با موفقیت بارگذاری و شاخص‌ها محاسبه شد.")
+            return df
+        else:
+            st.error("❌ خطا در محاسبه شاخص‌های مزارع")
+            return None
+            
     except FileNotFoundError:
         st.error(f"❌ فایل '{csv_path}' یافت نشد. لطفاً فایل CSV داده‌های مزارع را در مسیر صحیح قرار دهید.")
         return None
