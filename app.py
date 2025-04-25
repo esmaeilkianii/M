@@ -12,11 +12,10 @@ import requests # Needed for getThumbUrl download
 import traceback  # Add missing traceback import
 from streamlit_folium import st_folium  # Add missing st_folium import
 import base64
-from sugarcane_analysis import SugarcaneAnalysis
 
 # --- Custom CSS ---
 st.set_page_config(
-    page_title="سامانه پایش هوشمند نیشکر",
+    page_title="سامانه هوشمند نیشکر",
     page_icon="🌾",
     layout="wide"
 )
@@ -103,15 +102,9 @@ INITIAL_LAT = 31.534442
 INITIAL_LON = 48.724416
 INITIAL_ZOOM = 12
 
-# Update file paths for Hugging Face
-import os
-
-# Get the current directory
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# Update file paths
-CSV_FILE_PATH = os.path.join(CURRENT_DIR, 'cleaned_output.csv')
-SERVICE_ACCOUNT_FILE = os.path.join(CURRENT_DIR, 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json')
+# --- File Paths (Relative to the script location in Hugging Face) ---
+CSV_FILE_PATH = 'cleaned_output.csv'
+SERVICE_ACCOUNT_FILE = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json'
 
 # --- GEE Authentication ---
 @st.cache_resource # Cache the GEE initialization
@@ -134,143 +127,22 @@ def initialize_gee():
         st.stop()
 
 
-# --- Calculate Farm Metrics from GEE ---
-@st.cache_data(show_spinner="در حال محاسبه شاخص‌های مزارع...")
-def calculate_farm_metrics(_farm_df):
-    """Calculates NDVI, NDMI, MSI, temperature, and area for farms using GEE."""
-    try:
-        # Create a copy of the dataframe to avoid modifying the original
-        df = _farm_df.copy()
-        
-        # Get today's date for calculations
-        today = datetime.date.today()
-        
-        # Create a list to store results
-        results = []
-        
-        # Progress bar
-        progress_bar = st.progress(0)
-        total_farms = len(df)
-        
-        for idx, farm in df.iterrows():
-            # Create a point geometry for the farm
-            point = ee.Geometry.Point([farm['طول جغرافیایی'], farm['عرض جغرافیایی']])
-            
-            # Get a 100m buffer around the point to create a farm area
-            farm_area = point.buffer(100)  # 100m buffer
-            
-            # Calculate area in hectares
-            area_hectares = farm_area.area().divide(10000).getInfo()
-            
-            # Get Sentinel-2 data for the last 30 days
-            s2_collection = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-                           .filterBounds(farm_area)
-                           .filterDate(ee.Date(today - datetime.timedelta(days=30)), ee.Date(today))
-                           .map(maskS2clouds))
-            
-            # Get the most recent image
-            latest_image = s2_collection.sort('system:time_start', False).first()
-            
-            # Calculate indices
-            if latest_image:
-                # NDVI = (NIR - Red) / (NIR + Red)
-                ndvi = latest_image.normalizedDifference(['B8', 'B4']).rename('NDVI')
-                
-                # NDMI = (NIR - SWIR1) / (NIR + SWIR1)
-                ndmi = latest_image.normalizedDifference(['B8', 'B11']).rename('NDMI')
-                
-                # MSI = SWIR1 / NIR
-                msi = latest_image.expression('SWIR1 / NIR', {
-                    'SWIR1': latest_image.select('B11'),
-                    'NIR': latest_image.select('B8')
-                }).rename('MSI')
-                
-                # Get mean values for the farm area
-                mean_values = ee.Image.cat([ndvi, ndmi, msi]).reduceRegion(
-                    reducer=ee.Reducer.mean(),
-                    geometry=farm_area,
-                    scale=10
-                ).getInfo()
-                
-                ndvi_value = mean_values.get('NDVI', 0.0)
-                ndmi_value = mean_values.get('NDMI', 0.0)
-                msi_value = mean_values.get('MSI', 0.0)
-            else:
-                ndvi_value = 0.0
-                ndmi_value = 0.0
-                msi_value = 0.0
-            
-            # Get temperature from ERA5
-            era5_collection = (ee.ImageCollection('ECMWF/ERA5_LAND/HOURLY')
-                             .filterBounds(farm_area)
-                             .filterDate(ee.Date(today - datetime.timedelta(days=7)), ee.Date(today))
-                             .select('temperature_2m'))
-            
-            if era5_collection.size().getInfo() > 0:
-                mean_temp = era5_collection.mean().reduceRegion(
-                    reducer=ee.Reducer.mean(),
-                    geometry=farm_area,
-                    scale=10000
-                ).getInfo()
-                temperature = mean_temp.get('temperature_2m', 25.0) - 273.15  # Convert from Kelvin to Celsius
-            else:
-                temperature = 25.0
-            
-            # Estimate age_days based on NDVI (very rough estimation)
-            if ndvi_value > 0.7:
-                age_days = 180  # Mature
-            elif ndvi_value > 0.5:
-                age_days = 120  # Growing
-            elif ndvi_value > 0.3:
-                age_days = 60   # Young
-            else:
-                age_days = 30   # Very young
-            
-            results.append({
-                'مزرعه': farm['مزرعه'],
-                'NDVI': ndvi_value,
-                'NDMI': ndmi_value,
-                'MSI': msi_value,
-                'temperature': temperature,
-                'area_hectares': area_hectares,
-                'age_days': age_days
-            })
-            
-            # Update progress bar
-            progress_bar.progress((idx + 1) / total_farms)
-        
-        progress_bar.empty()
-        return pd.DataFrame(results)
-    except Exception as e:
-        st.error(f"خطا در محاسبه شاخص‌های مزارع: {e}")
-        st.error(traceback.format_exc())
-        return None
-
 # --- Load Farm Data ---
 @st.cache_data(show_spinner="در حال بارگذاری داده‌های مزارع...")
 def load_farm_data(csv_path=CSV_FILE_PATH):
     """Loads farm data from the specified CSV file."""
     try:
         df = pd.read_csv(csv_path)
-        
-        # Required columns that must exist
-        required_cols = ['مزرعه', 'طول جغرافیایی', 'عرض جغرافیایی', 'روزهای هفته']
-        
-        # Check for required columns
-        missing_required = [col for col in required_cols if col not in df.columns]
-        if missing_required:
-            st.error(f"❌ فایل CSV باید شامل ستون‌های ضروری باشد: {', '.join(missing_required)}")
+        # Basic validation
+        required_cols = ['مزرعه', 'طول جغرافیایی', 'عرض جغرافیایی', 'روزهای هفته', 'coordinates_missing']
+        if not all(col in df.columns for col in required_cols):
+            st.error(f"❌ فایل CSV باید شامل ستون‌های ضروری باشد: {', '.join(required_cols)}")
             return None
-        
         # Convert coordinate columns to numeric, coercing errors
         df['طول جغرافیایی'] = pd.to_numeric(df['طول جغرافیایی'], errors='coerce')
         df['عرض جغرافیایی'] = pd.to_numeric(df['عرض جغرافیایی'], errors='coerce')
-        
         # Handle missing coordinates flag explicitly if needed
-        if 'coordinates_missing' not in df.columns:
-            df['coordinates_missing'] = False
         df['coordinates_missing'] = df['coordinates_missing'].fillna(False).astype(bool)
-        
         # Drop rows where coordinates are actually missing after coercion or flagged
         df = df.dropna(subset=['طول جغرافیایی', 'عرض جغرافیایی'])
         df = df[~df['coordinates_missing']]
@@ -281,22 +153,9 @@ def load_farm_data(csv_path=CSV_FILE_PATH):
 
         # Ensure 'روزهای هفته' is string type for consistent filtering
         df['روزهای هفته'] = df['روزهای هفته'].astype(str).str.strip()
-        
-        # Calculate metrics using GEE
-        metrics_df = calculate_farm_metrics(df)
-        if metrics_df is not None:
-            # Merge the calculated metrics with the original dataframe
-            df = df.merge(metrics_df, on='مزرعه', how='left')
-            
-            # Set default et0 value (this could be calculated from temperature if needed)
-            df['et0'] = 5.0
-            
-            st.success(f"✅ داده‌های {len(df)} مزرعه با موفقیت بارگذاری و شاخص‌ها محاسبه شد.")
-            return df
-        else:
-            st.error("❌ خطا در محاسبه شاخص‌های مزارع")
-            return None
-            
+
+        st.success(f"✅ داده‌های {len(df)} مزرعه با موفقیت بارگذاری شد.")
+        return df
     except FileNotFoundError:
         st.error(f"❌ فایل '{csv_path}' یافت نشد. لطفاً فایل CSV داده‌های مزارع را در مسیر صحیح قرار دهید.")
         return None
@@ -316,11 +175,6 @@ if farm_data_df is None:
     st.error("❌ امکان ادامه کار بدون داده‌های مزارع وجود ندارد.")
     st.stop()
 
-# Import the new SugarcaneAnalysis class
-from sugarcane_analysis import SugarcaneAnalysis
-
-# Initialize the analysis class
-sugarcane_analyzer = SugarcaneAnalysis()
 
 # ==============================================================================
 # Sidebar Filters
@@ -963,109 +817,6 @@ if not ranking_df.empty:
 else:
     st.info(f"داده‌ای برای جدول رتبه‌بندی بر اساس {selected_index} در این بازه زمانی یافت نشد.")
 
-
-# Add new section for sugarcane-specific analysis
-st.markdown("---")
-st.subheader("📊 تحلیل تخصصی نیشکر")
-
-if selected_farm_name != "همه مزارع":
-    # Get farm details
-    farm_details = filtered_farms_df[filtered_farms_df['مزرعه'] == selected_farm_name].iloc[0]
-    
-    # Create columns for analysis display
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Calculate and display health status
-        health_status = sugarcane_analyzer.analyze_field_health(
-            ndvi=float(farm_details.get('NDVI', 0)),
-            ndmi=float(farm_details.get('NDMI', 0)),
-            msi=float(farm_details.get('MSI', 0)),
-            age_days=int(farm_details.get('age_days', 0))
-        )
-        
-        st.markdown("### وضعیت سلامت مزرعه")
-        st.metric("امتیاز سلامت", f"{health_status['health_score']:.1f}/100")
-        
-        # Display growth stage
-        growth_stage_translation = {
-            'initial': 'مرحله اولیه',
-            'vegetative': 'مرحله رویشی',
-            'grand_growth': 'مرحله رشد اصلی',
-            'maturity': 'مرحله رسیدگی'
-        }
-        st.metric("مرحله رشد", growth_stage_translation.get(health_status['growth_stage'], 'نامشخص'))
-        
-        # Display stresses
-        if health_status['stresses']:
-            st.markdown("### تنش‌های شناسایی شده")
-            for stress_type, severity in health_status['stresses'].items():
-                severity_translation = {
-                    'high': 'شدید',
-                    'moderate': 'متوسط'
-                }
-                stress_translation = {
-                    'water_stress': 'تنش آبی',
-                    'nutrient_stress': 'تنش تغذیه‌ای',
-                    'disease_stress': 'تنش بیماری'
-                }
-                st.warning(f"{stress_translation.get(stress_type, stress_type)}: {severity_translation.get(severity, severity)}")
-    
-    with col2:
-        # Calculate and display yield estimates
-        yield_estimate = sugarcane_analyzer.estimate_yield(
-            ndvi=float(farm_details.get('NDVI', 0)),
-            age_days=int(farm_details.get('age_days', 0)),
-            area_hectares=float(farm_details.get('area_hectares', 0))
-        )
-        
-        st.markdown("### برآورد عملکرد")
-        st.metric("عملکرد تخمینی (تن در هکتار)", f"{yield_estimate:.1f}")
-        
-        # Calculate and display sugar content
-        sugar_content = sugarcane_analyzer.calculate_sugar_content(
-            ndvi=float(farm_details.get('NDVI', 0)),
-            age_days=int(farm_details.get('age_days', 0)),
-            temperature=float(farm_details.get('temperature', 25))
-        )
-        
-        st.metric("درصد قند تخمینی", f"{sugar_content:.1f}%")
-        
-        # Display harvest readiness
-        harvest_readiness = sugarcane_analyzer.calculate_harvest_readiness(
-            ndvi=float(farm_details.get('NDVI', 0)),
-            age_days=int(farm_details.get('age_days', 0)),
-            temperature=float(farm_details.get('temperature', 25))
-        )
-        
-        if harvest_readiness['optimal_harvest']:
-            st.success("✅ زمان مناسب برای برداشت")
-        else:
-            st.info("⏳ هنوز زمان برداشت نرسیده است")
-    
-    # Display recommendations
-    st.markdown("### توصیه‌های مدیریتی")
-    for recommendation in health_status['recommendations']:
-        st.info(f"📌 {recommendation}")
-    
-    # Add water requirement calculation
-    st.markdown("### نیاز آبی")
-    water_requirement = sugarcane_analyzer.calculate_water_requirement(
-        age_days=int(farm_details.get('age_days', 0)),
-        et0=float(farm_details.get('et0', 5))
-    )
-    st.metric("نیاز آبی روزانه (میلی‌متر)", f"{water_requirement:.1f}")
-    
-    # Add growth rate analysis
-    if 'previous_ndvi' in farm_details and 'days_since_last_measurement' in farm_details:
-        growth_rate = sugarcane_analyzer.calculate_growth_rate(
-            current_ndvi=float(farm_details.get('NDVI', 0)),
-            previous_ndvi=float(farm_details.get('previous_ndvi', 0)),
-            days_between=int(farm_details.get('days_since_last_measurement', 0))
-        )
-        st.metric("نرخ رشد روزانه", f"{growth_rate:.4f}")
-else:
-    st.info("لطفاً یک مزرعه خاص را برای مشاهده تحلیل تخصصی انتخاب کنید.")
 
 st.markdown("---")
 st.sidebar.markdown("---")
