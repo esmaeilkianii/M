@@ -103,7 +103,7 @@ INITIAL_LON = 48.724416
 INITIAL_ZOOM = 12
 
 # --- File Paths (Relative to the script location in Hugging Face) ---
-CSV_FILE_PATH = 'cleaned_output.csv'
+CSV_FILE_PATH = 'برنامه_ریزی_با_مختصات (1).csv'
 SERVICE_ACCOUNT_FILE = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json'
 
 # --- GEE Authentication ---
@@ -134,35 +134,41 @@ def load_farm_data(csv_path=CSV_FILE_PATH):
     try:
         df = pd.read_csv(csv_path)
         # Basic validation
-        required_cols = ['مزرعه', 'طول جغرافیایی', 'عرض جغرافیایی', 'روزهای هفته', 'coordinates_missing']
+        required_cols = ['مزرعه', 'longitude', 'latitude', 'روز', 'گروه']
         if not all(col in df.columns for col in required_cols):
             st.error(f"❌ فایل CSV باید شامل ستون‌های ضروری باشد: {', '.join(required_cols)}")
-            return None
+            st.stop()
         # Convert coordinate columns to numeric, coercing errors
-        df['طول جغرافیایی'] = pd.to_numeric(df['طول جغرافیایی'], errors='coerce')
-        df['عرض جغرافیایی'] = pd.to_numeric(df['عرض جغرافیایی'], errors='coerce')
-        # Handle missing coordinates flag explicitly if needed
-        df['coordinates_missing'] = df['coordinates_missing'].fillna(False).astype(bool)
-        # Drop rows where coordinates are actually missing after coercion or flagged
-        df = df.dropna(subset=['طول جغرافیایی', 'عرض جغرافیایی'])
-        df = df[~df['coordinates_missing']]
+        df['longitude'] = pd.to_numeric(df['longitude'], errors='coerce')
+        df['latitude'] = pd.to_numeric(df['latitude'], errors='coerce')
+
+        # Drop rows where essential coordinates are actually missing after coercion
+        initial_count = len(df)
+        df = df.dropna(subset=['longitude', 'latitude', 'روز'])
+        dropped_count = initial_count - len(df)
+        if dropped_count > 0:
+            st.warning(f"⚠️ {dropped_count} رکورد به دلیل مقادیر نامعتبر یا خالی در ستون‌های مختصات یا روز حذف شدند.")
+
 
         if df.empty:
-            st.warning("⚠️ داده معتبری برای مزارع یافت نشد (پس از حذف رکوردهای بدون مختصات).")
-            return None
+            st.warning("⚠️ داده معتبری برای مزارع یافت نشد (پس از حذف رکوردهای بدون مختصات یا روز).")
+            st.stop()
 
-        # Ensure 'روزهای هفته' is string type for consistent filtering
-        df['روزهای هفته'] = df['روزهای هفته'].astype(str).str.strip()
+        # Ensure 'روز' is string type and normalize spaces (including non-breaking spaces)
+        df['روز'] = df['روز'].astype(str).str.replace(r'\s+', ' ', regex=True).str.strip()
+        # Ensure 'گروه' is treated appropriately (e.g., as string or category)
+        df['گروه'] = df['گروه'].astype(str).str.strip()
+
 
         st.success(f"✅ داده‌های {len(df)} مزرعه با موفقیت بارگذاری شد.")
         return df
     except FileNotFoundError:
         st.error(f"❌ فایل '{csv_path}' یافت نشد. لطفاً فایل CSV داده‌های مزارع را در مسیر صحیح قرار دهید.")
-        return None
+        st.stop()
     except Exception as e:
         st.error(f"❌ خطا در بارگذاری یا پردازش فایل CSV: {e}")
         st.error(traceback.format_exc())
-        return None
+        st.stop()
 
 # Initialize GEE and Load Data
 if initialize_gee():
@@ -182,7 +188,7 @@ if farm_data_df is None:
 st.sidebar.header("تنظیمات نمایش")
 
 # --- Day of the Week Selection ---
-available_days = sorted(farm_data_df['روزهای هفته'].unique())
+available_days = sorted(farm_data_df['روز'].unique())
 selected_day = st.sidebar.selectbox(
     "📅 روز هفته را انتخاب کنید:",
     options=available_days,
@@ -191,7 +197,7 @@ selected_day = st.sidebar.selectbox(
 )
 
 # --- Filter Data Based on Selected Day ---
-filtered_farms_df = farm_data_df[farm_data_df['روزهای هفته'] == selected_day].copy()
+filtered_farms_df = farm_data_df[farm_data_df['روز'] == selected_day].copy()
 
 if filtered_farms_df.empty:
     st.warning(f"⚠️ هیچ مزرعه‌ای برای روز '{selected_day}' یافت نشد.")
@@ -235,7 +241,7 @@ persian_to_weekday = {
     "شنبه": 5,
     "یکشنبه": 6,
     "دوشنبه": 0,
-    "سه شنبه": 1, # Assuming space is correct
+    "سه شنبه": 1, # Handle potential space variations (normalized in loading)
     "چهارشنبه": 2,
     "پنجشنبه": 3,
     "جمعه": 4,
@@ -457,16 +463,16 @@ selected_farm_geom = None
 
 if selected_farm_name == "همه مزارع":
     # Use the bounding box of all filtered farms for the map view
-    min_lon, min_lat = filtered_farms_df['طول جغرافیایی'].min(), filtered_farms_df['عرض جغرافیایی'].min()
-    max_lon, max_lat = filtered_farms_df['طول جغرافیایی'].max(), filtered_farms_df['عرض جغرافیایی'].max()
+    min_lon, min_lat = filtered_farms_df['longitude'].min(), filtered_farms_df['latitude'].min()
+    max_lon, max_lat = filtered_farms_df['longitude'].max(), filtered_farms_df['latitude'].max()
     # Create a bounding box geometry
     selected_farm_geom = ee.Geometry.Rectangle([min_lon, min_lat, max_lon, max_lat])
     st.subheader(f"نمایش کلی مزارع برای روز: {selected_day}")
     st.info(f"تعداد مزارع در این روز: {len(filtered_farms_df)}")
 else:
     selected_farm_details = filtered_farms_df[filtered_farms_df['مزرعه'] == selected_farm_name].iloc[0]
-    lat = selected_farm_details['عرض جغرافیایی']
-    lon = selected_farm_details['طول جغرافیایی']
+    lat = selected_farm_details['latitude']
+    lon = selected_farm_details['longitude']
     selected_farm_geom = ee.Geometry.Point([lon, lat])
     st.subheader(f"جزئیات مزرعه: {selected_farm_name} (روز: {selected_day})")
     # Display farm details
@@ -475,10 +481,9 @@ else:
         st.metric("مساحت داشت (هکتار)", f"{selected_farm_details.get('مساحت', 'N/A'):,.2f}" if pd.notna(selected_farm_details.get('مساحت')) else "N/A")
         st.metric("واریته", f"{selected_farm_details.get('واریته', 'N/A')}")
     with details_cols[1]:
-        st.metric("کانال", f"{selected_farm_details.get('کانال', 'N/A')}")
+        st.metric("گروه", f"{selected_farm_details.get('گروه', 'N/A')}")
         st.metric("سن", f"{selected_farm_details.get('سن', 'N/A')}")
     with details_cols[2]:
-        st.metric("اداره", f"{selected_farm_details.get('اداره', 'N/A')}")
         st.metric("مختصات", f"{lat:.5f}, {lon:.5f}")
 
 
@@ -563,8 +568,8 @@ if selected_farm_geom:
                  # Add markers for all filtered farms
                  for idx, farm in filtered_farms_df.iterrows():
                      folium.Marker(
-                         location=[farm['عرض جغرافیایی'], farm['طول جغرافیایی']],
-                         popup=f"مزرعه: {farm['مزرعه']}\nکانال: {farm['کانال']}\nاداره: {farm['اداره']}",
+                         location=[farm['latitude'], farm['longitude']],
+                         popup=f"مزرعه: {farm['مزرعه']}\nگروه: {farm.get('گروه', 'N/A')}",
                          tooltip=farm['مزرعه'],
                          icon=folium.Icon(color='blue', icon='info-sign')
                      ).add_to(m)
@@ -646,8 +651,8 @@ def calculate_weekly_indices(_farms_df, index_name, start_curr, end_curr, start_
 
     for i, (idx, farm) in enumerate(_farms_df.iterrows()):
         farm_name = farm['مزرعه']
-        lat = farm['عرض جغرافیایی']
-        lon = farm['طول جغرافیایی']
+        lat = farm['latitude']
+        lon = farm['longitude']
         point_geom = ee.Geometry.Point([lon, lat])
 
         def get_mean_value(start, end):
@@ -690,8 +695,7 @@ def calculate_weekly_indices(_farms_df, index_name, start_curr, end_curr, start_
 
         results.append({
             'مزرعه': farm_name,
-            'کانال': farm.get('کانال', 'N/A'),
-            'اداره': farm.get('اداره', 'N/A'),
+            'گروه': farm.get('گروه', 'N/A'),
             f'{index_name} (هفته جاری)': current_val,
             f'{index_name} (هفته قبل)': previous_val,
             'تغییر': change
@@ -772,8 +776,13 @@ if not ranking_df.empty:
              # Check if column exists before formatting
              ranking_df_sorted[col] = ranking_df_sorted[col].map(lambda x: f"{x:.3f}" if pd.notna(x) else "N/A")
 
-    # Display the table with color coding
-    st.dataframe(ranking_df_sorted, use_container_width=True)
+    # Select columns to display, including 'گروه'
+    display_columns = ['مزرعه', 'گروه'] + cols_to_format + ['وضعیت']
+    # Ensure only existing columns are selected
+    display_columns = [col for col in display_columns if col in ranking_df_sorted.columns]
+
+    # Display the table with color coding and selected columns
+    st.dataframe(ranking_df_sorted[display_columns], use_container_width=True)
     
     # Add a summary of farm statuses
     st.subheader("📊 خلاصه وضعیت مزارع")
