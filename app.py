@@ -218,7 +218,7 @@ selected_farm_name = st.sidebar.selectbox(
 index_options = {
     "NDVI": "شاخص پوشش گیاهی تفاضلی نرمال شده",
     "EVI": "شاخص پوشش گیاهی بهبود یافته",
-    "NDMI": "شاخص رطوبت تفاضلی نرمال شده",
+    "NDMI": "شاخص رطوبت تفاضلی نرمال شده (وضعیت آبی)",
     "LAI": "شاخص سطح برگ (تخمینی)",
     "MSI": "شاخص تنش رطوبتی",
     "CVI": "شاخص کلروفیل (تخمینی)",
@@ -727,9 +727,9 @@ if calculation_errors:
 
 
 if not ranking_df.empty:
-    # Sort by the current week's index value (descending for NDVI/EVI/LAI/CVI, ascending for MSI?)
+    # Sort by the current week's index value (descending for NDVI/EVI/LAI/CVI/NDMI, ascending for MSI)
     # Adjust sorting based on index meaning
-    ascending_sort = selected_index in ['MSI'] # Indices where lower is better
+    ascending_sort = selected_index in ['MSI'] # Indices where lower is better (MSI) - Higher is better for NDMI
     ranking_df_sorted = ranking_df.sort_values(
         by=f'{selected_index} (هفته جاری)',
         ascending=ascending_sort,
@@ -741,30 +741,24 @@ if not ranking_df.empty:
     ranking_df_sorted.index.name = 'رتبه'
 
     # Add a status column to indicate growth or stress
-    # For NDVI, EVI, LAI, CVI: higher is better
-    # For MSI, NDMI: lower is better
-    def determine_status(row, index_name):
-        if pd.isna(row['تغییر']) or pd.isna(row[f'{index_name} (هفته جاری)']) or pd.isna(row[f'{index_name} (هفته قبل)']):
-            return "بدون داده"
-        
-        # For indices where higher is better (NDVI, EVI, LAI, CVI)
-        if index_name in ['NDVI', 'EVI', 'LAI', 'CVI']:
-            if row['تغییر'] > 0.05:  # Significant growth
-                return "رشد مثبت"
-            elif row['تغییر'] < -0.05:  # Significant decline
-                return "تنش/کاهش"
-            else:
-                return "ثابت"
-        # For indices where lower is better (MSI, NDMI)
-        elif index_name in ['MSI', 'NDMI']:
-            if row['تغییر'] < -0.05:  # Significant improvement
-                return "بهبود"
-            elif row['تغییر'] > 0.05:  # Significant deterioration
-                return "تنش/بدتر شدن"
-            else:
-                return "ثابت"
+    # For indices where higher is better (NDVI, EVI, LAI, CVI, NDMI)
+    if index_name in ['NDVI', 'EVI', 'LAI', 'CVI', 'NDMI']: # Added NDMI here
+        if row['تغییر'] > 0.05:  # Significant growth/improvement
+            return "رشد مثبت / بهبود" # Generalized term
+        elif row['تغییر'] < -0.05:  # Significant decline/deterioration
+            return "تنش / کاهش" # Generalized term
         else:
-            return "نامشخص"
+            return "ثابت"
+    # For indices where lower is better (MSI)
+    elif index_name in ['MSI']:
+        if row['تغییر'] < -0.05:  # Significant improvement (less stress)
+            return "بهبود"
+        elif row['تغییر'] > 0.05:  # Significant deterioration (more stress)
+            return "تنش / بدتر شدن"
+        else:
+            return "ثابت"
+    else:
+        return "نامشخص"
 
     # Add status column
     ranking_df_sorted['وضعیت'] = ranking_df_sorted.apply(lambda row: determine_status(row, selected_index), axis=1)
@@ -791,28 +785,36 @@ if not ranking_df.empty:
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        if "رشد مثبت" in ranking_df_sorted['وضعیت'].value_counts() or "بهبود" in ranking_df_sorted['وضعیت'].value_counts():
-            status = "رشد مثبت" if "رشد مثبت" in ranking_df_sorted['وضعیت'].value_counts() else "بهبود"
-            count = ranking_df_sorted['وضعیت'].value_counts()[status]
-            st.metric(f"🟢 {status}", count)
-    
+        # Check for positive statuses like "رشد مثبت / بهبود" or "بهبود"
+        positive_status = "رشد مثبت / بهبود"
+        if positive_status not in ranking_df_sorted['وضعیت'].value_counts() and "بهبود" in ranking_df_sorted['وضعیت'].value_counts():
+            positive_status = "بهبود" # Fallback if the main positive status isn't present but "بهبود" is
+
+        if positive_status in ranking_df_sorted['وضعیت'].value_counts():
+            count = ranking_df_sorted['وضعیت'].value_counts()[positive_status]
+            st.metric(f"🟢 {positive_status}", count)
+
     with col2:
         if "ثابت" in ranking_df_sorted['وضعیت'].value_counts():
             count = ranking_df_sorted['وضعیت'].value_counts()["ثابت"]
             st.metric("⚪ ثابت", count)
-    
+
     with col3:
-        if "تنش/کاهش" in ranking_df_sorted['وضعیت'].value_counts() or "تنش/بدتر شدن" in ranking_df_sorted['وضعیت'].value_counts():
-            status = "تنش/کاهش" if "تنش/کاهش" in ranking_df_sorted['وضعیت'].value_counts() else "تنش/بدتر شدن"
-            count = ranking_df_sorted['وضعیت'].value_counts()[status]
-            st.metric(f"🔴 {status}", count)
-    
+        # Check for negative statuses like "تنش / کاهش" or "تنش / بدتر شدن"
+        negative_status = "تنش / کاهش"
+        if negative_status not in ranking_df_sorted['وضعیت'].value_counts() and "تنش / بدتر شدن" in ranking_df_sorted['وضعیت'].value_counts():
+            negative_status = "تنش / بدتر شدن" # Fallback
+
+        if negative_status in ranking_df_sorted['وضعیت'].value_counts():
+            count = ranking_df_sorted['وضعیت'].value_counts()[negative_status]
+            st.metric(f"🔴 {negative_status}", count)
+
     # Add explanation
     st.info(f"""
     **توضیحات:**
-    - **🟢 رشد مثبت/بهبود**: مزارعی که نسبت به هفته قبل بهبود داشته‌اند
-    - **⚪ ثابت**: مزارعی که تغییر معناداری نداشته‌اند
-    - **🔴 تنش/کاهش**: مزارعی که نسبت به هفته قبل وضعیت بدتری داشته‌اند
+    - **🟢 رشد مثبت / بهبود**: مزارعی که نسبت به هفته قبل بهبود قابل توجهی داشته‌اند (افزایش NDVI/EVI/LAI/CVI/NDMI یا کاهش MSI).
+    - **⚪ ثابت**: مزارعی که تغییر معناداری نداشته‌اند.
+    - **🔴 تنش / کاهش / بدتر شدن**: مزارعی که نسبت به هفته قبل وضعیت نامطلوب‌تری داشته‌اند (کاهش NDVI/EVI/LAI/CVI/NDMI یا افزایش MSI).
     """)
 
     # Add download button for the table
