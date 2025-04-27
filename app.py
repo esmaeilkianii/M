@@ -481,6 +481,21 @@ else:
         st.metric("اداره", f"{selected_farm_details.get('اداره', 'N/A')}")
         st.metric("مختصات", f"{lat:.5f}, {lon:.5f}")
 
+# --- Display Summary Metrics ---
+st.markdown("---")
+st.subheader("📊 خلاصه وضعیت کلی")
+metric_col1, metric_col2, metric_col3, metric_col4, metric_col5 = st.columns(5)
+with metric_col1:
+    st.metric(label="داشت ۱۴۰۳", value="9008.35")
+with metric_col2:
+    st.metric(label="آیش ۱۴۰۳-۰۰۴", value="1703.04")
+with metric_col3:
+    st.metric(label="راتون ۱۴۰۴", value="7305.31")
+with metric_col4:
+    st.metric(label="پلنت ۱۴۰۴", value="2115.99")
+with metric_col5:
+    st.metric(label="داشت کلی ۱۴۰۴", value="9421.3")
+
 
 # --- Map Display ---
 st.markdown("---")
@@ -592,7 +607,8 @@ if selected_farm_geom:
 st_folium(m, width=None, height=500, use_container_width=True)
 st.caption("برای مشاهده جزئیات روی مارکرها کلیک کنید. از کنترل لایه‌ها برای تغییر نقشه پایه استفاده کنید.")
 # Note: Direct PNG download from st_folium/geemap isn't built-in easily.
-st.info("💡 برای ذخیره نقشه، می‌توانید از ابزار عکس گرفتن از صفحه (Screenshot) مرورگر یا سیستم عامل خود استفاده کنید.")
+
+
 
 
 # --- Time Series Chart ---
