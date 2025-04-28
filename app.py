@@ -329,12 +329,12 @@ index_options = {
     "NDVI": "شاخص پوشش گیاهی تفاضلی نرمال شده",
     "EVI": "شاخص پوشش گیاهی بهبود یافته",
     "NDMI": "شاخص رطوبت تفاضلی نرمال شده (وضعیت آبی)",
-    "ET": "تبخیر و تعرق واقعی (ماهانه)", # Added ET
     "LAI": "شاخص سطح برگ (تخمینی)",
     "MSI": "شاخص تنش رطوبتی",
     "CVI": "شاخص کلروفیل (تخمینی)",
     # Add more indices if needed and implemented
     # "Biomass": "زیست‌توده (تخمینی)",
+    # "ET": "تبخیر و تعرق (تخمینی)",
 }
 selected_index = st.sidebar.selectbox(
     "📈 شاخص مورد نظر برای نمایش روی نقشه:",
@@ -476,47 +476,33 @@ def add_indices(image):
 @st.cache_data(show_spinner="در حال پردازش تصاویر ماهواره‌ای...", persist=True)
 def get_processed_image(_geometry, start_date, end_date, index_name):
     """
-    Gets cloud-masked Sentinel-2 median composite OR latest ET image
-    for a given geometry and date range/end date.
+    Gets cloud-masked, index-calculated Sentinel-2 median composite for a given geometry and date range.
     _geometry: ee.Geometry (Point or Polygon)
     start_date, end_date: YYYY-MM-DD strings
-    index_name: Name of the primary index band to return (e.g., 'NDVI', 'ET')
+    index_name: Name of the primary index band to return (e.g., 'NDVI')
     """
     try:
-        if index_name == 'ET':
-            # Use SSEBop Monthly for ET
-            et_col = ee.ImageCollection('NASA/SSEBop/MONTHLY').select('et') \
-                       .filterBounds(_geometry) \
-                       .filterDate(start_date, end_date) # Filter for the range initially
+        s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+                     .filterBounds(_geometry)
+                     .filterDate(start_date, end_date)
+                     .map(maskS2clouds)) # Apply cloud masking
 
-            # Get the latest image within the range (most likely the image covering the end_date month)
-            latest_et_image = et_col.sort('system:time_start', False).first()
+        # Check if any images are available after filtering
+        count = s2_sr_col.size().getInfo()
+        if count == 0:
+            # st.warning(f"هیچ تصویر Sentinel-2 بدون ابر در بازه {start_date} تا {end_date} یافت نشد.")
+            return None, f"No cloud-free Sentinel-2 images found for {start_date} to {end_date}."
 
-            if latest_et_image is None:
-                 return None, f"No SSEBop ET images found for {start_date} to {end_date}."
+        # Calculate indices for each image in the collection
+        indexed_col = s2_sr_col.map(add_indices)
 
-            # SSEBop 'et' band is total monthly ET in mm. No scaling needed.
-            # No cloud masking needed for this product.
-            # Rename the band to 'ET' for consistency
-            output_image = latest_et_image.rename(index_name)
-            return output_image, None
+        # Create a median composite image
+        median_image = indexed_col.median() # Use median to reduce noise/outliers
 
-        else:
-            # Process Sentinel-2 for other indices
-            s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-                         .filterBounds(_geometry)
-                         .filterDate(start_date, end_date)
-                         .map(maskS2clouds)) # Apply cloud masking
+        # Select the desired index band
+        output_image = median_image.select(index_name)
 
-            count = s2_sr_col.size().getInfo()
-            if count == 0:
-                return None, f"No cloud-free Sentinel-2 images found for {start_date} to {end_date}."
-
-            indexed_col = s2_sr_col.map(add_indices)
-            median_image = indexed_col.median() # Use median to reduce noise/outliers
-            output_image = median_image.select(index_name)
-            return output_image, None # Return the image and no error message
-
+        return output_image, None # Return the image and no error message
     except ee.EEException as e:
         # Handle GEE specific errors
         error_message = f"خطای Google Earth Engine: {e}"
@@ -537,267 +523,829 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
         st.error(error_message)
         return None, error_message
 
-# ... inside app.py ...
+# --- Function to get time series data for a point ---
+@st.cache_data(show_spinner="در حال دریافت سری زمانی شاخص...", persist=True)
+def get_index_time_series(_point_geom, index_name, start_date='2023-01-01', end_date=today.strftime('%Y-%m-%d')):
+    """Gets a time series of a specified index for a point geometry."""
+    try:
+        s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+                     .filterBounds(_point_geom)
+                     .filterDate(start_date, end_date)
+                     .map(maskS2clouds)
+                     .map(add_indices))
 
-# Modify get_farm_needs_data to include ET
+        def extract_value(image):
+            # Extract the index value at the point
+            # Use reduceRegion for points; scale should match sensor resolution (e.g., 10m for S2 NDVI)
+            value = image.reduceRegion(
+                reducer=ee.Reducer.first(), # Use 'first' or 'mean' if point covers multiple pixels
+                geometry=_point_geom,
+                scale=10 # Scale in meters (10m for Sentinel-2 RGB/NIR)
+            ).get(index_name)
+            # Return a feature with the value and the image date
+            return ee.Feature(None, {
+                'date': image.date().format('YYYY-MM-dd'),
+                index_name: value
+            })
+
+        # Map over the collection and remove features with null values
+        ts_features = s2_sr_col.map(extract_value).filter(ee.Filter.notNull([index_name]))
+
+        # Convert the FeatureCollection to a list of dictionaries
+        ts_info = ts_features.getInfo()['features']
+
+        if not ts_info:
+            return pd.DataFrame(columns=['date', index_name]), "داده‌ای برای سری زمانی یافت نشد."
+
+        # Convert to Pandas DataFrame
+        ts_data = [{'date': f['properties']['date'], index_name: f['properties'][index_name]} for f in ts_info]
+        ts_df = pd.DataFrame(ts_data)
+        ts_df['date'] = pd.to_datetime(ts_df['date'])
+        ts_df = ts_df.sort_values('date').set_index('date')
+
+        return ts_df, None # Return DataFrame and no error
+    except ee.EEException as e:
+        error_message = f"خطای GEE در دریافت سری زمانی: {e}"
+        st.error(error_message)
+        return pd.DataFrame(columns=['date', index_name]), error_message
+    except Exception as e:
+        error_message = f"خطای ناشناخته در دریافت سری زمانی: {e}\n{traceback.format_exc()}"
+        st.error(error_message)
+        return pd.DataFrame(columns=['date', index_name]), error_message
+
+
+# ==============================================================================
+# NEW: Function to get all relevant indices for a farm point for two periods
+# ==============================================================================
 @st.cache_data(show_spinner="در حال محاسبه شاخص‌های نیازسنجی...", persist=True)
 def get_farm_needs_data(_point_geom, start_curr, end_curr, start_prev, end_prev):
-    """Calculates mean NDVI, NDMI, EVI, SAVI for current and previous periods (weekly)
-       AND latest monthly ET and previous month's ET."""
+    """Calculates mean NDVI, NDMI, EVI, SAVI for current and previous periods."""
     results = {
         'NDVI_curr': None, 'NDMI_curr': None, 'EVI_curr': None, 'SAVI_curr': None,
         'NDVI_prev': None, 'NDMI_prev': None, 'EVI_prev': None, 'SAVI_prev': None,
-        'ET_curr': None, # Added ET current month
-        'ET_prev': None, # Added ET previous month
         'error': None
     }
-    # Indices from Sentinel-2 (weekly median)
-    s2_indices_to_get = ['NDVI', 'NDMI', 'EVI', 'SAVI']
+    indices_to_get = ['NDVI', 'NDMI', 'EVI', 'SAVI']
 
-    # --- Helper for S2 indices ---
-    def get_mean_s2_values(start, end):
-        period_values = {index: None for index in s2_indices_to_get}
+    def get_mean_values_for_period(start, end):
+        period_values = {index: None for index in indices_to_get}
+        error_msg = None
         try:
+            # Get median composite image with all indices calculated
             s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
                          .filterBounds(_point_geom)
                          .filterDate(start, end)
                          .map(maskS2clouds)
-                         .map(add_indices)) # Calculate all S2 indices
+                         .map(add_indices))
+
             count = s2_sr_col.size().getInfo()
-            if count == 0: return period_values, f"No S2 images {start}-{end}"
+            if count == 0:
+                return period_values, f"هیچ تصویری در بازه {start}-{end} یافت نشد"
+
             median_image = s2_sr_col.median()
-            mean_dict = median_image.select(s2_indices_to_get).reduceRegion(
-                reducer=ee.Reducer.mean(), geometry=_point_geom, scale=10
+
+            # Reduce region to get the mean value at the point for all indices
+            mean_dict = median_image.select(indices_to_get).reduceRegion(
+                reducer=ee.Reducer.mean(),
+                geometry=_point_geom,
+                scale=10  # Scale in meters
             ).getInfo()
+
             if mean_dict:
-                for index in s2_indices_to_get: period_values[index] = mean_dict.get(index)
+                for index in indices_to_get:
+                    period_values[index] = mean_dict.get(index)
             return period_values, None
-        except Exception as e: return period_values, f"S2 Error {start}-{end}: {e}"
-
-    # --- Helper for Monthly ET ---
-    def get_monthly_et(ref_end_date_str):
-        """Gets the ET value for the month containing ref_end_date_str."""
-        try:
-            # Use get_processed_image which handles ET correctly
-            # Need a start date far enough back to get the image for the ref_end_date_str month
-            # Let's use the start of the month containing ref_end_date_str
-            ref_date_dt = datetime.datetime.strptime(ref_end_date_str, '%Y-%m-%d').date()
-            month_start_str = ref_date_dt.replace(day=1).strftime('%Y-%m-%d')
-
-            et_image, error = get_processed_image(_point_geom, month_start_str, ref_end_date_str, 'ET')
-            if error:
-                # If no image exactly in the month range, maybe try extending the start date slightly?
-                # For now, just return the error.
-                return None, f"ET Error ({ref_end_date_str}): {error}"
-            if et_image is None:
-                 return None, f"No ET Image found for month of {ref_end_date_str}"
-
-
-            et_value_dict = et_image.reduceRegion(
-                reducer=ee.Reducer.mean(), geometry=_point_geom, scale=1000 # SSEBop scale
-            ).getInfo()
-            return et_value_dict.get('ET') if et_value_dict else None, None
         except ee.EEException as e:
-             # Catch specific GEE errors if needed
-             return None, f"GEE ET Error ({ref_end_date_str}): {e}"
+            error_msg = f"خطای GEE در بازه {start}-{end}: {e}"
+            return period_values, error_msg
         except Exception as e:
-            # Catch other errors like date parsing
-            return None, f"General ET Error ({ref_end_date_str}): {e}"
+            error_msg = f"خطای ناشناخته در بازه {start}-{end}: {e}"
+            return period_values, error_msg
 
-
-    # --- Calculate S2 Indices ---
-    curr_s2_values, err_curr_s2 = get_mean_s2_values(start_curr, end_curr)
-    if err_curr_s2: results['error'] = f"{results.get('error', '')} | {err_curr_s2}"
+    # Get data for current period
+    curr_values, err_curr = get_mean_values_for_period(start_curr, end_curr)
+    if err_curr:
+        results['error'] = err_curr
     else:
-        for index in s2_indices_to_get: results[f'{index}_curr'] = curr_s2_values.get(index)
+        results['NDVI_curr'] = curr_values['NDVI']
+        results['NDMI_curr'] = curr_values['NDMI']
+        results['EVI_curr'] = curr_values['EVI']
+        results['SAVI_curr'] = curr_values['SAVI']
 
-    prev_s2_values, err_prev_s2 = get_mean_s2_values(start_prev, end_prev)
-    if err_prev_s2: results['error'] = f"{results.get('error', '')} | {err_prev_s2}"
+    # Get data for previous period
+    prev_values, err_prev = get_mean_values_for_period(start_prev, end_prev)
+    if err_prev:
+        results['error'] = f"{results.get('error', '')} | {err_prev}" # Append errors
     else:
-        for index in s2_indices_to_get: results[f'{index}_prev'] = prev_s2_values.get(index)
-
-    # --- Calculate ET ---
-    # Get ET for the month containing the end date of the "current" period
-    et_curr_val, err_et_curr = get_monthly_et(end_curr)
-    if err_et_curr: results['error'] = f"{results.get('error', '')} | Current ET: {err_et_curr}"
-    else: results['ET_curr'] = et_curr_val
-
-    # Get ET for the month containing the end date of the "previous" period
-    et_prev_val, err_et_prev = get_monthly_et(end_prev)
-    if err_et_prev: results['error'] = f"{results.get('error', '')} | Previous ET: {err_et_prev}"
-    else: results['ET_prev'] = et_prev_val
+        results['NDVI_prev'] = prev_values['NDVI']
+        results['NDMI_prev'] = prev_values['NDMI']
+        results['EVI_prev'] = prev_values['EVI']
+        results['SAVI_prev'] = prev_values['SAVI']
 
     return results
 
+# ==============================================================================
+# NEW: Gemini AI Helper Functions
+# ==============================================================================
 
-# Modify get_ai_analysis prompt
+# Configure Gemini API
+@st.cache_resource
+def configure_gemini():
+    """Configures the Gemini API client using a hardcoded API key (NOT RECOMMENDED)."""
+    try:
+        # --- WARNING: Hardcoding API keys is insecure! Use Streamlit secrets instead. ---
+        api_key = "AIzaSyC6ntMs3XDa3JTk07-6_BRRCduiQaRmQFQ" # <-- HARDCODED API KEY
+        # ---------------------------------------------------------------------------
+
+        if not api_key:
+             st.error("❌ کلید API جمینای به صورت مستقیم در کد وارد نشده است.")
+             return None
+
+        genai.configure(api_key=api_key)
+        # Optional: Add safety settings configuration here if needed
+        # safety_settings = [...]
+        # model = genai.GenerativeModel('gemini-pro', safety_settings=safety_settings)
+        model = genai.GenerativeModel('gemini-1.5-flash') # Use the latest flash model
+        print("Gemini Configured Successfully (using hardcoded key).")
+        return model
+    # except KeyError: # No longer reading from secrets
+    #     st.error("❌ کلید API جمینای (GEMINI_API_KEY) در فایل secrets.toml یافت نشد.")
+    #     st.info("لطفاً فایل .streamlit/secrets.toml را ایجاد کرده و کلید خود را در آن قرار دهید.")
+    #     return None
+    except Exception as e:
+        st.error(f"❌ خطا در تنظیم Gemini API: {e}")
+        return None
+
+# Function to get AI analysis
 @st.cache_data(show_spinner="در حال دریافت تحلیل هوش مصنوعی...", persist=True)
 def get_ai_analysis(_model, farm_name, index_data, recommendations):
-    """Generates AI analysis for the farm's condition, including ET."""
+    """Generates AI analysis for the farm's condition."""
     if _model is None:
         return "سرویس هوش مصنوعی در دسترس نیست."
 
-    # Prepare data string, including ET
+    # Prepare data string
     data_str = ""
-    # Format helper
-    def fmt(val, prev_val, decimals=3):
-        curr_str = f"{val:.{decimals}f}" if pd.notna(val) else "N/A"
-        prev_str = f"{prev_val:.{decimals}f}" if pd.notna(prev_val) else "N/A"
-        return f"{curr_str} (قبلی: {prev_str})"
-
-    if 'NDVI_curr' in index_data and index_data['NDVI_curr'] is not None:
-         data_str += f"NDVI (هفتگی): {fmt(index_data['NDVI_curr'], index_data.get('NDVI_prev'))}\n"
-    if 'NDMI_curr' in index_data and index_data['NDMI_curr'] is not None:
-         data_str += f"NDMI (هفتگی): {fmt(index_data['NDMI_curr'], index_data.get('NDMI_prev'))}\n"
-    if 'EVI_curr' in index_data and index_data['EVI_curr'] is not None:
-         data_str += f"EVI (هفتگی): {fmt(index_data['EVI_curr'], index_data.get('EVI_prev'))}\n"
-    if 'SAVI_curr' in index_data and index_data['SAVI_curr'] is not None:
-         data_str += f"SAVI (هفتگی): {fmt(index_data['SAVI_curr'], index_data.get('SAVI_prev'))}\n"
-    # Add ET (different format - monthly)
-    if 'ET_curr' in index_data and index_data['ET_curr'] is not None:
-        et_curr_str = f"{index_data['ET_curr']:.1f} mm"
-        et_prev_str = f"{index_data.get('ET_prev'):.1f} mm" if pd.notna(index_data.get('ET_prev')) else "N/A"
-        data_str += f"ET (ماهانه): {et_curr_str} (ماه قبل: {et_prev_str})\n"
-
+    if index_data['NDVI_curr'] is not None: data_str += f"NDVI فعلی: {index_data['NDVI_curr']:.3f} (قبلی: {index_data.get('NDVI_prev', 'N/A'):.3f})\n"
+    if index_data['NDMI_curr'] is not None: data_str += f"NDMI فعلی: {index_data['NDMI_curr']:.3f} (قبلی: {index_data.get('NDMI_prev', 'N/A'):.3f})\n"
+    if index_data['EVI_curr'] is not None: data_str += f"EVI فعلی: {index_data['EVI_curr']:.3f} (قبلی: {index_data.get('EVI_prev', 'N/A'):.3f})\n"
+    if index_data['SAVI_curr'] is not None: data_str += f"SAVI فعلی: {index_data['SAVI_curr']:.3f} (قبلی: {index_data.get('SAVI_prev', 'N/A'):.3f})\n"
 
     prompt = f"""
-    شما یک متخصص کشاورزی نیشکر در ایران هستید. لطفاً وضعیت مزرعه '{farm_name}' را بر اساس داده‌های شاخص (شامل NDVI, NDMI, EVI, SAVI هفتگی و ET ماهانه) و توصیه‌های اولیه زیر تحلیل کنید. یک توضیح کوتاه و کاربردی به زبان فارسی ارائه دهید. تمرکز تحلیل بر نیاز آبیاری و کودی باشد و نقش تبخیر و تعرق واقعی ماهانه (ET) را در ارزیابی نیاز آبی فعلی و برنامه‌ریزی آتی لحاظ کنید.
+    شما یک متخصص کشاورزی نیشکر هستید. لطفاً وضعیت مزرعه '{farm_name}' را بر اساس داده‌های شاخص و توصیه‌های اولیه زیر تحلیل کنید و یک توضیح کوتاه و کاربردی به زبان فارسی ارائه دهید. تمرکز تحلیل بر نیاز آبیاری و کودی باشد.
 
     داده‌های شاخص:
-    {data_str if data_str else 'داده‌های شاخص در دسترس نیست.'}
+    {data_str}
     توصیه‌های اولیه:
     {', '.join(recommendations) if recommendations else 'هیچ توصیه‌ای وجود ندارد.'}
 
-    تحلیل شما (با تاکید بر نیاز آبی و کودی و با استفاده از ET):
+    تحلیل شما:
     """
 
     try:
         response = _model.generate_content(prompt)
-        # Ensure response.text exists or handle potential errors/different structures
-        return response.text if hasattr(response, 'text') else str(response)
+        # Accessing response text might differ slightly based on exact library version
+        # Check response object structure if needed
+        return response.text
     except Exception as e:
         st.warning(f"⚠️ خطا در ارتباط با Gemini API: {e}")
         return "خطا در دریافت تحلیل هوش مصنوعی."
 
 
-# ... inside tab_needs ...
-# ... (after checking selected_farm_name != "همه مزارع" and geometry is point) ...
 
+# ==============================================================================
+# Main Application Layout (Using Tabs)
+# ==============================================================================
+
+# Configure Gemini Model at the start
+gemini_model = configure_gemini()
+
+tab1, tab2, tab3, tab4 = st.tabs(["📊 پایش مزارع", "📈 تحلیل محاسبات", "💧کود و آبیاری", "🌱 تبخیر و تعرق"])
+
+with tab1:
+    # ==============================================================================
+    # Main Panel Display
+    # ==============================================================================
+
+    # --- Get Selected Farm Geometry and Details ---
+    selected_farm_details = None
+    selected_farm_geom = None
+
+    if selected_farm_name == "همه مزارع":
+        # Use the bounding box of all filtered farms for the map view
+        min_lon, min_lat = filtered_farms_df['longitude'].min(), filtered_farms_df['latitude'].min()
+        max_lon, max_lat = filtered_farms_df['longitude'].max(), filtered_farms_df['latitude'].max()
+        # Create a bounding box geometry
+        selected_farm_geom = ee.Geometry.Rectangle([min_lon, min_lat, max_lon, max_lat])
+        st.subheader(f"نمایش کلی مزارع برای روز: {selected_day}")
+        st.info(f"تعداد مزارع در این روز: {len(filtered_farms_df)}")
+    else:
+        selected_farm_details = filtered_farms_df[filtered_farms_df['مزرعه'] == selected_farm_name].iloc[0]
+        lat = selected_farm_details['latitude']
+        lon = selected_farm_details['longitude']
+        selected_farm_geom = ee.Geometry.Point([lon, lat])
+        st.subheader(f"جزئیات مزرعه: {selected_farm_name} (روز: {selected_day})")
+        # Display farm details
+        details_cols = st.columns(3)
+        with details_cols[0]:
+            st.metric("مساحت داشت (هکتار)", f"{selected_farm_details.get('مساحت', 'N/A'):,.2f}" if pd.notna(selected_farm_details.get('مساحت')) else "N/A")
+            st.metric("واریته", f"{selected_farm_details.get('واریته', 'N/A')}")
+        with details_cols[1]:
+            st.metric("گروه", f"{selected_farm_details.get('گروه', 'N/A')}")
+            st.metric("سن", f"{selected_farm_details.get('سن', 'N/A')}")
+        with details_cols[2]:
+            st.metric("مختصات", f"{lat:.5f}, {lon:.5f}")
+
+
+    # --- Map Display ---
+    st.markdown("---")
+    st.subheader(" نقشه وضعیت مزارع")
+
+    # Define visualization parameters based on the selected index
+    vis_params = {
+        'NDVI': {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']},
+        'EVI': {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']},
+        'NDMI': {'min': -1, 'max': 1, 'palette': ['brown', 'white', 'blue']},
+        'LAI': {'min': 0, 'max': 6, 'palette': ['white', 'lightgreen', 'darkgreen']}, # Adjust max based on expected values
+        'MSI': {'min': 0, 'max': 3, 'palette': ['blue', 'white', 'brown']}, # Lower values = more moisture
+        'CVI': {'min': 0, 'max': 20, 'palette': ['yellow', 'lightgreen', 'darkgreen']}, # Adjust max based on expected values
+        # Add vis params for other indices if implemented
+    }
+
+    map_center_lat = 31.534442
+    map_center_lon = 48.724416
+    initial_zoom = 11
+
+    # Create a geemap Map instance
+    m = geemap.Map(
+        location=[map_center_lat, map_center_lon],
+        zoom=initial_zoom,
+        add_google_map=False # Start clean
+    )
+    m.add_basemap("HYBRID") # Add Google Satellite Hybrid basemap
+
+    # Get the processed image for the current week
+    if selected_farm_geom:
+        gee_image_current, error_msg_current = get_processed_image(
+            selected_farm_geom, start_date_current_str, end_date_current_str, selected_index
+        )
+
+        if gee_image_current:
+            # Add the GEE layer to the map
+            try:
+                m.addLayer(
+                    gee_image_current,
+                    vis_params.get(selected_index, {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']}), # Default vis
+                    f"{selected_index} ({start_date_current_str} to {end_date_current_str})"
+                )
+
+                # Remove the problematic add_legend call and replace with a custom legend
+                # Create a custom legend using folium
+                if selected_index in ['NDVI', 'EVI', 'LAI', 'CVI']:
+                    legend_html = '''
+                    <div style="position: fixed; bottom: 50px; right: 50px; z-index: 1000; background-color: white; padding: 10px; border: 2px solid grey; border-radius: 5px;">
+                        <p style="margin: 0;"><strong>{} Legend</strong></p>
+                        <p style="margin: 0; color: red;">بحرانی/پایین</p>
+                        <p style="margin: 0; color: yellow;">متوسط</p>
+                        <p style="margin: 0; color: green;">سالم/بالا</p>
+                    </div>
+                    '''.format(selected_index)
+                elif selected_index in ['NDMI', 'MSI']:
+                    legend_html = '''
+                    <div style="position: fixed; bottom: 50px; right: 50px; z-index: 1000; background-color: white; padding: 10px; border: 2px solid grey; border-radius: 5px;">
+                        <p style="margin: 0;"><strong>{} Legend</strong></p>
+                        <p style="margin: 0; color: blue;">مرطوب/بالا</p>
+                        <p style="margin: 0; color: white;">متوسط</p>
+                        <p style="margin: 0; color: brown;">خشک/پایین</p>
+                    </div>
+                    '''.format(selected_index)
+                else:
+                    # Default legend for other indices
+                    legend_html = '''
+                    <div style="position: fixed; bottom: 50px; right: 50px; z-index: 1000; background-color: white; padding: 10px; border: 2px solid grey; border-radius: 5px;">
+                        <p style="margin: 0;"><strong>{} Legend</strong></p>
+                        <p style="margin: 0;">Low</p>
+                        <p style="margin: 0;">Medium</p>
+                        <p style="margin: 0;">High</p>
+                    </div>
+                    '''.format(selected_index)
+                
+                # Add the custom legend to the map
+                m.get_root().html.add_child(folium.Element(legend_html))
+
+                # Add markers for farms
+                if selected_farm_name == "همه مزارع":
+                     # Add markers for all filtered farms
+                     for idx, farm in filtered_farms_df.iterrows():
+                         folium.Marker(
+                             location=[farm['latitude'], farm['longitude']],
+                             popup=f"مزرعه: {farm['مزرعه']}\nگروه: {farm.get('گروه', 'N/A')}",
+                             tooltip=farm['مزرعه'],
+                             icon=folium.Icon(color='blue', icon='info-sign')
+                         ).add_to(m)
+                     # Adjust map bounds if showing all farms
+                     m.center_object(selected_farm_geom, zoom=initial_zoom) # Center on the bounding box
+                else:
+                     # Add marker for the single selected farm
+                     folium.Marker(
+                         location=[lat, lon],
+                         popup=f"مزرعه: {selected_farm_name}\n{selected_index} (هفته جاری): محاسبه می‌شود...", # Placeholder popup
+                         tooltip=selected_farm_name,
+                         icon=folium.Icon(color='red', icon='star')
+                     ).add_to(m)
+                     m.center_object(selected_farm_geom, zoom=14) # Zoom closer for a single farm
+
+                m.add_layer_control() # Add layer control to toggle base maps and layers
+
+            except Exception as map_err:
+                st.error(f"خطا در افزودن لایه به نقشه: {map_err}")
+                st.error(traceback.format_exc())
+        else:
+            st.warning(f"تصویری برای نمایش روی نقشه یافت نشد. {error_msg_current}")
+
+    # Display the map in Streamlit
+    st_folium(m, width=None, height=500, use_container_width=True)
+    st.caption("برای مشاهده جزئیات روی مارکرها کلیک کنید. از کنترل لایه‌ها برای تغییر نقشه پایه استفاده کنید.")
+    # Note: Direct PNG download from st_folium/geemap isn't built-in easily.
+    st.info("💡 برای ذخیره نقشه، می‌توانید از ابزار عکس گرفتن از صفحه (Screenshot) مرورگر یا سیستم عامل خود استفاده کنید.")
+
+
+    # --- Time Series Chart ---
+    st.markdown("---")
+    st.subheader(f"📈 نمودار روند زمانی شاخص {selected_index}")
+
+    if selected_farm_name == "همه مزارع":
+        st.info("لطفاً یک مزرعه خاص را از پنل کناری انتخاب کنید تا نمودار روند زمانی آن نمایش داده شود.")
+    elif selected_farm_geom:
+        # Fix the isinstance check - use string comparison instead
+        # Check if the geometry type is Point by converting to string and checking
+        is_point = str(selected_farm_geom).find('Point') >= 0
+        
+        if is_point:
+            # Define a longer period for the time series chart (e.g., last 6 months)
+            timeseries_end_date = today.strftime('%Y-%m-%d')
+            timeseries_start_date = (today - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
+
+            ts_df, ts_error = get_index_time_series(
+                selected_farm_geom,
+                selected_index,
+                start_date=timeseries_start_date,
+                end_date=timeseries_end_date
+            )
+
+            if ts_error:
+                st.warning(f"خطا در دریافت داده‌های سری زمانی: {ts_error}")
+            elif not ts_df.empty:
+                st.line_chart(ts_df[selected_index])
+                st.caption(f"نمودار تغییرات شاخص {selected_index} برای مزرعه {selected_farm_name} در 6 ماه گذشته.")
+            else:
+                st.info(f"داده‌ای برای نمایش نمودار سری زمانی {selected_index} در بازه مشخص شده یافت نشد.")
+        else:
+            st.warning("نوع هندسه مزرعه برای نمودار سری زمانی پشتیبانی نمی‌شود (فقط نقطه).")
+    else:
+        st.warning("هندسه مزرعه برای نمودار سری زمانی در دسترس نیست.")
+
+
+    # ==============================================================================
+    # Helper Function for Status Determination
+    # ==============================================================================
+
+    def determine_status(row, index_name):
+        """Determines the status based on change in index value."""
+        if pd.isna(row['تغییر']) or pd.isna(row[f'{index_name} (هفته جاری)']) or pd.isna(row[f'{index_name} (هفته قبل)']):
+            return "بدون داده"
+
+        change_val = row['تغییر']
+        # Threshold for significant change
+        threshold = 0.05
+
+        # For indices where higher is better (NDVI, EVI, LAI, CVI, NDMI)
+        if index_name in ['NDVI', 'EVI', 'LAI', 'CVI', 'NDMI']:
+            if change_val > threshold:
+                return "رشد مثبت / بهبود"
+            elif change_val < -threshold:
+                return "تنش / کاهش"
+            else:
+                return "ثابت"
+        # For indices where lower is better (MSI)
+        elif index_name in ['MSI']:
+            if change_val < -threshold: # Negative change means improvement (less stress)
+                return "بهبود"
+            elif change_val > threshold: # Positive change means deterioration (more stress)
+                return "تنش / بدتر شدن"
+            else:
+                return "ثابت"
+        else:
+            # Default case if index type is unknown
+            return "نامشخص"
+
+    # ==============================================================================
+    # Ranking Table
+    # ==============================================================================
+    st.markdown("---")
+    st.subheader(f"📊 جدول رتبه‌بندی مزارع بر اساس {selected_index} (روز: {selected_day})")
+    st.markdown("مقایسه مقادیر متوسط شاخص در هفته جاری با هفته قبل.")
+
+    @st.cache_data(show_spinner=f"در حال محاسبه {selected_index} برای مزارع...", persist=True)
+    def calculate_weekly_indices(_farms_df, index_name, start_curr, end_curr, start_prev, end_prev):
+        """Calculates the average index value for the current and previous week for a list of farms."""
+        results = []
+        errors = []
+        total_farms = len(_farms_df)
+        progress_bar = st.progress(0)
+
+        for i, (idx, farm) in enumerate(_farms_df.iterrows()):
+            farm_name = farm['مزرعه']
+            lat = farm['latitude']
+            lon = farm['longitude']
+            point_geom = ee.Geometry.Point([lon, lat])
+
+            def get_mean_value(start, end):
+                try:
+                    image, error = get_processed_image(point_geom, start, end, index_name)
+                    if image:
+                        # Reduce region to get the mean value at the point
+                        mean_dict = image.reduceRegion(
+                            reducer=ee.Reducer.mean(),
+                            geometry=point_geom,
+                            scale=10  # Scale in meters
+                        ).getInfo()
+                        return mean_dict.get(index_name) if mean_dict else None, None
+                    else:
+                        return None, error
+                except Exception as e:
+                     # Catch errors during reduceRegion or getInfo
+                     error_msg = f"خطا در محاسبه مقدار برای {farm_name} ({start}-{end}): {e}"
+                     # errors.append(error_msg) # Collect errors
+                     # st.warning(error_msg) # Show warning immediately
+                     return None, error_msg
+
+
+            # Calculate for current week
+            current_val, err_curr = get_mean_value(start_curr, end_curr)
+            if err_curr: errors.append(f"{farm_name} (هفته جاری): {err_curr}")
+
+            # Calculate for previous week
+            previous_val, err_prev = get_mean_value(start_prev, end_prev)
+            if err_prev: errors.append(f"{farm_name} (هفته قبل): {err_prev}")
+
+
+            # Calculate change
+            change = None
+            if current_val is not None and previous_val is not None:
+                try:
+                    change = current_val - previous_val
+                except TypeError: # Handle cases where values might not be numeric unexpectedly
+                    change = None
+
+            results.append({
+                'مزرعه': farm_name,
+                'گروه': farm.get('گروه', 'N/A'),
+                f'{index_name} (هفته جاری)': current_val,
+                f'{index_name} (هفته قبل)': previous_val,
+                'تغییر': change
+            })
+
+            # Update progress bar
+            progress_bar.progress((i + 1) / total_farms)
+
+        progress_bar.empty() # Remove progress bar after completion
+        return pd.DataFrame(results), errors
+
+    # Calculate and display the ranking table
+    ranking_df, calculation_errors = calculate_weekly_indices(
+        filtered_farms_df,
+        selected_index,
+        start_date_current_str,
+        end_date_current_str,
+        start_date_previous_str,
+        end_date_previous_str
+    )
+
+    # Display any errors that occurred during calculation
+    if calculation_errors:
+        st.warning("⚠️ برخی خطاها در حین محاسبه شاخص‌ها رخ داد:")
+        for error in calculation_errors[:10]: # Show first 10 errors
+            st.warning(f"- {error}")
+        if len(calculation_errors) > 10:
+            st.warning(f"... و {len(calculation_errors) - 10} خطای دیگر.")
+
+
+    if not ranking_df.empty:
+        # Sort by the current week's index value (descending for NDVI/EVI/LAI/CVI/NDMI, ascending for MSI)
+        ascending_sort = selected_index not in ['MSI'] # Simpler logic: Ascending only if MSI
+        ranking_df_sorted = ranking_df.sort_values(
+            by=f'{selected_index} (هفته جاری)',
+            ascending=ascending_sort,
+            na_position='last'
+        ).reset_index(drop=True)
+
+        # Add rank number
+        ranking_df_sorted.index = ranking_df_sorted.index + 1
+        ranking_df_sorted.index.name = 'رتبه'
+
+        # Apply the determine_status function using .apply
+        ranking_df_sorted['وضعیت'] = ranking_df_sorted.apply(
+            lambda row: determine_status(row, selected_index), axis=1
+        )
+
+        # Format numbers for better readability
+        cols_to_format = [f'{selected_index} (هفته جاری)', f'{selected_index} (هفته قبل)', 'تغییر']
+        for col in cols_to_format:
+            if col in ranking_df_sorted.columns:
+                 # Check if column exists before formatting
+                 ranking_df_sorted[col] = ranking_df_sorted[col].map(lambda x: f"{x:.3f}" if pd.notna(x) else "N/A")
+
+        # Select columns to display, including 'گروه'
+        display_columns = ['مزرعه', 'گروه'] + cols_to_format + ['وضعیت']
+        # Ensure only existing columns are selected
+        display_columns = [col for col in display_columns if col in ranking_df_sorted.columns]
+
+        # Display the table with color coding and selected columns
+        st.dataframe(ranking_df_sorted[display_columns], use_container_width=True)
+        
+        # Add a summary of farm statuses
+        st.subheader("📊 خلاصه وضعیت مزارع")
+        
+        # Display status counts with appropriate colors
+        col1, col2, col3 = st.columns(3)
+        
+        # Dynamically find positive and negative status terms used
+        status_counts = ranking_df_sorted['وضعیت'].value_counts()
+        positive_terms = [s for s in status_counts.index if "بهبود" in s]
+        negative_terms = [s for s in status_counts.index if any(sub in s for sub in ["تنش", "کاهش", "بدتر"])]
+        neutral_term = "ثابت"
+        nodata_term = "بدون داده"
+
+        with col1:
+            pos_count = sum(status_counts.get(term, 0) for term in positive_terms)
+            if pos_count > 0:
+                pos_label = positive_terms[0] if positive_terms else "بهبود"
+                st.metric(f"🟢 {pos_label}", pos_count)
+            else:
+                 st.metric("🟢 بهبود", 0) # Show 0 if none
+
+        with col2:
+            neutral_count = status_counts.get(neutral_term, 0)
+            st.metric(f"⚪ {neutral_term}", neutral_count)
+
+        with col3:
+            neg_count = sum(status_counts.get(term, 0) for term in negative_terms)
+            if neg_count > 0:
+                neg_label = negative_terms[0] if negative_terms else "تنش"
+                st.metric(f"🔴 {neg_label}", neg_count)
+            else:
+                st.metric("🔴 تنش", 0) # Show 0 if none
+
+        # Add explanation
+        st.info(f"""
+        **توضیحات:**
+        - **🟢 رشد مثبت / بهبود**: مزارعی که نسبت به هفته قبل بهبود قابل توجهی داشته‌اند (افزایش NDVI/EVI/LAI/CVI/NDMI یا کاهش MSI).
+        - **⚪ ثابت**: مزارعی که تغییر معناداری نداشته‌اند.
+        - **🔴 تنش / کاهش / بدتر شدن**: مزارعی که نسبت به هفته قبل وضعیت نامطلوب‌تری داشته‌اند (کاهش NDVI/EVI/LAI/CVI/NDMI یا افزایش MSI).
+        """)
+
+        # Add download button for the table
+        csv_data = ranking_df_sorted.to_csv(index=True).encode('utf-8')
+        st.download_button(
+            label="📥 دانلود جدول رتبه‌بندی (CSV)",
+            data=csv_data,
+            file_name=f'ranking_{selected_index}_{selected_day}_{end_date_current_str}.csv',
+            mime='text/csv',
+        )
+    else:
+        st.info(f"داده‌ای برای جدول رتبه‌بندی بر اساس {selected_index} در این بازه زمانی یافت نشد.")
+
+
+    st.markdown("---")
+    st.sidebar.markdown("---")
+    # Import ET mapping functionality
+try:
+    from et_mapping import et_mapping_page
+except ImportError as e:
+    st.error(f"خطا در بارگذاری ماژول نقشه تبخیر و تعرق: {e}")
+
+st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap")
+
+
+# --- New Tab for Analysis Data ---
+with tab2:
+    st.header("تحلیل داده‌های فایل محاسبات")
+    st.markdown("نمایش گرافیکی داده‌های مساحت و تولید به تفکیک اداره و سن.")
+
+    if analysis_area_df is not None or analysis_prod_df is not None:
+
+        # Get unique 'اداره' values from both dataframes if they exist
+        available_edareh = []
+        if analysis_area_df is not None and 'اداره' in analysis_area_df.index.names:
+            available_edareh.extend(analysis_area_df.index.get_level_values('اداره').unique().tolist())
+        if analysis_prod_df is not None and 'اداره' in analysis_prod_df.index.names:
+            available_edareh.extend(analysis_prod_df.index.get_level_values('اداره').unique().tolist())
+        
+        # Ensure unique and sorted list
+        available_edareh = sorted(list(set(available_edareh)))
+
+        if not available_edareh:
+            st.warning("هیچ اداره‌ای برای نمایش در داده‌های تحلیلی یافت نشد.")
+        else:
+            selected_edareh = st.selectbox(
+                "اداره مورد نظر را انتخاب کنید:",
+                options=available_edareh,
+                key='analysis_edareh_select'
+            )
+
+            # --- Display Data for Selected Edareh ---
+            st.subheader(f"داده‌های اداره: {selected_edareh}")
+
+            col1, col2 = st.columns(2)
+
+            # --- Area Data Visualization ---
+            with col1:
+                st.markdown("#### مساحت (هکتار)")
+                if analysis_area_df is not None and selected_edareh in analysis_area_df.index.get_level_values('اداره'):
+                    df_area_selected = analysis_area_df.loc[selected_edareh].copy()
+                    # Prepare data for 3D surface plot
+                    # X = سن, Y = واریته (ستون ها), Z = مقدار
+                    varieties = df_area_selected.columns.tolist()
+                    ages = df_area_selected.index.tolist()
+                    z_data = df_area_selected.values
+
+                    if len(ages) > 1 and len(varieties) > 1 :
+                         try:
+                             fig_3d_area = go.Figure(data=[go.Surface(z=z_data, x=ages, y=varieties, colorscale='Viridis')])
+                             fig_3d_area.update_layout(
+                                 title=f'Surface Plot مساحت - اداره {selected_edareh}',
+                                 scene=dict(
+                                     xaxis_title='سن',
+                                     yaxis_title='واریته',
+                                     zaxis_title='مساحت (هکتار)'),
+                                 autosize=True, height=500)
+                             st.plotly_chart(fig_3d_area, use_container_width=True)
+                         except Exception as e:
+                             st.error(f"خطا در ایجاد نمودار Surface Plot مساحت: {e}")
+                             st.dataframe(df_area_selected) # Show table as fallback
+                    else:
+                         st.info("داده کافی برای رسم نمودار Surface Plot مساحت وجود ندارد (نیاز به بیش از یک سن و یک واریته).")
+                         st.dataframe(df_area_selected) # Show table if not enough data for 3D
+
+
+                    # Histogram of Area per Variety
+                    df_area_melt = df_area_selected.reset_index().melt(id_vars='سن', var_name='واریته', value_name='مساحت')
+                    df_area_melt = df_area_melt.dropna(subset=['مساحت']) # Drop NA values for plotting
+                    if not df_area_melt.empty:
+                        fig_hist_area = px.histogram(df_area_melt, x='واریته', y='مساحت', color='سن',
+                                                   title=f'هیستوگرام مساحت بر اساس واریته - اداره {selected_edareh}',
+                                                   labels={'مساحت':'مجموع مساحت (هکتار)'})
+                        st.plotly_chart(fig_hist_area, use_container_width=True)
+                    else:
+                        st.info(f"داده معتبری برای هیستوگرام مساحت در اداره {selected_edareh} یافت نشد.")
+
+                else:
+                    st.info(f"داده مساحت برای اداره {selected_edareh} یافت نشد.")
+
+            # --- Production Data Visualization ---
+            with col2:
+                st.markdown("#### تولید (تن)")
+                if analysis_prod_df is not None and selected_edareh in analysis_prod_df.index.get_level_values('اداره'):
+                    df_prod_selected = analysis_prod_df.loc[selected_edareh].copy()
+                    # Prepare data for 3D surface plot
+                    varieties_prod = df_prod_selected.columns.tolist()
+                    ages_prod = df_prod_selected.index.tolist()
+                    z_data_prod = df_prod_selected.values
+
+                    if len(ages_prod) > 1 and len(varieties_prod) > 1:
+                         try:
+                             fig_3d_prod = go.Figure(data=[go.Surface(z=z_data_prod, x=ages_prod, y=varieties_prod, colorscale='Plasma')])
+                             fig_3d_prod.update_layout(
+                                 title=f'Surface Plot تولید - اداره {selected_edareh}',
+                                 scene=dict(
+                                     xaxis_title='سن',
+                                     yaxis_title='واریته',
+                                     zaxis_title='تولید (تن)'),
+                                 autosize=True, height=500)
+                             st.plotly_chart(fig_3d_prod, use_container_width=True)
+                         except Exception as e:
+                              st.error(f"خطا در ایجاد نمودار Surface Plot تولید: {e}")
+                              st.dataframe(df_prod_selected) # Show table as fallback
+                    else:
+                         st.info("داده کافی برای رسم نمودار Surface Plot تولید وجود ندارد (نیاز به بیش از یک سن و یک واریته).")
+                         st.dataframe(df_prod_selected) # Show table if not enough data for 3D
+
+
+                    # Histogram of Production per Variety
+                    df_prod_melt = df_prod_selected.reset_index().melt(id_vars='سن', var_name='واریته', value_name='تولید')
+                    df_prod_melt = df_prod_melt.dropna(subset=['تولید']) # Drop NA values for plotting
+                    if not df_prod_melt.empty:
+                        fig_hist_prod = px.histogram(df_prod_melt, x='واریته', y='تولید', color='سن',
+                                                   title=f'هیستوگرام تولید بر اساس واریته - اداره {selected_edareh}',
+                                                   labels={'تولید':'مجموع تولید (تن)'})
+                        st.plotly_chart(fig_hist_prod, use_container_width=True)
+                    else:
+                         st.info(f"داده معتبری برای هیستوگرام تولید در اداره {selected_edareh} یافت نشد.")
+
+                else:
+                    st.info(f"داده تولید برای اداره {selected_edareh} یافت نشد.")
+
+    else:
+        st.error("خطا در بارگذاری یا پردازش داده‌های تحلیل.")
+
+
+# --- New Tab for Needs Analysis ---
+with tab3:
+    st.header("تحلیل نیاز آبیاری و کوددهی")
+
+    if selected_farm_name == "همه مزارع":
+        st.info("لطفاً یک مزرعه خاص را از پنل کناری انتخاب کنید تا تحلیل نیازهای آن نمایش داده شود.")
+    elif selected_farm_geom:
+        # Check if it's a point geometry
+        is_point = str(selected_farm_geom).find('Point') >= 0
+        if not is_point:
+            st.warning("تحلیل نیازها فقط برای مزارع با مختصات نقطه‌ای (تک مزرعه) در دسترس است.")
+        else:
             st.subheader(f"تحلیل برای مزرعه: {selected_farm_name}")
 
-            # Define thresholds (existing sliders)
+            # Define thresholds (allow user adjustment)
             st.markdown("**تنظیم آستانه‌ها:**")
             ndmi_threshold = st.slider("آستانه NDMI برای هشدار آبیاری:", 0.0, 0.5, 0.25, 0.01,
                                      help="اگر NDMI کمتر از این مقدار باشد، نیاز به آبیاری اعلام می‌شود.")
             ndvi_drop_threshold = st.slider("آستانه افت NDVI برای بررسی کوددهی (%):", 0.0, 20.0, 5.0, 0.5,
                                         help="اگر NDVI نسبت به هفته قبل بیش از این درصد افت کند، نیاز به بررسی کوددهی اعلام می‌شود.")
 
-            # Get the required index data (now includes ET)
+            # Get the required index data for the selected farm
             farm_needs_data = get_farm_needs_data(
                 selected_farm_geom,
                 start_date_current_str, end_date_current_str,
                 start_date_previous_str, end_date_previous_str
             )
 
-            # Check for critical errors during data fetch
-            if farm_needs_data.get('error'):
+            if farm_needs_data['error']:
                 st.error(f"خطا در دریافت داده‌های شاخص برای تحلیل نیازها: {farm_needs_data['error']}")
-                st.warning("ادامه تحلیل ممکن است ناقص باشد.") # Warn but maybe continue if some data exists
-
-            # --- Display Current Indices in Cards ---
-            st.markdown("**مقادیر شاخص‌ها:**")
-            # Use columns for better layout
-            idx_cols = st.columns(5) # 5 columns for NDVI, NDMI, EVI, SAVI, ET
-
-            with idx_cols[0]:
-                val = farm_needs_data.get('NDVI_curr')
-                prev = farm_needs_data.get('NDVI_prev')
-                delta = (val - prev) if pd.notna(val) and pd.notna(prev) else None
-                st.metric("NDVI (هفته جاری)", f"{val:.3f}" if pd.notna(val) else "N/A", f"{delta:+.3f}" if delta is not None else None)
-            with idx_cols[1]:
-                val = farm_needs_data.get('NDMI_curr')
-                prev = farm_needs_data.get('NDMI_prev')
-                delta = (val - prev) if pd.notna(val) and pd.notna(prev) else None
-                st.metric("NDMI (هفته جاری)", f"{val:.3f}" if pd.notna(val) else "N/A", f"{delta:+.3f}" if delta is not None else None)
-            with idx_cols[2]:
-                val = farm_needs_data.get('EVI_curr')
-                prev = farm_needs_data.get('EVI_prev')
-                delta = (val - prev) if pd.notna(val) and pd.notna(prev) else None
-                st.metric("EVI (هفته جاری)", f"{val:.3f}" if pd.notna(val) else "N/A", f"{delta:+.3f}" if delta is not None else None)
-            with idx_cols[3]:
-                val = farm_needs_data.get('SAVI_curr')
-                prev = farm_needs_data.get('SAVI_prev')
-                delta = (val - prev) if pd.notna(val) and pd.notna(prev) else None
-                st.metric("SAVI (هفته جاری)", f"{val:.3f}" if pd.notna(val) else "N/A", f"{delta:+.3f}" if delta is not None else None)
-            with idx_cols[4]: # Column for ET
-                val = farm_needs_data.get('ET_curr')
-                prev = farm_needs_data.get('ET_prev')
-                delta = (val - prev) if pd.notna(val) and pd.notna(prev) else None
-                st.metric("ET (ماه جاری, mm)", f"{val:.1f}" if pd.notna(val) else "N/A", f"{delta:+.1f}" if delta is not None else None, help="تبخیر و تعرق واقعی محاسبه شده با SSEBop")
-
-
-            # --- Generate Recommendations ---
-            recommendations = []
-            # Check if essential data for recommendations is present
-            ndmi_curr = farm_needs_data.get('NDMI_curr')
-            ndvi_curr = farm_needs_data.get('NDVI_curr')
-            ndvi_prev = farm_needs_data.get('NDVI_prev')
-
-            # 1. Irrigation Check (only if NDMI is valid)
-            if pd.notna(ndmi_curr):
-                if ndmi_curr < ndmi_threshold:
-                    recommendations.append("💧 نیاز به آبیاری بر اساس NDMI")
-                # Potentially add ET-based check here in the future
+            elif farm_needs_data['NDMI_curr'] is None or farm_needs_data['NDVI_curr'] is None:
+                st.warning("داده‌های شاخص لازم (NDMI/NDVI) برای تحلیل در دوره فعلی یافت نشد.")
             else:
-                st.caption("NDMI برای بررسی نیاز آبیاری در دسترس نیست.")
+                # --- Display Current Indices ---
+                st.markdown("**مقادیر شاخص‌ها (هفته جاری):**")
+                idx_cols = st.columns(4)
+                with idx_cols[0]:
+                    st.metric("NDVI", f"{farm_needs_data['NDVI_curr']:.3f}")
+                with idx_cols[1]:
+                    st.metric("NDMI", f"{farm_needs_data['NDMI_curr']:.3f}")
+                with idx_cols[2]:
+                    st.metric("EVI", f"{farm_needs_data.get('EVI_curr', 'N/A'):.3f}" if farm_needs_data.get('EVI_curr') else "N/A")
+                with idx_cols[3]:
+                    st.metric("SAVI", f"{farm_needs_data.get('SAVI_curr', 'N/A'):.3f}" if farm_needs_data.get('SAVI_curr') else "N/A")
 
+                # --- Generate Recommendations ---
+                recommendations = []
+                # 1. Irrigation Check
+                if farm_needs_data['NDMI_curr'] < ndmi_threshold:
+                    recommendations.append("💧 نیاز به آبیاری")
 
-            # 2. Fertilization Check (only if NDVI current and previous are valid)
-            if pd.notna(ndvi_curr) and pd.notna(ndvi_prev):
-                 if ndvi_curr < ndvi_prev : # Check if dropped at all first
-                     # Avoid division by zero if ndvi_prev is 0 or close to it
-                     if abs(ndvi_prev) > 1e-6:
-                         ndvi_change_percent = ((ndvi_prev - ndvi_curr) / ndvi_prev) * 100
-                         if ndvi_change_percent > ndvi_drop_threshold:
-                             recommendations.append(f"⚠️ نیاز به بررسی کوددهی (افت {ndvi_change_percent:.1f}% در NDVI)")
-                     elif ndvi_curr < ndvi_prev: # If prev was ~0 and curr is negative, flag it
-                          recommendations.append(f"⚠️ نیاز به بررسی کوددهی (افت قابل توجه در NDVI)")
-            elif pd.notna(ndvi_curr) and pd.isna(ndvi_prev):
-                 st.caption("داده NDVI هفته قبل برای بررسی افت در دسترس نیست.")
-            else: # Neither NDVI nor NDMI might be available
-                st.caption("NDVI برای بررسی نیاز کودی در دسترس نیست.")
+                # 2. Fertilization Check (NDVI drop)
+                if farm_needs_data['NDVI_prev'] is not None and farm_needs_data['NDVI_curr'] < farm_needs_data['NDVI_prev']:
+                    ndvi_change_percent = ((farm_needs_data['NDVI_prev'] - farm_needs_data['NDVI_curr']) / farm_needs_data['NDVI_prev']) * 100
+                    if ndvi_change_percent > ndvi_drop_threshold:
+                        recommendations.append(f"⚠️ نیاز به بررسی کوددهی (افت {ndvi_change_percent:.1f}% در NDVI)")
+                elif farm_needs_data['NDVI_prev'] is None:
+                     st.caption("داده NDVI هفته قبل برای بررسی افت در دسترس نیست.")
 
+                # 3. Default if no issues
+                if not recommendations:
+                    recommendations.append("✅ وضعیت فعلی مطلوب به نظر می‌رسد.")
 
-            # 3. Default if no issues found and data was available
-            if not recommendations and pd.notna(ndmi_curr) and pd.notna(ndvi_curr):
-                 # Only add 'Good' if both primary checks were possible and found no issues
-                 recommendations.append("✅ وضعیت بر اساس NDMI/NDVI مطلوب به نظر می‌رسد.")
-            elif not recommendations:
-                 # If no recommendations were added (either due to no issues or missing data for checks)
-                 recommendations.append("ℹ️ وضعیت کلی نیاز به بررسی بیشتر دارد (با توجه به ET و مشاهدات میدانی).")
+                # Display Recommendations
+                st.markdown("**توصیه‌های اولیه:**")
+                for rec in recommendations:
+                    if "آبیاری" in rec: st.error(rec)
+                    elif "کوددهی" in rec: st.warning(rec)
+                    else: st.success(rec)
 
+                # --- Get and Display AI Analysis ---
+                if gemini_model:
+                    st.markdown("**تحلیل هوش مصنوعی:**")
+                    ai_explanation = get_ai_analysis(gemini_model, selected_farm_name, farm_needs_data, recommendations)
+                    st.markdown(ai_explanation)
+                else:
+                    st.info("سرویس تحلیل هوش مصنوعی پیکربندی نشده است.")
 
-            # Display Recommendations
-            st.markdown("**توصیه‌های اولیه:**")
-            for rec in recommendations:
-                if "آبیاری" in rec: st.error(rec)
-                elif "کوددهی" in rec: st.warning(rec)
-                elif "مطلوب" in rec: st.success(rec)
-                else: st.info(rec) # For "check further" etc.
-
-            # --- Get and Display AI Analysis ---
-            if gemini_model:
-                st.markdown("**تحلیل هوش مصنوعی:**")
-                # Pass the potentially partial farm_needs_data
-                ai_explanation = get_ai_analysis(gemini_model, selected_farm_name, farm_needs_data, recommendations)
-                st.markdown(ai_explanation)
-            else:
-                st.info("سرویس تحلیل هوش مصنوعی پیکربندی نشده است.")
-
-    else: # Handle case where selected_farm_geom is None (shouldn't happen if selection is handled properly)
+    else:
          st.info("ابتدا یک مزرعه را از پنل کناری انتخاب کنید.")
 
-# Final bits at the end of the file
+# New tab for Evapotranspiration Mapping
+with tab4:
+    # Call the ET mapping page function
+    try:
+        et_mapping_page(farm_data_df, selected_farm_name, selected_farm_geom, SERVICE_ACCOUNT_FILE)
+    except Exception as e:
+        st.error(f"خطا در بارگذاری صفحه نقشه تبخیر و تعرق: {e}")
+        st.error(traceback.format_exc())
+
+
 st.markdown("---")
 st.sidebar.markdown("---")
+# Import ET mapping functionality
+try:
+    from et_mapping import et_mapping_page
+except ImportError as e:
+    st.error(f"خطا در بارگذاری ماژول نقشه تبخیر و تعرق: {e}")
+
 st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap")
