@@ -719,7 +719,7 @@ def get_ai_analysis(_model, farm_name, index_data, recommendations):
 # Configure Gemini Model at the start
 gemini_model = configure_gemini()
 
-tab1, tab2, tab3, tab4 = st.tabs(["📊 پایش مزارع", "📈 تحلیل محاسبات", "💧کود و آبیاری", "🌱 تبخیر و تعرق"])
+tab1, tab2, tab3 = st.tabs(["📊 پایش مزارع", "📈 تحلیل محاسبات", "💧کود و آبیاری"])
 
 with tab1:
     # ==============================================================================
@@ -1118,13 +1118,7 @@ with tab1:
 
     st.markdown("---")
     st.sidebar.markdown("---")
-    # Import ET mapping functionality
-try:
-    from et_mapping import et_mapping_page
-except ImportError as e:
-    st.error(f"خطا در بارگذاری ماژول نقشه تبخیر و تعرق: {e}")
-
-st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap")
+    st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap")
 
 
 # --- New Tab for Analysis Data ---
@@ -1330,22 +1324,7 @@ with tab3:
     else:
          st.info("ابتدا یک مزرعه را از پنل کناری انتخاب کنید.")
 
-# New tab for Evapotranspiration Mapping
-with tab4:
-    # Call the ET mapping page function
-    try:
-        et_mapping_page(farm_data_df, selected_farm_name, selected_farm_geom, SERVICE_ACCOUNT_FILE)
-    except Exception as e:
-        st.error(f"خطا در بارگذاری صفحه نقشه تبخیر و تعرق: {e}")
-        st.error(traceback.format_exc())
-
 
 st.markdown("---")
 st.sidebar.markdown("---")
-# Import ET mapping functionality
-try:
-    from et_mapping import et_mapping_page
-except ImportError as e:
-    st.error(f"خطا در بارگذاری ماژول نقشه تبخیر و تعرق: {e}")
-
 st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap")
