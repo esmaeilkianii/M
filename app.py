@@ -651,20 +651,27 @@ def get_farm_needs_data(_point_geom, start_curr, end_curr, start_prev, end_prev)
 # Configure Gemini API
 @st.cache_resource
 def configure_gemini():
-    """Configures the Gemini API client using Streamlit secrets."""
+    """Configures the Gemini API client using a hardcoded API key (NOT RECOMMENDED)."""
     try:
-        api_key = st.secrets["GEMINI_API_KEY"]
+        # --- WARNING: Hardcoding API keys is insecure! Use Streamlit secrets instead. ---
+        api_key = "AIzaSyC6ntMs3XDa3JTk07-6_BRRCduiQaRmQFQ" # <-- HARDCODED API KEY
+        # ---------------------------------------------------------------------------
+
+        if not api_key:
+             st.error("❌ کلید API جمینای به صورت مستقیم در کد وارد نشده است.")
+             return None
+
         genai.configure(api_key=api_key)
         # Optional: Add safety settings configuration here if needed
         # safety_settings = [...]
         # model = genai.GenerativeModel('gemini-pro', safety_settings=safety_settings)
         model = genai.GenerativeModel('gemini-1.5-flash') # Use the latest flash model
-        print("Gemini Configured Successfully.")
+        print("Gemini Configured Successfully (using hardcoded key).")
         return model
-    except KeyError:
-        st.error("❌ کلید API جمینای (GEMINI_API_KEY) در فایل secrets.toml یافت نشد.")
-        st.info("لطفاً فایل .streamlit/secrets.toml را ایجاد کرده و کلید خود را در آن قرار دهید.")
-        return None
+    # except KeyError: # No longer reading from secrets
+    #     st.error("❌ کلید API جمینای (GEMINI_API_KEY) در فایل secrets.toml یافت نشد.")
+    #     st.info("لطفاً فایل .streamlit/secrets.toml را ایجاد کرده و کلید خود را در آن قرار دهید.")
+    #     return None
     except Exception as e:
         st.error(f"❌ خطا در تنظیم Gemini API: {e}")
         return None
