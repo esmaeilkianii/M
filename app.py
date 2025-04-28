@@ -13,6 +13,7 @@ import requests # Needed for getThumbUrl download
 import traceback  # Add missing traceback import
 from streamlit_folium import st_folium  # Add missing st_folium import
 import base64
+import google.generativeai as genai # Gemini API
 
 # --- Custom CSS ---
 st.set_page_config(
@@ -431,6 +432,17 @@ def add_indices(image):
     # NDMI (Normalized Difference Moisture Index): (NIR - SWIR1) / (NIR + SWIR1) | S2: (B8 - B11) / (B8 + B11)
     ndmi = image.normalizedDifference(['B8', 'B11']).rename('NDMI')
 
+    # SAVI (Soil-Adjusted Vegetation Index): ((NIR - Red) / (NIR + Red + L)) * (1 + L) | L=0.5
+    # S2: ((B8 - B4) / (B8 + B4 + 0.5)) * 1.5
+    savi = image.expression(
+        '((NIR - RED) / (NIR + RED + L)) * (1 + L)',
+        {
+            'NIR': image.select('B8'),
+            'RED': image.select('B4'),
+            'L': 0.5
+        }
+    ).rename('SAVI')
+
     # MSI (Moisture Stress Index): SWIR1 / NIR | S2: B11 / B8
     msi = image.expression('SWIR1 / NIR', {
         'SWIR1': image.select('B11'),
@@ -458,7 +470,7 @@ def add_indices(image):
     # ET (Evapotranspiration) - Complex: Requires meteorological data or specialized models/datasets (e.g., MODIS ET, SSEBop)
     # Not calculating directly here, would typically use a pre-existing GEE product if available.
 
-    return image.addBands([ndvi, evi, ndmi, msi, lai, cvi]) # Add calculated indices
+    return image.addBands([ndvi, evi, ndmi, msi, lai, cvi, savi]) # Add calculated indices, including SAVI
 
 # --- Function to get processed image for a date range and geometry ---
 @st.cache_data(show_spinner="در حال پردازش تصاویر ماهواره‌ای...", persist=True)
@@ -563,10 +575,144 @@ def get_index_time_series(_point_geom, index_name, start_date='2023-01-01', end_
 
 
 # ==============================================================================
+# NEW: Function to get all relevant indices for a farm point for two periods
+# ==============================================================================
+@st.cache_data(show_spinner="در حال محاسبه شاخص‌های نیازسنجی...", persist=True)
+def get_farm_needs_data(_point_geom, start_curr, end_curr, start_prev, end_prev):
+    """Calculates mean NDVI, NDMI, EVI, SAVI for current and previous periods."""
+    results = {
+        'NDVI_curr': None, 'NDMI_curr': None, 'EVI_curr': None, 'SAVI_curr': None,
+        'NDVI_prev': None, 'NDMI_prev': None, 'EVI_prev': None, 'SAVI_prev': None,
+        'error': None
+    }
+    indices_to_get = ['NDVI', 'NDMI', 'EVI', 'SAVI']
+
+    def get_mean_values_for_period(start, end):
+        period_values = {index: None for index in indices_to_get}
+        error_msg = None
+        try:
+            # Get median composite image with all indices calculated
+            s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+                         .filterBounds(_point_geom)
+                         .filterDate(start, end)
+                         .map(maskS2clouds)
+                         .map(add_indices))
+
+            count = s2_sr_col.size().getInfo()
+            if count == 0:
+                return period_values, f"هیچ تصویری در بازه {start}-{end} یافت نشد"
+
+            median_image = s2_sr_col.median()
+
+            # Reduce region to get the mean value at the point for all indices
+            mean_dict = median_image.select(indices_to_get).reduceRegion(
+                reducer=ee.Reducer.mean(),
+                geometry=_point_geom,
+                scale=10  # Scale in meters
+            ).getInfo()
+
+            if mean_dict:
+                for index in indices_to_get:
+                    period_values[index] = mean_dict.get(index)
+            return period_values, None
+        except ee.EEException as e:
+            error_msg = f"خطای GEE در بازه {start}-{end}: {e}"
+            return period_values, error_msg
+        except Exception as e:
+            error_msg = f"خطای ناشناخته در بازه {start}-{end}: {e}"
+            return period_values, error_msg
+
+    # Get data for current period
+    curr_values, err_curr = get_mean_values_for_period(start_curr, end_curr)
+    if err_curr:
+        results['error'] = err_curr
+    else:
+        results['NDVI_curr'] = curr_values['NDVI']
+        results['NDMI_curr'] = curr_values['NDMI']
+        results['EVI_curr'] = curr_values['EVI']
+        results['SAVI_curr'] = curr_values['SAVI']
+
+    # Get data for previous period
+    prev_values, err_prev = get_mean_values_for_period(start_prev, end_prev)
+    if err_prev:
+        results['error'] = f"{results.get('error', '')} | {err_prev}" # Append errors
+    else:
+        results['NDVI_prev'] = prev_values['NDVI']
+        results['NDMI_prev'] = prev_values['NDMI']
+        results['EVI_prev'] = prev_values['EVI']
+        results['SAVI_prev'] = prev_values['SAVI']
+
+    return results
+
+# ==============================================================================
+# NEW: Gemini AI Helper Functions
+# ==============================================================================
+
+# Configure Gemini API
+@st.cache_resource
+def configure_gemini():
+    """Configures the Gemini API client using Streamlit secrets."""
+    try:
+        api_key = st.secrets["GEMINI_API_KEY"]
+        genai.configure(api_key=api_key)
+        # Optional: Add safety settings configuration here if needed
+        # safety_settings = [...]
+        # model = genai.GenerativeModel('gemini-pro', safety_settings=safety_settings)
+        model = genai.GenerativeModel('gemini-1.5-flash') # Use the latest flash model
+        print("Gemini Configured Successfully.")
+        return model
+    except KeyError:
+        st.error("❌ کلید API جمینای (GEMINI_API_KEY) در فایل secrets.toml یافت نشد.")
+        st.info("لطفاً فایل .streamlit/secrets.toml را ایجاد کرده و کلید خود را در آن قرار دهید.")
+        return None
+    except Exception as e:
+        st.error(f"❌ خطا در تنظیم Gemini API: {e}")
+        return None
+
+# Function to get AI analysis
+@st.cache_data(show_spinner="در حال دریافت تحلیل هوش مصنوعی...", persist=True)
+def get_ai_analysis(_model, farm_name, index_data, recommendations):
+    """Generates AI analysis for the farm's condition."""
+    if _model is None:
+        return "سرویس هوش مصنوعی در دسترس نیست."
+
+    # Prepare data string
+    data_str = ""
+    if index_data['NDVI_curr'] is not None: data_str += f"NDVI فعلی: {index_data['NDVI_curr']:.3f} (قبلی: {index_data.get('NDVI_prev', 'N/A'):.3f})\n"
+    if index_data['NDMI_curr'] is not None: data_str += f"NDMI فعلی: {index_data['NDMI_curr']:.3f} (قبلی: {index_data.get('NDMI_prev', 'N/A'):.3f})\n"
+    if index_data['EVI_curr'] is not None: data_str += f"EVI فعلی: {index_data['EVI_curr']:.3f} (قبلی: {index_data.get('EVI_prev', 'N/A'):.3f})\n"
+    if index_data['SAVI_curr'] is not None: data_str += f"SAVI فعلی: {index_data['SAVI_curr']:.3f} (قبلی: {index_data.get('SAVI_prev', 'N/A'):.3f})\n"
+
+    prompt = f"""
+    شما یک متخصص کشاورزی نیشکر هستید. لطفاً وضعیت مزرعه '{farm_name}' را بر اساس داده‌های شاخص و توصیه‌های اولیه زیر تحلیل کنید و یک توضیح کوتاه و کاربردی به زبان فارسی ارائه دهید. تمرکز تحلیل بر نیاز آبیاری و کودی باشد.
+
+    داده‌های شاخص:
+    {data_str}
+    توصیه‌های اولیه:
+    {', '.join(recommendations) if recommendations else 'هیچ توصیه‌ای وجود ندارد.'}
+
+    تحلیل شما:
+    """
+
+    try:
+        response = _model.generate_content(prompt)
+        # Accessing response text might differ slightly based on exact library version
+        # Check response object structure if needed
+        return response.text
+    except Exception as e:
+        st.warning(f"⚠️ خطا در ارتباط با Gemini API: {e}")
+        return "خطا در دریافت تحلیل هوش مصنوعی."
+
+
+
+# ==============================================================================
 # Main Application Layout (Using Tabs)
 # ==============================================================================
 
-tab1, tab2 = st.tabs(["📊 پایش مزارع", "📈 تحلیل محاسبات"])
+# Configure Gemini Model at the start
+gemini_model = configure_gemini()
+
+tab1, tab2, tab3 = st.tabs(["📊 پایش مزارع", "📈 تحلیل محاسبات", "💧کود و آبیاری"])
 
 with tab1:
     # ==============================================================================
@@ -1088,6 +1234,88 @@ with tab2:
 
     else:
         st.error("خطا در بارگذاری یا پردازش داده‌های تحلیل.")
+
+
+# --- New Tab for Needs Analysis ---
+with tab3:
+    st.header("تحلیل نیاز آبیاری و کوددهی")
+
+    if selected_farm_name == "همه مزارع":
+        st.info("لطفاً یک مزرعه خاص را از پنل کناری انتخاب کنید تا تحلیل نیازهای آن نمایش داده شود.")
+    elif selected_farm_geom:
+        # Check if it's a point geometry
+        is_point = str(selected_farm_geom).find('Point') >= 0
+        if not is_point:
+            st.warning("تحلیل نیازها فقط برای مزارع با مختصات نقطه‌ای (تک مزرعه) در دسترس است.")
+        else:
+            st.subheader(f"تحلیل برای مزرعه: {selected_farm_name}")
+
+            # Define thresholds (allow user adjustment)
+            st.markdown("**تنظیم آستانه‌ها:**")
+            ndmi_threshold = st.slider("آستانه NDMI برای هشدار آبیاری:", 0.0, 0.5, 0.25, 0.01,
+                                     help="اگر NDMI کمتر از این مقدار باشد، نیاز به آبیاری اعلام می‌شود.")
+            ndvi_drop_threshold = st.slider("آستانه افت NDVI برای بررسی کوددهی (%):", 0.0, 20.0, 5.0, 0.5,
+                                        help="اگر NDVI نسبت به هفته قبل بیش از این درصد افت کند، نیاز به بررسی کوددهی اعلام می‌شود.")
+
+            # Get the required index data for the selected farm
+            farm_needs_data = get_farm_needs_data(
+                selected_farm_geom,
+                start_date_current_str, end_date_current_str,
+                start_date_previous_str, end_date_previous_str
+            )
+
+            if farm_needs_data['error']:
+                st.error(f"خطا در دریافت داده‌های شاخص برای تحلیل نیازها: {farm_needs_data['error']}")
+            elif farm_needs_data['NDMI_curr'] is None or farm_needs_data['NDVI_curr'] is None:
+                st.warning("داده‌های شاخص لازم (NDMI/NDVI) برای تحلیل در دوره فعلی یافت نشد.")
+            else:
+                # --- Display Current Indices ---
+                st.markdown("**مقادیر شاخص‌ها (هفته جاری):**")
+                idx_cols = st.columns(4)
+                with idx_cols[0]:
+                    st.metric("NDVI", f"{farm_needs_data['NDVI_curr']:.3f}")
+                with idx_cols[1]:
+                    st.metric("NDMI", f"{farm_needs_data['NDMI_curr']:.3f}")
+                with idx_cols[2]:
+                    st.metric("EVI", f"{farm_needs_data.get('EVI_curr', 'N/A'):.3f}" if farm_needs_data.get('EVI_curr') else "N/A")
+                with idx_cols[3]:
+                    st.metric("SAVI", f"{farm_needs_data.get('SAVI_curr', 'N/A'):.3f}" if farm_needs_data.get('SAVI_curr') else "N/A")
+
+                # --- Generate Recommendations ---
+                recommendations = []
+                # 1. Irrigation Check
+                if farm_needs_data['NDMI_curr'] < ndmi_threshold:
+                    recommendations.append("💧 نیاز به آبیاری")
+
+                # 2. Fertilization Check (NDVI drop)
+                if farm_needs_data['NDVI_prev'] is not None and farm_needs_data['NDVI_curr'] < farm_needs_data['NDVI_prev']:
+                    ndvi_change_percent = ((farm_needs_data['NDVI_prev'] - farm_needs_data['NDVI_curr']) / farm_needs_data['NDVI_prev']) * 100
+                    if ndvi_change_percent > ndvi_drop_threshold:
+                        recommendations.append(f"⚠️ نیاز به بررسی کوددهی (افت {ndvi_change_percent:.1f}% در NDVI)")
+                elif farm_needs_data['NDVI_prev'] is None:
+                     st.caption("داده NDVI هفته قبل برای بررسی افت در دسترس نیست.")
+
+                # 3. Default if no issues
+                if not recommendations:
+                    recommendations.append("✅ وضعیت فعلی مطلوب به نظر می‌رسد.")
+
+                # Display Recommendations
+                st.markdown("**توصیه‌های اولیه:**")
+                for rec in recommendations:
+                    if "آبیاری" in rec: st.error(rec)
+                    elif "کوددهی" in rec: st.warning(rec)
+                    else: st.success(rec)
+
+                # --- Get and Display AI Analysis ---
+                if gemini_model:
+                    st.markdown("**تحلیل هوش مصنوعی:**")
+                    ai_explanation = get_ai_analysis(gemini_model, selected_farm_name, farm_needs_data, recommendations)
+                    st.markdown(ai_explanation)
+                else:
+                    st.info("سرویس تحلیل هوش مصنوعی پیکربندی نشده است.")
+
+    else:
+         st.info("ابتدا یک مزرعه را از پنل کناری انتخاب کنید.")
 
 
 st.markdown("---")
