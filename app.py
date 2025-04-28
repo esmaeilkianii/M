@@ -194,7 +194,7 @@ def load_analysis_data(csv_path='محاسبات 2.csv'):
              # Try to find a likely separator (e.g., a mostly blank line)
              blank_lines = [i for i, line in enumerate(lines[section1_start:]) if len(line.strip()) < 5]
              if blank_lines:
-                 section2_start = section1_start + blank_lines[0] + 1 # Heuristic guess
+             section2_start = section1_start + blank_lines[0] + 1 # Heuristic guess
          else:
             section1_start = headers_indices[0] + 1
             section2_start = headers_indices[1] + 1 # Line after the second header
