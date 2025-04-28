@@ -719,7 +719,7 @@ def get_ai_analysis(_model, farm_name, index_data, recommendations):
 # Configure Gemini Model at the start
 gemini_model = configure_gemini()
 
-tab1, tab2, tab3 = st.tabs(["📊 پایش مزارع", "📈 تحلیل محاسبات", "💧کود و آبیاری"])
+tab1, tab3 = st.tabs(["📊 پایش مزارع", "💧کود و آبیاری"])
 
 with tab1:
     # ==============================================================================
@@ -1119,128 +1119,6 @@ with tab1:
     st.markdown("---")
     st.sidebar.markdown("---")
     st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap")
-
-
-# --- New Tab for Analysis Data ---
-with tab2:
-    st.header("تحلیل داده‌های فایل محاسبات")
-    st.markdown("نمایش گرافیکی داده‌های مساحت و تولید به تفکیک اداره و سن.")
-
-    if analysis_area_df is not None or analysis_prod_df is not None:
-
-        # Get unique 'اداره' values from both dataframes if they exist
-        available_edareh = []
-        if analysis_area_df is not None and 'اداره' in analysis_area_df.index.names:
-            available_edareh.extend(analysis_area_df.index.get_level_values('اداره').unique().tolist())
-        if analysis_prod_df is not None and 'اداره' in analysis_prod_df.index.names:
-            available_edareh.extend(analysis_prod_df.index.get_level_values('اداره').unique().tolist())
-        
-        # Ensure unique and sorted list
-        available_edareh = sorted(list(set(available_edareh)))
-
-        if not available_edareh:
-            st.warning("هیچ اداره‌ای برای نمایش در داده‌های تحلیلی یافت نشد.")
-        else:
-            selected_edareh = st.selectbox(
-                "اداره مورد نظر را انتخاب کنید:",
-                options=available_edareh,
-                key='analysis_edareh_select'
-            )
-
-            # --- Display Data for Selected Edareh ---
-            st.subheader(f"داده‌های اداره: {selected_edareh}")
-
-            col1, col2 = st.columns(2)
-
-            # --- Area Data Visualization ---
-            with col1:
-                st.markdown("#### مساحت (هکتار)")
-                if analysis_area_df is not None and selected_edareh in analysis_area_df.index.get_level_values('اداره'):
-                    df_area_selected = analysis_area_df.loc[selected_edareh].copy()
-                    # Prepare data for 3D surface plot
-                    # X = سن, Y = واریته (ستون ها), Z = مقدار
-                    varieties = df_area_selected.columns.tolist()
-                    ages = df_area_selected.index.tolist()
-                    z_data = df_area_selected.values
-
-                    if len(ages) > 1 and len(varieties) > 1 :
-                         try:
-                             fig_3d_area = go.Figure(data=[go.Surface(z=z_data, x=ages, y=varieties, colorscale='Viridis')])
-                             fig_3d_area.update_layout(
-                                 title=f'Surface Plot مساحت - اداره {selected_edareh}',
-                                 scene=dict(
-                                     xaxis_title='سن',
-                                     yaxis_title='واریته',
-                                     zaxis_title='مساحت (هکتار)'),
-                                 autosize=True, height=500)
-                             st.plotly_chart(fig_3d_area, use_container_width=True)
-                         except Exception as e:
-                             st.error(f"خطا در ایجاد نمودار Surface Plot مساحت: {e}")
-                             st.dataframe(df_area_selected) # Show table as fallback
-                    else:
-                         st.info("داده کافی برای رسم نمودار Surface Plot مساحت وجود ندارد (نیاز به بیش از یک سن و یک واریته).")
-                         st.dataframe(df_area_selected) # Show table if not enough data for 3D
-
-
-                    # Histogram of Area per Variety
-                    df_area_melt = df_area_selected.reset_index().melt(id_vars='سن', var_name='واریته', value_name='مساحت')
-                    df_area_melt = df_area_melt.dropna(subset=['مساحت']) # Drop NA values for plotting
-                    if not df_area_melt.empty:
-                        fig_hist_area = px.histogram(df_area_melt, x='واریته', y='مساحت', color='سن',
-                                                   title=f'هیستوگرام مساحت بر اساس واریته - اداره {selected_edareh}',
-                                                   labels={'مساحت':'مجموع مساحت (هکتار)'})
-                        st.plotly_chart(fig_hist_area, use_container_width=True)
-                    else:
-                        st.info(f"داده معتبری برای هیستوگرام مساحت در اداره {selected_edareh} یافت نشد.")
-
-                else:
-                    st.info(f"داده مساحت برای اداره {selected_edareh} یافت نشد.")
-
-            # --- Production Data Visualization ---
-            with col2:
-                st.markdown("#### تولید (تن)")
-                if analysis_prod_df is not None and selected_edareh in analysis_prod_df.index.get_level_values('اداره'):
-                    df_prod_selected = analysis_prod_df.loc[selected_edareh].copy()
-                    # Prepare data for 3D surface plot
-                    varieties_prod = df_prod_selected.columns.tolist()
-                    ages_prod = df_prod_selected.index.tolist()
-                    z_data_prod = df_prod_selected.values
-
-                    if len(ages_prod) > 1 and len(varieties_prod) > 1:
-                         try:
-                             fig_3d_prod = go.Figure(data=[go.Surface(z=z_data_prod, x=ages_prod, y=varieties_prod, colorscale='Plasma')])
-                             fig_3d_prod.update_layout(
-                                 title=f'Surface Plot تولید - اداره {selected_edareh}',
-                                 scene=dict(
-                                     xaxis_title='سن',
-                                     yaxis_title='واریته',
-                                     zaxis_title='تولید (تن)'),
-                                 autosize=True, height=500)
-                             st.plotly_chart(fig_3d_prod, use_container_width=True)
-                         except Exception as e:
-                              st.error(f"خطا در ایجاد نمودار Surface Plot تولید: {e}")
-                              st.dataframe(df_prod_selected) # Show table as fallback
-                    else:
-                         st.info("داده کافی برای رسم نمودار Surface Plot تولید وجود ندارد (نیاز به بیش از یک سن و یک واریته).")
-                         st.dataframe(df_prod_selected) # Show table if not enough data for 3D
-
-
-                    # Histogram of Production per Variety
-                    df_prod_melt = df_prod_selected.reset_index().melt(id_vars='سن', var_name='واریته', value_name='تولید')
-                    df_prod_melt = df_prod_melt.dropna(subset=['تولید']) # Drop NA values for plotting
-                    if not df_prod_melt.empty:
-                        fig_hist_prod = px.histogram(df_prod_melt, x='واریته', y='تولید', color='سن',
-                                                   title=f'هیستوگرام تولید بر اساس واریته - اداره {selected_edareh}',
-                                                   labels={'تولید':'مجموع تولید (تن)'})
-                        st.plotly_chart(fig_hist_prod, use_container_width=True)
-                    else:
-                         st.info(f"داده معتبری برای هیستوگرام تولید در اداره {selected_edareh} یافت نشد.")
-
-                else:
-                    st.info(f"داده تولید برای اداره {selected_edareh} یافت نشد.")
-
-    else:
-        st.error("خطا در بارگذاری یا پردازش داده‌های تحلیل.")
 
 
 # --- New Tab for Needs Analysis ---
