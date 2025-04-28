@@ -287,7 +287,6 @@ def load_analysis_data(csv_path='محاسبات 2.csv'):
 # Initialize GEE and Load Data
 if initialize_gee():
     farm_data_df = load_farm_data()
-    st.stop()
 
 # Load Analysis Data
 analysis_area_df, analysis_prod_df = load_analysis_data()
