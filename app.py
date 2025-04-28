@@ -183,19 +183,19 @@ def load_analysis_data(csv_path='محاسبات 2.csv'):
         # Find the headers and split points
         headers_indices = [i for i, line in enumerate(lines) if 'اداره,سن,' in line or 'تولید,سن,' in line]
         if len(headers_indices) < 2:
-             # Fallback if only one section header is found (less robust)
-             headers_indices = [i for i, line in enumerate(lines) if ',سن,' in line]
-             if len(headers_indices) < 1:
-                 st.error(f"❌ ساختار فایل '{csv_path}' قابل شناسایی نیست. هدرهای مورد انتظار یافت نشد.")
-                 st.stop()
-             st.warning("⚠️ فقط یک بخش داده در فایل محاسبات شناسایی شد.")
-             section1_start = headers_indices[0] + 1
-             section2_start = None
-             # Try to find a likely separator (e.g., a mostly blank line)
-             blank_lines = [i for i, line in enumerate(lines[section1_start:]) if len(line.strip()) < 5]
-             if blank_lines:
-             section2_start = section1_start + blank_lines[0] + 1 # Heuristic guess
-         else:
+            # Fallback if only one section header is found (less robust)
+            headers_indices = [i for i, line in enumerate(lines) if ',سن,' in line]
+            if len(headers_indices) < 1:
+                st.error(f"❌ ساختار فایل '{csv_path}' قابل شناسایی نیست. هدرهای مورد انتظار یافت نشد.")
+                st.stop()
+            st.warning("⚠️ فقط یک بخش داده در فایل محاسبات شناسایی شد.")
+            section1_start = headers_indices[0] + 1
+            section2_start = None
+            # Try to find a likely separator (e.g., a mostly blank line)
+            blank_lines = [i for i, line in enumerate(lines[section1_start:]) if len(line.strip()) < 5]
+            if blank_lines:
+                section2_start = section1_start + blank_lines[0] + 1 # Heuristic guess
+        else:
             section1_start = headers_indices[0] + 1
             section2_start = headers_indices[1] + 1 # Line after the second header
 
@@ -207,17 +207,16 @@ def load_analysis_data(csv_path='محاسبات 2.csv'):
         # Read the second section (Production) if found
         df_prod = None
         if section2_start:
-             # Skip rows until the second header, read until end or grand total
-             end_row_prod = None
-             for i in range(section2_start, len(lines)):
-                 if "Grand Total" in lines[i]:
-                     end_row_prod = i
-                     break
-             nrows_prod = (end_row_prod - section2_start) if end_row_prod else None
-             df_prod = pd.read_csv(csv_path, skiprows=section2_start-1, nrows=nrows_prod, encoding='utf-8') # Read including header
-             # The first column name in the second section is actually 'تولید', needs renaming
-             df_prod.rename(columns={df_prod.columns[0]: 'اداره'}, inplace=True)
-
+            # Skip rows until the second header, read until end or grand total
+            end_row_prod = None
+            for i in range(section2_start, len(lines)):
+                if "Grand Total" in lines[i]:
+                    end_row_prod = i
+                    break
+            nrows_prod = (end_row_prod - section2_start) if end_row_prod else None
+            df_prod = pd.read_csv(csv_path, skiprows=section2_start-1, nrows=nrows_prod, encoding='utf-8') # Read including header
+            # The first column name in the second section is actually 'تولید', needs renaming
+            df_prod.rename(columns={df_prod.columns[0]: 'اداره'}, inplace=True)
 
 
         # --- Preprocessing Function ---
