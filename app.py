@@ -332,6 +332,7 @@ index_options = {
     "LAI": "شاخص سطح برگ (تخمینی)",
     "MSI": "شاخص تنش رطوبتی",
     "CVI": "شاخص کلروفیل (تخمینی)",
+    "NI": "شاخص نیتروژن (تخمینی)",
     # Add more indices if needed and implemented
     # "Biomass": "زیست‌توده (تخمینی)",
     # "ET": "تبخیر و تعرق (تخمینی)",
@@ -421,7 +422,7 @@ def add_indices(image):
     # NDVI: (NIR - Red) / (NIR + Red) | Sentinel-2: (B8 - B4) / (B8 + B4)
     ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI')
 
-    # EVI: 2.5 * (NIR - Red) / (NIR + 6 * Red - 7.5 * Blue + 1) | S2: 2.5 * (B8 - B4) / (B8 + 6 * B4 - 7.5 * B2 + 1)
+    # EVI: 2.5 * (NIR - Red) / (NIR + 6 * Red - 7.5 * Blue + 1)
     evi = image.expression(
         '2.5 * (NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1)', {
             'NIR': image.select('B8'),
@@ -429,48 +430,37 @@ def add_indices(image):
             'BLUE': image.select('B2')
         }).rename('EVI')
 
-    # NDMI (Normalized Difference Moisture Index): (NIR - SWIR1) / (NIR + SWIR1) | S2: (B8 - B11) / (B8 + B11)
+    # NDMI (Normalized Difference Moisture Index): (NIR - SWIR1) / (NIR + SWIR1)
     ndmi = image.normalizedDifference(['B8', 'B11']).rename('NDMI')
 
-    # SAVI (Soil-Adjusted Vegetation Index): ((NIR - Red) / (NIR + Red + L)) * (1 + L) | L=0.5
-    # S2: ((B8 - B4) / (B8 + B4 + 0.5)) * 1.5
-    savi = image.expression(
-        '((NIR - RED) / (NIR + RED + L)) * (1 + L)',
-        {
-            'NIR': image.select('B8'),
-            'RED': image.select('B4'),
-            'L': 0.5
-        }
-    ).rename('SAVI')
-
-    # MSI (Moisture Stress Index): SWIR1 / NIR | S2: B11 / B8
+    # MSI (Moisture Stress Index): SWIR1 / NIR
     msi = image.expression('SWIR1 / NIR', {
         'SWIR1': image.select('B11'),
         'NIR': image.select('B8')
     }).rename('MSI')
 
-    # LAI (Leaf Area Index) - Simple estimation using NDVI (Needs calibration for accuracy)
-    # Example formula: LAI = a * exp(b * NDVI) or simpler linear/polynomial fits
-    # Using a very basic placeholder: LAI = 3.618 * EVI - 0.118 (adjust based on research/calibration)
-    # Or even simpler: LAI proportional to NDVI
-    lai = ndvi.multiply(3.5).rename('LAI') # Placeholder - Needs proper calibration
+    # LAI (Leaf Area Index) - Simple estimation using NDVI
+    lai = ndvi.multiply(3.5).rename('LAI')
 
-    # CVI (Chlorophyll Vegetation Index) - (NIR / Green) * (Red / Green) | S2: (B8 / B3) * (B4 / B3)
-    # Handle potential division by zero if Green band is 0
-    green_safe = image.select('B3').max(ee.Image(0.0001)) # Avoid division by zero
+    # CVI (Chlorophyll Vegetation Index)
+    green_safe = image.select('B3').max(ee.Image(0.0001))
     cvi = image.expression('(NIR / GREEN) * (RED / GREEN)', {
         'NIR': image.select('B8'),
         'GREEN': green_safe,
         'RED': image.select('B4')
     }).rename('CVI')
 
-    # Biomass - Placeholder: Needs calibration (e.g., Biomass = a * LAI + b)
-    # biomass = lai.multiply(1.5).add(0.5).rename('Biomass') # Example: a=1.5, b=0.5
+    # NI (Nitrogen Index) - Using RE1 (B5), RE2 (B6), and RE3 (B7) bands
+    # This formula is based on research showing correlation between red-edge bands and nitrogen content
+    ni = image.expression(
+        '((RE3 - RE1) / (RE3 + RE1)) * ((RE2) / (NIR))', {
+            'RE1': image.select('B5'),  # Red Edge 1
+            'RE2': image.select('B6'),  # Red Edge 2
+            'RE3': image.select('B7'),  # Red Edge 3
+            'NIR': image.select('B8')   # NIR
+        }).rename('NI')
 
-    # ET (Evapotranspiration) - Complex: Requires meteorological data or specialized models/datasets (e.g., MODIS ET, SSEBop)
-    # Not calculating directly here, would typically use a pre-existing GEE product if available.
-
-    return image.addBands([ndvi, evi, ndmi, msi, lai, cvi, savi]) # Add calculated indices, including SAVI
+    return image.addBands([ndvi, evi, ndmi, msi, lai, cvi, ni])
 
 # --- Function to get processed image for a date range and geometry ---
 @st.cache_data(show_spinner="در حال پردازش تصاویر ماهواره‌ای...", persist=True)
@@ -765,10 +755,10 @@ with tab1:
         'NDVI': {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']},
         'EVI': {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']},
         'NDMI': {'min': -1, 'max': 1, 'palette': ['brown', 'white', 'blue']},
-        'LAI': {'min': 0, 'max': 6, 'palette': ['white', 'lightgreen', 'darkgreen']}, # Adjust max based on expected values
-        'MSI': {'min': 0, 'max': 3, 'palette': ['blue', 'white', 'brown']}, # Lower values = more moisture
-        'CVI': {'min': 0, 'max': 20, 'palette': ['yellow', 'lightgreen', 'darkgreen']}, # Adjust max based on expected values
-        # Add vis params for other indices if implemented
+        'LAI': {'min': 0, 'max': 6, 'palette': ['white', 'lightgreen', 'darkgreen']},
+        'MSI': {'min': 0, 'max': 3, 'palette': ['blue', 'white', 'brown']},
+        'CVI': {'min': 0, 'max': 20, 'palette': ['yellow', 'lightgreen', 'darkgreen']},
+        'NI': {'min': -1, 'max': 1, 'palette': ['red', 'yellow', 'green']},  # Red indicates nitrogen deficiency
     }
 
     map_center_lat = 31.534442
@@ -800,13 +790,13 @@ with tab1:
 
                 # Remove the problematic add_legend call and replace with a custom legend
                 # Create a custom legend using folium
-                if selected_index in ['NDVI', 'EVI', 'LAI', 'CVI']:
+                if selected_index in ['NDVI', 'EVI', 'LAI', 'CVI', 'NI']:
                     legend_html = '''
                     <div style="position: fixed; bottom: 50px; right: 50px; z-index: 1000; background-color: white; padding: 10px; border: 2px solid grey; border-radius: 5px;">
                         <p style="margin: 0;"><strong>{} Legend</strong></p>
-                        <p style="margin: 0; color: red;">بحرانی/پایین</p>
+                        <p style="margin: 0; color: red;">کمبود/بحرانی</p>
                         <p style="margin: 0; color: yellow;">متوسط</p>
-                        <p style="margin: 0; color: green;">سالم/بالا</p>
+                        <p style="margin: 0; color: green;">مطلوب/بالا</p>
                     </div>
                     '''.format(selected_index)
                 elif selected_index in ['NDMI', 'MSI']:
