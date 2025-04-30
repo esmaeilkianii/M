@@ -376,11 +376,11 @@ if filtered_farms_df.empty:
 # --- Farm Selection ---
 available_farms = sorted(filtered_farms_df['مزرعه'].unique())
 # Add an option for "All Farms"
-farm_options = ["همه مزارع"] + available_farms
+farm_options = ["همه مزارع"] + [fix_farm_name_display(farm) for farm in available_farms]
 selected_farm_name = st.sidebar.selectbox(
     "🌾 مزرعه مورد نظر را انتخاب کنید:",
     options=farm_options,
-    index=0, # Default to "All Farms"
+    index=0,
     help="مزرعه‌ای که می‌خواهید جزئیات آن را ببینید یا 'همه مزارع' برای نمایش کلی."
 )
 
@@ -789,11 +789,11 @@ with tab1:
         st.subheader(f"نمایش کلی مزارع برای روز: {selected_day}")
         st.info(f"تعداد مزارع در این روز: {len(filtered_farms_df)}")
     else:
-        selected_farm_details = filtered_farms_df[filtered_farms_df['مزرعه'] == selected_farm_name].iloc[0]
+        selected_farm_details = filtered_farms_df[filtered_farms_df['مزرعه'] == selected_farm_name.replace('\u202B', '').replace('\u202C', '')].iloc[0]
         lat = selected_farm_details['latitude']
         lon = selected_farm_details['longitude']
         selected_farm_geom = ee.Geometry.Point([lon, lat])
-        st.subheader(f"جزئیات مزرعه: {selected_farm_name} (روز: {selected_day})")
+        st.subheader(f"جزئیات مزرعه: {fix_farm_name_display(selected_farm_name)} (روز: {selected_day})")
         # Display farm details
         details_cols = st.columns(3)
         with details_cols[0]:
@@ -1183,7 +1183,7 @@ with tab3:
         if not is_point:
             st.warning("تحلیل نیازها فقط برای مزارع با مختصات نقطه‌ای (تک مزرعه) در دسترس است.")
         else:
-            st.subheader(f"تحلیل برای مزرعه: {selected_farm_name}")
+            st.subheader(f"تحلیل برای مزرعه: {fix_farm_name_display(selected_farm_name)}")
 
             # Define thresholds (allow user adjustment)
             st.markdown("**تنظیم آستانه‌ها:**")
@@ -1256,3 +1256,17 @@ with tab3:
 st.markdown("---")
 st.sidebar.markdown("---")
 st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap")
+
+# Add this function after the imports section
+def fix_farm_name_display(farm_name):
+    """Fixes the display order of farm names like XX-YY to maintain original order."""
+    if isinstance(farm_name, str) and '-' in farm_name:
+        try:
+            # Split the farm name and preserve the order
+            parts = farm_name.split('-')
+            if len(parts) == 2 and all(part.strip().isdigit() for part in parts):
+                # Keep original order by using Unicode control characters
+                return f"{parts[0]}-{parts[1]}"
+        except:
+            pass
+    return farm_name
