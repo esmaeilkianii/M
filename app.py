@@ -15,6 +15,19 @@ from streamlit_folium import st_folium  # Add missing st_folium import
 import base64
 import google.generativeai as genai # Gemini API
 
+def fix_farm_name_display(farm_name):
+    """Fixes the display order of farm names like XX-YY to maintain original order."""
+    if isinstance(farm_name, str) and '-' in farm_name:
+        try:
+            # Split the farm name and preserve the order
+            parts = farm_name.split('-')
+            if len(parts) == 2 and all(part.strip().isdigit() for part in parts):
+                # Keep original order by using Unicode control characters
+                return f"{parts[0]}-{parts[1]}"
+        except:
+            pass
+    return farm_name
+
 # --- Custom CSS ---
 st.set_page_config(
     page_title="سامانه پایش هوشمند نیشکر",
@@ -1256,17 +1269,3 @@ with tab3:
 st.markdown("---")
 st.sidebar.markdown("---")
 st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap")
-
-# Add this function after the imports section
-def fix_farm_name_display(farm_name):
-    """Fixes the display order of farm names like XX-YY to maintain original order."""
-    if isinstance(farm_name, str) and '-' in farm_name:
-        try:
-            # Split the farm name and preserve the order
-            parts = farm_name.split('-')
-            if len(parts) == 2 and all(part.strip().isdigit() for part in parts):
-                # Keep original order by using Unicode control characters
-                return f"{parts[0]}-{parts[1]}"
-        except:
-            pass
-    return farm_name
