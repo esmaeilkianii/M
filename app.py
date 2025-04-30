@@ -46,6 +46,7 @@ st.markdown("""
             border-radius: 10px;
             padding: 1rem;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            direction: rtl;
         }
         
         /* Tabs */
@@ -67,6 +68,19 @@ st.markdown("""
         .dataframe {
             font-family: 'Vazirmatn', sans-serif;
             text-align: right;
+            direction: rtl;
+        }
+        
+        /* Table cells */
+        .dataframe td, .dataframe th {
+            text-align: right !important;
+            direction: rtl !important;
+        }
+        
+        /* Numbers in tables */
+        .dataframe td:has(span[class*="css"]) {
+            direction: ltr !important;
+            text-align: right !important;
         }
         
         /* Sidebar */
@@ -94,6 +108,18 @@ st.markdown("""
             background-color: #f8d7da;
             color: #721c24;
         }
+        
+        /* Fix for metric values */
+        [data-testid="stMetricValue"] {
+            direction: ltr !important;
+            text-align: right !important;
+        }
+        
+        /* Fix for selectbox values */
+        .stSelectbox [data-baseweb="select"] span {
+            direction: rtl !important;
+            text-align: right !important;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -116,16 +142,50 @@ def initialize_gee():
         if not os.path.exists(SERVICE_ACCOUNT_FILE):
             st.error(f"خطا: فایل Service Account در مسیر '{SERVICE_ACCOUNT_FILE}' یافت نشد.")
             st.stop()
-        credentials = ee.ServiceAccountCredentials(None, key_file=SERVICE_ACCOUNT_FILE)
-        ee.Initialize(credentials=credentials, opt_url='https://earthengine-highvolume.googleapis.com')
-        print("GEE Initialized Successfully using Service Account.")
-        return True
-    except ee.EEException as e:
-        st.error(f"خطا در اتصال به Google Earth Engine: {e}")
-        st.error("لطفاً از صحت فایل Service Account و فعال بودن آن در پروژه GEE اطمینان حاصل کنید.")
-        st.stop()
+            
+        # Try to read and validate the service account file
+        try:
+            with open(SERVICE_ACCOUNT_FILE, 'r') as f:
+                creds_json = json.load(f)
+                required_keys = ['type', 'project_id', 'private_key', 'client_email']
+                if not all(key in creds_json for key in required_keys):
+                    st.error("خطا: فایل Service Account ناقص است. لطفاً از صحت محتویات فایل اطمینان حاصل کنید.")
+                    st.stop()
+                st.info(f"Service Account Email: {creds_json['client_email']}")
+        except json.JSONDecodeError:
+            st.error("خطا: فایل Service Account قابل خواندن نیست. لطفاً از صحت فرمت JSON اطمینان حاصل کنید.")
+            st.stop()
+            
+        # Initialize with more detailed error handling
+        try:
+            credentials = ee.ServiceAccountCredentials(None, key_file=SERVICE_ACCOUNT_FILE)
+            ee.Initialize(credentials=credentials, opt_url='https://earthengine-highvolume.googleapis.com')
+            
+            # Test the connection by making a simple API call
+            ee.Number(1).getInfo()
+            
+            print("GEE Initialized Successfully using Service Account.")
+            st.success("✅ اتصال به Google Earth Engine با موفقیت برقرار شد.")
+            return True
+            
+        except ee.EEException as e:
+            error_msg = str(e)
+            if "permission" in error_msg.lower() or "forbidden" in error_msg.lower():
+                st.error("""
+                خطای دسترسی به Google Earth Engine. لطفاً موارد زیر را بررسی کنید:
+                1. آیا Service Account در Earth Engine ثبت شده است؟ (https://code.earthengine.google.com/register)
+                2. آیا API های لازم در Google Cloud Console فعال هستند؟
+                3. آیا Service Account دسترسی‌های لازم را دارد؟
+                
+                خطای اصلی: {}
+                """.format(error_msg))
+            else:
+                st.error(f"خطای Google Earth Engine: {error_msg}")
+            st.stop()
+            
     except Exception as e:
         st.error(f"خطای غیرمنتظره هنگام اتصال به GEE: {e}")
+        st.error(traceback.format_exc())
         st.stop()
 
 
