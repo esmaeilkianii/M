@@ -632,13 +632,14 @@ def get_index_time_series(_point_geom, index_name, start_date='2023-01-01', end_
 # ==============================================================================
 @st.cache_data(show_spinner="در حال محاسبه شاخص‌های نیازسنجی...", persist=True)
 def get_farm_needs_data(_point_geom, start_curr, end_curr, start_prev, end_prev):
-    """Calculates mean NDVI, NDMI, EVI, SAVI for current and previous periods."""
+    """Calculates mean NDVI, NDMI, EVI for current and previous periods."""
     results = {
-        'NDVI_curr': None, 'NDMI_curr': None, 'EVI_curr': None, 'SAVI_curr': None,
-        'NDVI_prev': None, 'NDMI_prev': None, 'EVI_prev': None, 'SAVI_prev': None,
+        'NDVI_curr': None, 'NDMI_curr': None, 'EVI_curr': None,
+        'NDVI_prev': None, 'NDMI_prev': None, 'EVI_prev': None,
         'error': None
     }
-    indices_to_get = ['NDVI', 'NDMI', 'EVI', 'SAVI']
+    # Remove SAVI from the list of indices to get
+    indices_to_get = ['NDVI', 'NDMI', 'EVI']
 
     def get_mean_values_for_period(start, end):
         period_values = {index: None for index in indices_to_get}
@@ -649,7 +650,7 @@ def get_farm_needs_data(_point_geom, start_curr, end_curr, start_prev, end_prev)
                          .filterBounds(_point_geom)
                          .filterDate(start, end)
                          .map(maskS2clouds)
-                         .map(add_indices))
+                         .map(add_indices)) # add_indices already updated to exclude SAVI
 
             count = s2_sr_col.size().getInfo()
             if count == 0:
@@ -657,7 +658,7 @@ def get_farm_needs_data(_point_geom, start_curr, end_curr, start_prev, end_prev)
 
             median_image = s2_sr_col.median()
 
-            # Reduce region to get the mean value at the point for all indices
+            # Reduce region to get the mean value at the point for all required indices
             mean_dict = median_image.select(indices_to_get).reduceRegion(
                 reducer=ee.Reducer.mean(),
                 geometry=_point_geom,
@@ -683,7 +684,8 @@ def get_farm_needs_data(_point_geom, start_curr, end_curr, start_prev, end_prev)
         results['NDVI_curr'] = curr_values['NDVI']
         results['NDMI_curr'] = curr_values['NDMI']
         results['EVI_curr'] = curr_values['EVI']
-        results['SAVI_curr'] = curr_values['SAVI']
+        # Remove SAVI from results assignment
+        # results['SAVI_curr'] = curr_values['SAVI']
 
     # Get data for previous period
     prev_values, err_prev = get_mean_values_for_period(start_prev, end_prev)
@@ -693,7 +695,8 @@ def get_farm_needs_data(_point_geom, start_curr, end_curr, start_prev, end_prev)
         results['NDVI_prev'] = prev_values['NDVI']
         results['NDMI_prev'] = prev_values['NDMI']
         results['EVI_prev'] = prev_values['EVI']
-        results['SAVI_prev'] = prev_values['SAVI']
+        # Remove SAVI from results assignment
+        # results['SAVI_prev'] = prev_values['SAVI']
 
     return results
 
@@ -1209,15 +1212,13 @@ with tab3:
             else:
                 # --- Display Current Indices ---
                 st.markdown("**مقادیر شاخص‌ها (هفته جاری):**")
-                idx_cols = st.columns(4)
+                idx_cols = st.columns(3)
                 with idx_cols[0]:
                     st.metric("NDVI", f"{farm_needs_data['NDVI_curr']:.3f}")
                 with idx_cols[1]:
                     st.metric("NDMI", f"{farm_needs_data['NDMI_curr']:.3f}")
                 with idx_cols[2]:
                     st.metric("EVI", f"{farm_needs_data.get('EVI_curr', 'N/A'):.3f}" if farm_needs_data.get('EVI_curr') else "N/A")
-                with idx_cols[3]:
-                    st.metric("SAVI", f"{farm_needs_data.get('SAVI_curr', 'N/A'):.3f}" if farm_needs_data.get('SAVI_curr') else "N/A")
 
                 # --- Generate Recommendations ---
                 recommendations = []
