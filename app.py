@@ -35,104 +35,109 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom CSS for Persian text alignment and professional styling
+# Custom CSS for Persian text alignment, professional styling, and animations
 st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700&display=swap');
         
-        /* Main container */
+        /* Main container with animation */
         .main {
             font-family: 'Vazirmatn', sans-serif;
+            animation: fadeIn 1s ease-in;
         }
         
-        /* Headers */
+        /* Animated sugarcane background */
+        .stApp::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(rgba(255,255,255,0.95), rgba(255,255,255,0.95)),
+                        url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M30,90 Q50,20 70,90" stroke="green" fill="none" stroke-width="2"><animate attributeName="d" dur="3s" repeatCount="indefinite" values="M30,90 Q50,20 70,90;M30,90 Q50,30 70,90;M30,90 Q50,20 70,90"/></path></svg>');
+            background-size: 100px 100px;
+            opacity: 0.1;
+            z-index: -1;
+            animation: sway 3s ease-in-out infinite;
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes sway {
+            0% { background-position: 0 0; }
+            50% { background-position: -50px 0; }
+            100% { background-position: 0 0; }
+        }
+        
+        /* Cards with hover effect */
+        .element-container {
+            background: rgba(255,255,255,0.8);
+            border-radius: 10px;
+            padding: 1rem;
+            margin: 0.5rem 0;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .element-container:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+        }
+        
+        /* Headers with animation */
         h1, h2, h3 {
             font-family: 'Vazirmatn', sans-serif;
             color: #2c3e50;
             text-align: right;
+            position: relative;
+            overflow: hidden;
         }
         
-        /* Metrics */
+        h1::after, h2::after, h3::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(to left, #2ecc71, transparent);
+            animation: slideIn 1s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); }
+            to { transform: translateX(0); }
+        }
+        
+        /* Metrics with animation */
         .css-1xarl3l {
             font-family: 'Vazirmatn', sans-serif;
             background-color: #f8f9fa;
             border-radius: 10px;
             padding: 1rem;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            direction: rtl;
+            transition: all 0.3s ease;
+            animation: scaleIn 0.5s ease-out;
         }
         
-        /* Tabs */
-        .stTabs [data-baseweb="tab-list"] {
-            gap: 2px;
-            direction: rtl;
+        @keyframes scaleIn {
+            from { transform: scale(0.95); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
         }
         
-        .stTabs [data-baseweb="tab"] {
-            height: 50px;
-            padding: 10px 20px;
-            background-color: #f8f9fa;
-            border-radius: 5px 5px 0 0;
-            font-family: 'Vazirmatn', sans-serif;
-            font-weight: 600;
-        }
+        /* Other existing styles... */
         
-        /* Tables */
-        .dataframe {
-            font-family: 'Vazirmatn', sans-serif;
+        /* Fix for farm name display */
+        .farm-name {
+            unicode-bidi: plaintext;
             text-align: right;
-            direction: rtl;
         }
         
-        /* Table cells */
-        .dataframe td, .dataframe th {
-            text-align: right !important;
-            direction: rtl !important;
-        }
-        
-        /* Numbers in tables */
-        .dataframe td:has(span[class*="css"]) {
-            direction: ltr !important;
-            text-align: right !important;
-        }
-        
-        /* Sidebar */
-        .css-1d391kg {
-            font-family: 'Vazirmatn', sans-serif;
-            direction: rtl;
-        }
-        
-        /* Custom status badges */
-        .status-badge {
-            padding: 4px 8px;
-            border-radius: 15px;
-            font-size: 0.8em;
-            font-weight: bold;
-        }
-        .status-positive {
-            background-color: #d4edda;
-            color: #155724;
-        }
-        .status-neutral {
-            background-color: #fff3cd;
-            color: #856404;
-        }
-        .status-negative {
-            background-color: #f8d7da;
-            color: #721c24;
-        }
-        
-        /* Fix for metric values */
-        [data-testid="stMetricValue"] {
-            direction: ltr !important;
-            text-align: right !important;
-        }
-        
-        /* Fix for selectbox values */
-        .stSelectbox [data-baseweb="select"] span {
-            direction: rtl !important;
-            text-align: right !important;
-        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -492,47 +497,32 @@ def maskS2clouds(image):
 # --- Index Calculation Functions ---
 def add_indices(image):
     """Calculates and adds various indices as bands to an image."""
-    # NDVI: (NIR - Red) / (NIR + Red) | Sentinel-2: (B8 - B4) / (B8 + B4)
     ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI')
-
-    # EVI: 2.5 * (NIR - Red) / (NIR + 6 * Red - 7.5 * Blue + 1)
     evi = image.expression(
         '2.5 * (NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1)', {
             'NIR': image.select('B8'),
             'RED': image.select('B4'),
             'BLUE': image.select('B2')
         }).rename('EVI')
-
-    # NDMI (Normalized Difference Moisture Index): (NIR - SWIR1) / (NIR + SWIR1)
     ndmi = image.normalizedDifference(['B8', 'B11']).rename('NDMI')
-
-    # MSI (Moisture Stress Index): SWIR1 / NIR
     msi = image.expression('SWIR1 / NIR', {
         'SWIR1': image.select('B11'),
         'NIR': image.select('B8')
     }).rename('MSI')
-
-    # LAI (Leaf Area Index) - Simple estimation using NDVI
     lai = ndvi.multiply(3.5).rename('LAI')
-
-    # CVI (Chlorophyll Vegetation Index)
     green_safe = image.select('B3').max(ee.Image(0.0001))
     cvi = image.expression('(NIR / GREEN) * (RED / GREEN)', {
         'NIR': image.select('B8'),
         'GREEN': green_safe,
         'RED': image.select('B4')
     }).rename('CVI')
-
-    # NI (Nitrogen Index) - Using RE1 (B5), RE2 (B6), and RE3 (B7) bands
-    # This formula is based on research showing correlation between red-edge bands and nitrogen content
     ni = image.expression(
         '((RE3 - RE1) / (RE3 + RE1)) * ((RE2) / (NIR))', {
-            'RE1': image.select('B5'),  # Red Edge 1
-            'RE2': image.select('B6'),  # Red Edge 2
-            'RE3': image.select('B7'),  # Red Edge 3
-            'NIR': image.select('B8')   # NIR
+            'RE1': image.select('B5'),
+            'RE2': image.select('B6'),
+            'RE3': image.select('B7'),
+            'NIR': image.select('B8')
         }).rename('NI')
-
     return image.addBands([ndvi, evi, ndmi, msi, lai, cvi, ni])
 
 # --- Function to get processed image for a date range and geometry ---
