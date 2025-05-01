@@ -265,13 +265,36 @@ def load_farm_data(csv_path=CSV_FILE_PATH):
                     [row['lon4'], row['lat4']],
                     [row['lon1'], row['lat1']] # Close the loop
                 ]
-                # Basic check for valid coordinates (e.g., within expected range)
-                if not all(-180 <= lon <= 180 and -90 <= lat <= 90 for lon, lat in coords[:-1]):
-                     # st.warning(f" مختصات نامعتبر برای مزرعه {row['مزرعه']} یافت شد.")\n                     return None
-                     return None
+                
+                # --- DEBUGGING: Print coordinates for the first few rows ---
+                if row.name < 5: # Print for first 5 rows (adjust as needed)
+                    st.info(f"Row {row.name} - Coords for {row['مزرعه']}: {coords}")
+                    # Check data types
+                    coord_types = [(type(lon), type(lat)) for lon, lat in coords[:-1]]
+                    st.info(f"Row {row.name} - Coord Types: {coord_types}")
+                # --- END DEBUGGING ---
+                
+                # Basic check for valid coordinates (e.g., within expected range and numeric)
+                # Use pd.isna explicitly to check for NaN after coercion
+                is_valid = True
+                for i, (lon, lat) in enumerate(coords[:-1]): # Check points 1 to 4
+                    if pd.isna(lon) or pd.isna(lat) or not (-180 <= lon <= 180) or not (-90 <= lat <= 90):
+                         if row.name < 5: # Log details for first few failures
+                             st.warning(f"Invalid coordinate found in row {row.name} for {row['مزرعه']} at point {i+1}: lon={lon}, lat={lat}")
+                         is_valid = False
+                         break # No need to check further points in this row
+                
+                if not is_valid:
+                     return None # Return None if any coordinate is invalid
+                     
                 return ee.Geometry.Polygon(coords)
             except Exception as e:
-                st.warning(f"خطا در ایجاد چندضلعی برای مزرعه {row['مزرعه']}: {e}")
+                # Log the error with more details for the first few rows
+                if row.name < 5:
+                    st.error(f"Error creating polygon for مزرعه {row['مزرعه']} (Row {row.name}): {e}")
+                    st.error(f"Data: lat1={row['lat1']}, lon1={row['lon1']}, ..., lat4={row['lat4']}, lon4={row['lon4']}")
+                # else: # Optionally log a generic warning for subsequent errors to avoid flooding the UI
+                    # st.warning(f"Failed to create polygon for مزرعه {row['مزرعه']}")
                 return None
 
         df['ee_geometry'] = df.apply(create_ee_polygon, axis=1)
