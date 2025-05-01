@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import geopandas as gpd # Add geopandas
 import ee
 import geemap.foliumap as geemap
 import folium
@@ -149,7 +150,8 @@ INITIAL_LON = 48.724416
 INITIAL_ZOOM = 12
 
 # --- File Paths (Relative to the script location in Hugging Face) ---
-CSV_FILE_PATH = 'برنامه_ریزی_با_مختصات (1).csv'
+# CSV_FILE_PATH = 'برنامه_ریزی_با_مختصات (1).csv' # Old CSV path
+GEOJSON_FILE_PATH = 'farm_geodata_ready.geojson' # New GeoJSON path
 SERVICE_ACCOUNT_FILE = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json'
 
 # --- GEE Authentication ---
@@ -208,45 +210,80 @@ def initialize_gee():
 
 
 # --- Load Farm Data ---
-@st.cache_data(show_spinner="در حال بارگذاری داده‌های مزارع...")
-def load_farm_data(csv_path=CSV_FILE_PATH):
-    """Loads farm data from the specified CSV file."""
+@st.cache_data(show_spinner="در حال بارگذاری داده‌های مزارع (GeoJSON)...")
+def load_farm_data(geojson_path=GEOJSON_FILE_PATH):
+    """Loads farm data from the specified GeoJSON file."""
     try:
-        df = pd.read_csv(csv_path)
-        # Basic validation
-        required_cols = ['مزرعه', 'longitude', 'latitude', 'روز', 'گروه']
-        if not all(col in df.columns for col in required_cols):
-            st.error(f"❌ فایل CSV باید شامل ستون‌های ضروری باشد: {', '.join(required_cols)}")
-            st.stop()
-        # Convert coordinate columns to numeric, coercing errors
-        df['longitude'] = pd.to_numeric(df['longitude'], errors='coerce')
-        df['latitude'] = pd.to_numeric(df['latitude'], errors='coerce')
+        gdf = gpd.read_file(geojson_path)
+        st.info(f"Raw columns from GeoJSON: {list(gdf.columns)}") # Log columns for debugging
 
-        # Drop rows where essential coordinates are actually missing after coercion
-        initial_count = len(df)
-        df = df.dropna(subset=['longitude', 'latitude', 'روز'])
-        dropped_count = initial_count - len(df)
+        # --- Column Renaming (ASSUMPTIONS - Adjust based on actual GeoJSON properties) ---
+        # Example: Assuming 'Farm_Name' -> 'مزرعه', 'Day' -> 'روز', etc.
+        rename_map = {
+            'Farm_Name': 'مزرعه', # Adjust if the property name is different
+            'Day': 'روز',         # Adjust if the property name is different
+            'Group': 'گروه',       # Adjust if the property name is different
+            'Area_Ha': 'مساحت',    # Adjust if the property name is different
+            'Variety': 'واریته',    # Adjust if the property name is different
+            'Age': 'سن',          # Adjust if the property name is different
+            # Add other necessary mappings here
+        }
+        # Filter rename_map to only include columns present in gdf
+        actual_rename_map = {k: v for k, v in rename_map.items() if k in gdf.columns}
+        gdf.rename(columns=actual_rename_map, inplace=True)
+        st.info(f"Columns after renaming: {list(gdf.columns)}") # Log columns after rename
+
+        # --- Basic validation ---
+        # Check for essential columns AFTER potential renaming
+        required_cols = ['مزرعه', 'روز', 'گروه', 'geometry'] # geometry is essential from GeoDataFrame
+        if not all(col in gdf.columns for col in required_cols):
+            missing_cols = [col for col in required_cols if col not in gdf.columns]
+            st.error(f"❌ فایل GeoJSON باید شامل ستون‌های ضروری باشد. ستون‌های یافت نشده: {', '.join(missing_cols)}")
+            st.stop()
+
+        # --- Data Cleaning ---
+        # Drop rows where essential identifier columns are missing or invalid
+        initial_count = len(gdf)
+        gdf = gdf.dropna(subset=['مزرعه', 'روز']) # Keep geometry even if other attributes are missing initially
+        dropped_count = initial_count - len(gdf)
         if dropped_count > 0:
-            st.warning(f"⚠️ {dropped_count} رکورد به دلیل مقادیر نامعتبر یا خالی در ستون‌های مختصات یا روز حذف شدند.")
+            st.warning(f"⚠️ {dropped_count} رکورد به دلیل مقادیر خالی در ستون‌های 'مزرعه' یا 'روز' حذف شدند.")
 
-
-        if df.empty:
-            st.warning("⚠️ داده معتبری برای مزارع یافت نشد (پس از حذف رکوردهای بدون مختصات یا روز).")
+        if gdf.empty:
+            st.warning("⚠️ داده معتبری برای مزارع یافت نشد (پس از حذف رکوردهای نامعتبر).")
             st.stop()
 
-        # Ensure 'روز' is string type and normalize spaces (including non-breaking spaces)
-        df['روز'] = df['روز'].astype(str).str.replace(r'\s+', ' ', regex=True).str.strip()
+        # Ensure 'روز' is string type and normalize spaces
+        gdf['روز'] = gdf['روز'].astype(str).str.replace(r'\s+', ' ', regex=True).str.strip()
         # Ensure 'گروه' is treated appropriately (e.g., as string or category)
-        df['گروه'] = df['گروه'].astype(str).str.strip()
+        gdf['گروه'] = gdf['گروه'].astype(str).str.strip()
+
+        # Convert other attribute columns if they exist
+        if 'مساحت' in gdf.columns:
+            gdf['مساحت'] = pd.to_numeric(gdf['مساحت'], errors='coerce')
+        # Add conversions for 'سن', 'واریته' etc. if needed and present
+
+        # Ensure the geometry is valid (optional but recommended)
+        # gdf = gdf[gdf.geometry.is_valid]
+        # Reproject to WGS84 (EPSG:4326) if not already, as GEE prefers it
+        if gdf.crs is None:
+             st.warning("⚠️ سیستم مختصات (CRS) برای GeoJSON مشخص نشده است. فرض بر WGS84 (EPSG:4326) گذاشته می‌شود.")
+             gdf.crs = "EPSG:4326"
+        elif gdf.crs != "EPSG:4326":
+            st.info(f"در حال تبدیل سیستم مختصات از {gdf.crs} به EPSG:4326...")
+            gdf = gdf.to_crs("EPSG:4326")
 
 
-        st.success(f"✅ داده‌های {len(df)} مزرعه با موفقیت بارگذاری شد.")
-        return df
+        st.success(f"✅ داده‌های {len(gdf)} مزرعه (با هندسه) با موفقیت بارگذاری شد.")
+        return gdf
     except FileNotFoundError:
-        st.error(f"❌ فایل '{csv_path}' یافت نشد. لطفاً فایل CSV داده‌های مزارع را در مسیر صحیح قرار دهید.")
+        st.error(f"❌ فایل '{geojson_path}' یافت نشد. لطفاً فایل GeoJSON داده‌های مزارع را در مسیر صحیح قرار دهید.")
+        st.stop()
+    except ImportError:
+        st.error("❌ پکیج 'geopandas' یا یکی از وابستگی‌های آن (مانند fiona, pyproj) نصب نشده است. لطفاً requirements.txt را بررسی و نصب کنید.")
         st.stop()
     except Exception as e:
-        st.error(f"❌ خطا در بارگذاری یا پردازش فایل CSV: {e}")
+        st.error(f"❌ خطا در بارگذاری یا پردازش فایل GeoJSON: {e}")
         st.error(traceback.format_exc())
         st.stop()
 
@@ -365,7 +402,7 @@ def load_analysis_data(csv_path='محاسبات 2.csv'):
 
 # Initialize GEE and Load Data
 if initialize_gee():
-    farm_data_df = load_farm_data()
+    farm_data_gdf = load_farm_data() # Now returns GeoDataFrame
 
 # Load Analysis Data
 analysis_area_df, analysis_prod_df = load_analysis_data()
@@ -376,7 +413,7 @@ analysis_area_df, analysis_prod_df = load_analysis_data()
 st.sidebar.header("تنظیمات نمایش")
 
 # --- Day of the Week Selection ---
-available_days = sorted(farm_data_df['روز'].unique())
+available_days = sorted(farm_data_gdf['روز'].unique()) # Use gdf
 selected_day = st.sidebar.selectbox(
     "📅 روز هفته را انتخاب کنید:",
     options=available_days,
@@ -385,14 +422,14 @@ selected_day = st.sidebar.selectbox(
 )
 
 # --- Filter Data Based on Selected Day ---
-filtered_farms_df = farm_data_df[farm_data_df['روز'] == selected_day].copy()
+filtered_farms_gdf = farm_data_gdf[farm_data_gdf['روز'] == selected_day].copy() # Use gdf
 
-if filtered_farms_df.empty:
+if filtered_farms_gdf.empty:
     st.warning(f"⚠️ هیچ مزرعه‌ای برای روز '{selected_day}' یافت نشد.")
     st.stop()
 
 # --- Farm Selection ---
-available_farms = sorted(filtered_farms_df['مزرعه'].unique())
+available_farms = sorted(filtered_farms_gdf['مزرعه'].unique()) # Use gdf
 # Add an option for "All Farms"
 farm_options = ["همه مزارع"] + [fix_farm_name_display(farm) for farm in available_farms]
 selected_farm_name = st.sidebar.selectbox(
@@ -530,13 +567,13 @@ def add_indices(image):
 def get_processed_image(_geometry, start_date, end_date, index_name):
     """
     Gets cloud-masked, index-calculated Sentinel-2 median composite for a given geometry and date range.
-    _geometry: ee.Geometry (Point or Polygon)
+    _geometry: ee.Geometry (Polygon, MultiPolygon, Point, Rectangle)
     start_date, end_date: YYYY-MM-DD strings
     index_name: Name of the primary index band to return (e.g., 'NDVI')
     """
     try:
         s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-                     .filterBounds(_geometry)
+                     .filterBounds(_geometry) # Works with polygons too
                      .filterDate(start_date, end_date)
                      .map(maskS2clouds)) # Apply cloud masking
 
@@ -578,22 +615,26 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
 
 # --- Function to get time series data for a point ---
 @st.cache_data(show_spinner="در حال دریافت سری زمانی شاخص...", persist=True)
-def get_index_time_series(_point_geom, index_name, start_date='2023-01-01', end_date=today.strftime('%Y-%m-%d')):
-    """Gets a time series of a specified index for a point geometry."""
+def get_index_time_series(_geometry, index_name, start_date='2023-01-01', end_date=today.strftime('%Y-%m-%d')):
+    """
+    Gets a time series of a specified index for a geometry (calculates mean over the area).
+    _geometry: ee.Geometry (Polygon, MultiPolygon, Point)
+    """
     try:
         s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-                     .filterBounds(_point_geom)
+                     .filterBounds(_geometry)
                      .filterDate(start_date, end_date)
                      .map(maskS2clouds)
                      .map(add_indices))
 
         def extract_value(image):
-            # Extract the index value at the point
-            # Use reduceRegion for points; scale should match sensor resolution (e.g., 10m for S2 NDVI)
+            # Extract the mean index value over the geometry
+            # Use reduceRegion for polygons; scale should match sensor resolution (e.g., 10m for S2 NDVI)
             value = image.reduceRegion(
-                reducer=ee.Reducer.first(), # Use 'first' or 'mean' if point covers multiple pixels
-                geometry=_point_geom,
-                scale=10 # Scale in meters (10m for Sentinel-2 RGB/NIR)
+                reducer=ee.Reducer.mean(), # Use mean for polygon average
+                geometry=_geometry,
+                scale=10, # Scale in meters (10m for Sentinel-2 RGB/NIR)
+                maxPixels=1e9 # Increase maxPixels for potentially larger geometries
             ).get(index_name)
             # Return a feature with the value and the image date
             return ee.Feature(None, {
@@ -631,8 +672,11 @@ def get_index_time_series(_point_geom, index_name, start_date='2023-01-01', end_
 # NEW: Function to get all relevant indices for a farm point for two periods
 # ==============================================================================
 @st.cache_data(show_spinner="در حال محاسبه شاخص‌های نیازسنجی...", persist=True)
-def get_farm_needs_data(_point_geom, start_curr, end_curr, start_prev, end_prev):
-    """Calculates mean NDVI, NDMI, EVI for current and previous periods."""
+def get_farm_needs_data(_geometry, start_curr, end_curr, start_prev, end_prev):
+    """
+    Calculates mean NDVI, NDMI, EVI for current and previous periods over a geometry.
+     _geometry: ee.Geometry (Polygon, MultiPolygon, Point)
+     """
     results = {
         'NDVI_curr': None, 'NDMI_curr': None, 'EVI_curr': None,
         'NDVI_prev': None, 'NDMI_prev': None, 'EVI_prev': None,
@@ -647,7 +691,7 @@ def get_farm_needs_data(_point_geom, start_curr, end_curr, start_prev, end_prev)
         try:
             # Get median composite image with all indices calculated
             s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-                         .filterBounds(_point_geom)
+                         .filterBounds(_geometry) # Use polygon
                          .filterDate(start, end)
                          .map(maskS2clouds)
                          .map(add_indices)) # add_indices already updated to exclude SAVI
@@ -660,9 +704,10 @@ def get_farm_needs_data(_point_geom, start_curr, end_curr, start_prev, end_prev)
 
             # Reduce region to get the mean value at the point for all required indices
             mean_dict = median_image.select(indices_to_get).reduceRegion(
-                reducer=ee.Reducer.mean(),
-                geometry=_point_geom,
-                scale=10  # Scale in meters
+                reducer=ee.Reducer.mean(), # Use mean for polygon average
+                geometry=_geometry, # Use polygon
+                scale=10,  # Scale in meters
+                maxPixels=1e9 # Increase maxPixels
             ).getInfo()
 
             if mean_dict:
@@ -784,23 +829,40 @@ with tab1:
 
     # --- Get Selected Farm Geometry and Details ---
     selected_farm_details = None
-    selected_farm_geom = None
+    selected_farm_geom_ee = None # GEE geometry object
+    selected_farm_geometry_shapely = None # Shapely geometry object (from GeoDataFrame)
 
     if selected_farm_name == "همه مزارع":
-        # Use the bounding box of all filtered farms for the map view
-        min_lon, min_lat = filtered_farms_df['longitude'].min(), filtered_farms_df['latitude'].min()
-        max_lon, max_lat = filtered_farms_df['longitude'].max(), filtered_farms_df['latitude'].max()
-        # Create a bounding box geometry
-        selected_farm_geom = ee.Geometry.Rectangle([min_lon, min_lat, max_lon, max_lat])
+        # Create a combined geometry or FeatureCollection for all filtered farms
+        # For map view extent, using bounds is simpler:
+        total_bounds = filtered_farms_gdf.total_bounds # [minx, miny, maxx, maxy]
+        # Create a bounding box ee.Geometry for GEE processing if needed broadly
+        selected_farm_geom_ee = ee.Geometry.Rectangle(list(total_bounds))
+        # Store the GeoDataFrame for map plotting
+        selected_farms_gdf_for_map = filtered_farms_gdf
         st.subheader(f"نمایش کلی مزارع برای روز: {selected_day}")
-        st.info(f"تعداد مزارع در این روز: {len(filtered_farms_df)}")
+        st.info(f"تعداد مزارع در این روز: {len(filtered_farms_gdf)}")
     else:
-        selected_farm_details = filtered_farms_df[filtered_farms_df['مزرعه'] == selected_farm_name.replace('\u202B', '').replace('\u202C', '')].iloc[0]
-        lat = selected_farm_details['latitude']
-        lon = selected_farm_details['longitude']
-        selected_farm_geom = ee.Geometry.Point([lon, lat])
+        # Get the row for the selected farm
+        selected_farm_details_series = filtered_farms_gdf[filtered_farms_gdf['مزرعه'] == selected_farm_name.replace('\u202B', '').replace('\u202C', '')].iloc[0]
+        selected_farm_details = selected_farm_details_series.to_dict() # Convert Series to Dict for easier access
+        selected_farm_geometry_shapely = selected_farm_details['geometry'] # Get Shapely geometry
+
+        # Convert the selected farm's geometry to ee.Geometry
+        try:
+            # Use geemap to convert GeoJSON representation of the geometry
+            geojson_dict = gpd.GeoSeries([selected_farm_geometry_shapely]).__geo_interface__
+            selected_farm_geom_ee = geemap.geojson_to_ee(geojson_dict)
+             # Get the first geometry if it's a FeatureCollection
+            if isinstance(selected_farm_geom_ee, ee.FeatureCollection):
+                 selected_farm_geom_ee = selected_farm_geom_ee.first().geometry()
+
+        except Exception as e:
+            st.error(f"خطا در تبدیل هندسه مزرعه به فرمت GEE: {e}")
+            selected_farm_geom_ee = None # Ensure it's None if conversion fails
+
         st.subheader(f"جزئیات مزرعه: {fix_farm_name_display(selected_farm_name)} (روز: {selected_day})")
-        # Display farm details
+        # Display farm details (use .get for safety)
         details_cols = st.columns(3)
         with details_cols[0]:
             st.metric("مساحت داشت (هکتار)", f"{selected_farm_details.get('مساحت', 'N/A'):,.2f}" if pd.notna(selected_farm_details.get('مساحت')) else "N/A")
@@ -809,7 +871,12 @@ with tab1:
             st.metric("گروه", f"{selected_farm_details.get('گروه', 'N/A')}")
             st.metric("سن", f"{selected_farm_details.get('سن', 'N/A')}")
         with details_cols[2]:
-            st.metric("مختصات", f"{lat:.5f}, {lon:.5f}")
+             # Display centroid coordinates
+             if selected_farm_geometry_shapely:
+                 centroid = selected_farm_geometry_shapely.centroid
+                 st.metric("مرکز مزرعه", f"{centroid.y:.5f}, {centroid.x:.5f}")
+             else:
+                 st.metric("مختصات", "N/A")
 
 
     # --- Map Display ---
@@ -839,19 +906,19 @@ with tab1:
     )
     m.add_basemap("HYBRID") # Add Google Satellite Hybrid basemap
 
-    # Get the processed image for the current week
-    if selected_farm_geom:
+    # Get the processed image for the current week using ee.Geometry
+    if selected_farm_geom_ee:
         gee_image_current, error_msg_current = get_processed_image(
-            selected_farm_geom, start_date_current_str, end_date_current_str, selected_index
+            selected_farm_geom_ee, start_date_current_str, end_date_current_str, selected_index
         )
 
         if gee_image_current:
             # Add the GEE layer to the map
             try:
                 m.addLayer(
-                    gee_image_current,
+                    gee_image_current.clip(selected_farm_geom_ee), # Clip the image to the farm boundary(ies)
                     vis_params.get(selected_index, {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']}), # Default vis
-                    f"{selected_index} ({start_date_current_str} to {end_date_current_str})"
+                    f"{selected_index} (محدوده مزارع)"
                 )
 
                 # Remove the problematic add_legend call and replace with a custom legend
@@ -888,27 +955,60 @@ with tab1:
                 # Add the custom legend to the map
                 m.get_root().html.add_child(folium.Element(legend_html))
 
-                # Add markers for farms
+                # Add farm boundaries to the map instead of markers
                 if selected_farm_name == "همه مزارع":
-                     # Add markers for all filtered farms
-                     for idx, farm in filtered_farms_df.iterrows():
-                         folium.Marker(
-                             location=[farm['latitude'], farm['longitude']],
-                             popup=f"مزرعه: {farm['مزرعه']}\nگروه: {farm.get('گروه', 'N/A')}",
-                             tooltip=farm['مزرعه'],
-                             icon=folium.Icon(color='blue', icon='info-sign')
+                     # Add all filtered farms as GeoJSON
+                     if not selected_farms_gdf_for_map.empty:
+                         # Define style function for polygons
+                         style_function = lambda x: {
+                             'fillColor': '#ffffff00', # Transparent fill
+                             'color': 'cyan',       # Border color
+                             'weight': 2,
+                             'fillOpacity': 0.1,
+                         }
+                         # Define highlight function
+                         highlight_function = lambda x: {
+                             'fillColor': '#ffff00', # Yellow fill on hover
+                             'color': 'black',
+                             'weight': 3,
+                             'fillOpacity': 0.5
+                         }
+
+                         folium.GeoJson(
+                             selected_farms_gdf_for_map.__geo_interface__, # Convert gdf to geojson dict
+                             name='Farm Boundaries',
+                             style_function=style_function,
+                             highlight_function=highlight_function,
+                             tooltip=folium.features.GeoJsonTooltip(fields=['مزرعه', 'گروه'], aliases=['مزرعه:', 'گروه:'])
                          ).add_to(m)
-                     # Adjust map bounds if showing all farms
-                     m.center_object(selected_farm_geom, zoom=initial_zoom) # Center on the bounding box
-                else:
-                     # Add marker for the single selected farm
-                     folium.Marker(
-                         location=[lat, lon],
-                         popup=f"مزرعه: {selected_farm_name}\n{selected_index} (هفته جاری): محاسبه می‌شود...", # Placeholder popup
-                         tooltip=selected_farm_name,
-                         icon=folium.Icon(color='red', icon='star')
-                     ).add_to(m)
-                     m.center_object(selected_farm_geom, zoom=14) # Zoom closer for a single farm
+                         # Adjust map bounds to fit all farms
+                         m.fit_bounds(m.get_bounds(), padding=(30, 30)) # Adjust padding as needed
+
+                elif selected_farm_geometry_shapely:
+                    # Add single selected farm as GeoJSON
+                     style_function = lambda x: {
+                         'fillColor': '#ff0000', # Red fill for selected
+                         'color': 'red',       # Border color
+                         'weight': 3,
+                         'fillOpacity': 0.2,
+                     }
+                     highlight_function = lambda x: {
+                             'fillColor': '#ffff00', # Yellow fill on hover
+                             'color': 'black',
+                             'weight': 3,
+                             'fillOpacity': 0.5
+                         }
+
+                     folium.GeoJson(
+                        gpd.GeoSeries([selected_farm_geometry_shapely]).__geo_interface__,
+                        name=f'Farm Boundary: {selected_farm_name}',
+                        style_function=style_function,
+                        highlight_function=highlight_function,
+                        tooltip=f"مزرعه: {selected_farm_name}"
+                    ).add_to(m)
+                     # Center map on the selected farm's centroid
+                     m.location = [selected_farm_geometry_shapely.centroid.y, selected_farm_geometry_shapely.centroid.x]
+                     m.zoom = 15 # Zoom closer for a single polygon
 
                 m.add_layer_control() # Add layer control to toggle base maps and layers
 
@@ -931,32 +1031,29 @@ with tab1:
 
     if selected_farm_name == "همه مزارع":
         st.info("لطفاً یک مزرعه خاص را از پنل کناری انتخاب کنید تا نمودار روند زمانی آن نمایش داده شود.")
-    elif selected_farm_geom:
-        # Fix the isinstance check - use string comparison instead
-        # Check if the geometry type is Point by converting to string and checking
-        is_point = str(selected_farm_geom).find('Point') >= 0
-        
-        if is_point:
-            # Define a longer period for the time series chart (e.g., last 6 months)
-            timeseries_end_date = today.strftime('%Y-%m-%d')
-            timeseries_start_date = (today - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
+    elif selected_farm_geom_ee: # Use the ee.Geometry object
+        # Define a longer period for the time series chart (e.g., last 6 months)
+        timeseries_end_date = today.strftime('%Y-%m-%d')
+        timeseries_start_date = (today - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
 
-            ts_df, ts_error = get_index_time_series(
-                selected_farm_geom,
-                selected_index,
-                start_date=timeseries_start_date,
-                end_date=timeseries_end_date
-            )
+        # Pass the ee.Geometry (could be polygon) to the time series function
+        ts_df, ts_error = get_index_time_series(
+            selected_farm_geom_ee,
+            selected_index,
+            start_date=timeseries_start_date,
+            end_date=timeseries_end_date
+        )
 
-            if ts_error:
-                st.warning(f"خطا در دریافت داده‌های سری زمانی: {ts_error}")
-            elif not ts_df.empty:
-                st.line_chart(ts_df[selected_index])
-                st.caption(f"نمودار تغییرات شاخص {selected_index} برای مزرعه {selected_farm_name} در 6 ماه گذشته.")
-            else:
-                st.info(f"داده‌ای برای نمایش نمودار سری زمانی {selected_index} در بازه مشخص شده یافت نشد.")
+        if ts_error:
+            st.warning(f"خطا در دریافت داده‌های سری زمانی: {ts_error}")
+        elif not ts_df.empty:
+            st.line_chart(ts_df[selected_index])
+            st.caption(f"نمودار تغییرات میانگین شاخص {selected_index} برای کل مساحت مزرعه {selected_farm_name} در 6 ماه گذشته.")
         else:
-            st.warning("نوع هندسه مزرعه برای نمودار سری زمانی پشتیبانی نمی‌شود (فقط نقطه).")
+            st.info(f"داده‌ای برای نمایش نمودار سری زمانی {selected_index} در بازه مشخص شده یافت نشد.")
+    # Remove the old geometry type check
+    # else:
+    #     st.warning("نوع هندسه مزرعه برای نمودار سری زمانی پشتیبانی نمی‌شود (فقط نقطه).")
     else:
         st.warning("هندسه مزرعه برای نمودار سری زمانی در دسترس نیست.")
 
@@ -1002,39 +1099,58 @@ with tab1:
     st.markdown("مقایسه مقادیر متوسط شاخص در هفته جاری با هفته قبل.")
 
     @st.cache_data(show_spinner=f"در حال محاسبه {selected_index} برای مزارع...", persist=True)
-    def calculate_weekly_indices(_farms_df, index_name, start_curr, end_curr, start_prev, end_prev):
-        """Calculates the average index value for the current and previous week for a list of farms."""
+    def calculate_weekly_indices(_farms_gdf, index_name, start_curr, end_curr, start_prev, end_prev):
+        """Calculates the average index value for the current and previous week for a list of farms using their geometries."""
         results = []
         errors = []
-        total_farms = len(_farms_df)
+        total_farms = len(_farms_gdf)
         progress_bar = st.progress(0)
 
-        for i, (idx, farm) in enumerate(_farms_df.iterrows()):
+        # Convert all geometries to ee.Geometry upfront if feasible, or do it inside the loop
+        # Doing it inside the loop might be safer if conversion fails for some geometries
+
+        for i, (idx, farm) in enumerate(_farms_gdf.iterrows()):
             farm_name = farm['مزرعه']
-            lat = farm['latitude']
-            lon = farm['longitude']
-            point_geom = ee.Geometry.Point([lon, lat])
+            shapely_geom = farm['geometry']
+
+            # Convert shapely geometry to ee.Geometry
+            try:
+                geojson_dict = gpd.GeoSeries([shapely_geom]).__geo_interface__
+                ee_geom = geemap.geojson_to_ee(geojson_dict)
+                 # Get the first geometry if it's a FeatureCollection
+                if isinstance(ee_geom, ee.FeatureCollection):
+                     ee_geom = ee_geom.first().geometry()
+                if not ee_geom: # Check if conversion resulted in null
+                    raise ValueError("تبدیل هندسه به ee.Geometry ناموفق بود.")
+            except Exception as e:
+                errors.append(f"خطا در تبدیل هندسه برای {farm_name}: {e}")
+                progress_bar.progress((i + 1) / total_farms) # Update progress even on error
+                continue # Skip this farm
 
             def get_mean_value(start, end):
                 try:
-                    image, error = get_processed_image(point_geom, start, end, index_name)
+                    image, error = get_processed_image(ee_geom, start, end, index_name)
                     if image:
-                        # Reduce region to get the mean value at the point
+                        # Reduce region to get the mean value over the polygon
                         mean_dict = image.reduceRegion(
                             reducer=ee.Reducer.mean(),
-                            geometry=point_geom,
-                            scale=10  # Scale in meters
+                            geometry=ee_geom,
+                            scale=10,  # Scale in meters
+                            maxPixels=1e9 # Increase maxPixels
                         ).getInfo()
-                        return mean_dict.get(index_name) if mean_dict else None, None
+                        # Handle potential null result from reduceRegion
+                        if mean_dict is None:
+                            return None, f"reduceRegion نتیجه‌ای برای {farm_name} ({start}-{end}) برنگرداند."
+                        return mean_dict.get(index_name), None
                     else:
                         return None, error
-                except Exception as e:
-                     # Catch errors during reduceRegion or getInfo
-                     error_msg = f"خطا در محاسبه مقدار برای {farm_name} ({start}-{end}): {e}"
-                     # errors.append(error_msg) # Collect errors
-                     # st.warning(error_msg) # Show warning immediately
+                except ee.EEException as e_ee:
+                     error_msg = f"خطای GEE در محاسبه مقدار برای {farm_name} ({start}-{end}): {e_ee}"
                      return None, error_msg
-
+                except Exception as e_other:
+                     # Catch other errors during reduceRegion or getInfo
+                     error_msg = f"خطای ناشناخته در محاسبه مقدار برای {farm_name} ({start}-{end}): {e_other}"
+                     return None, error_msg
 
             # Calculate for current week
             current_val, err_curr = get_mean_value(start_curr, end_curr)
@@ -1069,7 +1185,7 @@ with tab1:
 
     # Calculate and display the ranking table
     ranking_df, calculation_errors = calculate_weekly_indices(
-        filtered_farms_df,
+        filtered_farms_gdf, # Pass the filtered GeoDataFrame
         selected_index,
         start_date_current_str,
         end_date_current_str,
@@ -1174,7 +1290,7 @@ with tab1:
 
     st.markdown("---")
     st.sidebar.markdown("---")
-    st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap")
+    st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, geemap, و geopandas") # Added geopandas
 
 
 # --- New Tab for Needs Analysis ---
@@ -1183,75 +1299,70 @@ with tab3:
 
     if selected_farm_name == "همه مزارع":
         st.info("لطفاً یک مزرعه خاص را از پنل کناری انتخاب کنید تا تحلیل نیازهای آن نمایش داده شود.")
-    elif selected_farm_geom:
-        # Check if it's a point geometry
-        is_point = str(selected_farm_geom).find('Point') >= 0
-        if not is_point:
-            st.warning("تحلیل نیازها فقط برای مزارع با مختصات نقطه‌ای (تک مزرعه) در دسترس است.")
-        else:
-            st.subheader(f"تحلیل برای مزرعه: {fix_farm_name_display(selected_farm_name)}")
+    elif selected_farm_geom_ee: # Use the ee.Geometry object
+        st.subheader(f"تحلیل برای مزرعه: {fix_farm_name_display(selected_farm_name)}")
 
-            # Define thresholds (allow user adjustment)
-            st.markdown("**تنظیم آستانه‌ها:**")
-            ndmi_threshold = st.slider("آستانه NDMI برای هشدار آبیاری:", 0.0, 0.5, 0.25, 0.01,
+        # Define thresholds (allow user adjustment)
+        st.markdown("**تنظیم آستانه‌ها:**")
+        ndmi_threshold = st.slider("آستانه NDMI برای هشدار آبیاری:", 0.0, 0.5, 0.25, 0.01,
                                      help="اگر NDMI کمتر از این مقدار باشد، نیاز به آبیاری اعلام می‌شود.")
-            ndvi_drop_threshold = st.slider("آستانه افت NDVI برای بررسی کوددهی (%):", 0.0, 20.0, 5.0, 0.5,
+        ndvi_drop_threshold = st.slider("آستانه افت NDVI برای بررسی کوددهی (%):", 0.0, 20.0, 5.0, 0.5,
                                         help="اگر NDVI نسبت به هفته قبل بیش از این درصد افت کند، نیاز به بررسی کوددهی اعلام می‌شود.")
 
-            # Get the required index data for the selected farm
-            farm_needs_data = get_farm_needs_data(
-                selected_farm_geom,
-                start_date_current_str, end_date_current_str,
-                start_date_previous_str, end_date_previous_str
-            )
+        # Get the required index data for the selected farm using its ee.Geometry
+        farm_needs_data = get_farm_needs_data(
+            selected_farm_geom_ee, # Pass ee.Geometry
+            start_date_current_str, end_date_current_str,
+            start_date_previous_str, end_date_previous_str
+        )
 
-            if farm_needs_data['error']:
-                st.error(f"خطا در دریافت داده‌های شاخص برای تحلیل نیازها: {farm_needs_data['error']}")
-            elif farm_needs_data['NDMI_curr'] is None or farm_needs_data['NDVI_curr'] is None:
-                st.warning("داده‌های شاخص لازم (NDMI/NDVI) برای تحلیل در دوره فعلی یافت نشد.")
+        if farm_needs_data['error']:
+            st.error(f"خطا در دریافت داده‌های شاخص برای تحلیل نیازها: {farm_needs_data['error']}")
+        elif farm_needs_data['NDMI_curr'] is None or farm_needs_data['NDVI_curr'] is None:
+            st.warning("داده‌های شاخص لازم (NDMI/NDVI) برای تحلیل در دوره فعلی یافت نشد.")
+        else:
+            # --- Display Current Indices ---
+            st.markdown("**مقادیر شاخص‌ها (هفته جاری):**")
+            idx_cols = st.columns(3)
+            with idx_cols[0]:
+                st.metric("NDVI", f"{farm_needs_data['NDVI_curr']:.3f}")
+            with idx_cols[1]:
+                st.metric("NDMI", f"{farm_needs_data['NDMI_curr']:.3f}")
+            with idx_cols[2]:
+                st.metric("EVI", f"{farm_needs_data.get('EVI_curr', 'N/A'):.3f}" if farm_needs_data.get('EVI_curr') else "N/A")
+
+            # --- Generate Recommendations ---
+            recommendations = []
+            # 1. Irrigation Check
+            if farm_needs_data['NDMI_curr'] < ndmi_threshold:
+                recommendations.append("💧 نیاز به آبیاری")
+
+            # 2. Fertilization Check (NDVI drop)
+            if farm_needs_data['NDVI_prev'] is not None and farm_needs_data['NDVI_curr'] < farm_needs_data['NDVI_prev']:
+                ndvi_change_percent = ((farm_needs_data['NDVI_prev'] - farm_needs_data['NDVI_curr']) / farm_needs_data['NDVI_prev']) * 100
+                if ndvi_change_percent > ndvi_drop_threshold:
+                    recommendations.append(f"⚠️ نیاز به بررسی کوددهی (افت {ndvi_change_percent:.1f}% در NDVI)")
+            elif farm_needs_data['NDVI_prev'] is None:
+                 st.caption("داده NDVI هفته قبل برای بررسی افت در دسترس نیست.")
+
+            # 3. Default if no issues
+            if not recommendations:
+                recommendations.append("✅ وضعیت فعلی مطلوب به نظر می‌رسد.")
+
+            # Display Recommendations
+            st.markdown("**توصیه‌های اولیه:**")
+            for rec in recommendations:
+                if "آبیاری" in rec: st.error(rec)
+                elif "کوددهی" in rec: st.warning(rec)
+                else: st.success(rec)
+
+            # --- Get and Display AI Analysis ---
+            if gemini_model:
+                st.markdown("**تحلیل هوش مصنوعی:**")
+                ai_explanation = get_ai_analysis(gemini_model, selected_farm_name, farm_needs_data, recommendations)
+                st.markdown(ai_explanation)
             else:
-                # --- Display Current Indices ---
-                st.markdown("**مقادیر شاخص‌ها (هفته جاری):**")
-                idx_cols = st.columns(3)
-                with idx_cols[0]:
-                    st.metric("NDVI", f"{farm_needs_data['NDVI_curr']:.3f}")
-                with idx_cols[1]:
-                    st.metric("NDMI", f"{farm_needs_data['NDMI_curr']:.3f}")
-                with idx_cols[2]:
-                    st.metric("EVI", f"{farm_needs_data.get('EVI_curr', 'N/A'):.3f}" if farm_needs_data.get('EVI_curr') else "N/A")
-
-                # --- Generate Recommendations ---
-                recommendations = []
-                # 1. Irrigation Check
-                if farm_needs_data['NDMI_curr'] < ndmi_threshold:
-                    recommendations.append("💧 نیاز به آبیاری")
-
-                # 2. Fertilization Check (NDVI drop)
-                if farm_needs_data['NDVI_prev'] is not None and farm_needs_data['NDVI_curr'] < farm_needs_data['NDVI_prev']:
-                    ndvi_change_percent = ((farm_needs_data['NDVI_prev'] - farm_needs_data['NDVI_curr']) / farm_needs_data['NDVI_prev']) * 100
-                    if ndvi_change_percent > ndvi_drop_threshold:
-                        recommendations.append(f"⚠️ نیاز به بررسی کوددهی (افت {ndvi_change_percent:.1f}% در NDVI)")
-                elif farm_needs_data['NDVI_prev'] is None:
-                     st.caption("داده NDVI هفته قبل برای بررسی افت در دسترس نیست.")
-
-                # 3. Default if no issues
-                if not recommendations:
-                    recommendations.append("✅ وضعیت فعلی مطلوب به نظر می‌رسد.")
-
-                # Display Recommendations
-                st.markdown("**توصیه‌های اولیه:**")
-                for rec in recommendations:
-                    if "آبیاری" in rec: st.error(rec)
-                    elif "کوددهی" in rec: st.warning(rec)
-                    else: st.success(rec)
-
-                # --- Get and Display AI Analysis ---
-                if gemini_model:
-                    st.markdown("**تحلیل هوش مصنوعی:**")
-                    ai_explanation = get_ai_analysis(gemini_model, selected_farm_name, farm_needs_data, recommendations)
-                    st.markdown(ai_explanation)
-                else:
-                    st.info("سرویس تحلیل هوش مصنوعی پیکربندی نشده است.")
+                st.info("سرویس تحلیل هوش مصنوعی پیکربندی نشده است.")
 
     else:
          st.info("ابتدا یک مزرعه را از پنل کناری انتخاب کنید.")
@@ -1259,4 +1370,4 @@ with tab3:
 
 st.markdown("---")
 st.sidebar.markdown("---")
-st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap")
+st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, geemap, و geopandas") # Added geopandas
