@@ -232,8 +232,20 @@ def load_farm_data(csv_path=CSV_FILE_PATH):
 
         # --- Data Cleaning and Conversion ---
         coord_cols = ['lat1', 'lon1', 'lat2', 'lon2', 'lat3', 'lon3', 'lat4', 'lon4']
+        # Replace Persian decimal separators and slashes with periods IN COORDINATE COLUMNS ONLY
         for col in coord_cols:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
+            if col in df.columns:
+                # Ensure column is string type before replacing
+                df[col] = df[col].astype(str)
+                df[col] = df[col].str.replace(',', '.', regex=False) # Replace Persian comma (momayyez)
+                df[col] = df[col].str.replace('/', '.', regex=False) # Replace slash
+                # Add replacement for standard comma if necessary
+                # df[col] = df[col].str.replace(',', '.', regex=False) 
+                
+        # Convert coordinate columns to numeric after replacement
+        for col in coord_cols:
+            if col in df.columns: # Check again in case a column was missing
+                df[col] = pd.to_numeric(df[col], errors='coerce')
 
         # Drop rows with missing coordinates or essential identifiers
         initial_count = len(df)
