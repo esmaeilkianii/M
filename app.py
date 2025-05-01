@@ -14,6 +14,8 @@ import traceback  # Add missing traceback import
 from streamlit_folium import st_folium  # Add missing st_folium import
 import base64
 import google.generativeai as genai # Gemini API
+TODO: Add 'import pyproj' here after installing it
+import pyproj
 
 def fix_farm_name_display(farm_name):
     """Fixes the display order of farm names like XX-YY to maintain original order."""
@@ -265,46 +267,83 @@ def load_farm_data(csv_path=CSV_FILE_PATH):
         # Convert other attributes if needed (e.g., سن, مساحت if it existed)
         # df['سن'] = pd.to_numeric(df['سن'], errors='coerce') # Example
 
+        # --- Coordinate System Conversion (UTM to Lat/Lon) ---
+        # The coordinates in the CSV appear to be UTM (likely Zone 39N for this region).
+        # Google Earth Engine requires geographic coordinates (Latitude/Longitude, WGS84).
+        # We need to convert them using the pyproj library.
+        # Make sure 'pyproj' is installed (pip install pyproj) and added to requirements.txt
+        try:
+            import pyproj
+        except ImportError:
+            st.error("❌ کتابخانه 'pyproj' برای تبدیل مختصات UTM به جغرافیایی مورد نیاز است.")
+            st.error("لطفاً آن را نصب کنید: pip install pyproj و به requirements.txt اضافه کنید و برنامه را مجددا اجرا کنید.")
+            st.stop()
+
+        # Define the UTM projection (Zone 39N, WGS84 datum) and the target geographic projection (WGS84)
+        # Confirmed Khuzestan is typically Zone 39N.
+        utm_proj = pyproj.Proj(proj='utm', zone=39, ellps='WGS84', south=False)
+        wgs84_proj = pyproj.Proj(proj='latlong', datum='WGS84')
+        transformer = pyproj.Transformer.from_proj(utm_proj, wgs84_proj, always_xy=True) # Ensure lon, lat output order
+
+        # Convert corner coordinates
+        try:
+            # Apply the transformation - note the input order might be easting (lon-like), northing (lat-like) from UTM
+            # pyproj expects x, y input, which corresponds to lon, lat for geographic but easting, northing for UTM
+            df['lon1_geo'], df['lat1_geo'] = transformer.transform(df['lon1'].values, df['lat1'].values)
+            df['lon2_geo'], df['lat2_geo'] = transformer.transform(df['lon2'].values, df['lat2'].values)
+            df['lon3_geo'], df['lat3_geo'] = transformer.transform(df['lon3'].values, df['lat3'].values)
+            df['lon4_geo'], df['lat4_geo'] = transformer.transform(df['lon4'].values, df['lat4'].values)
+            st.info("Coordinates successfully converted from UTM to Geographic (Lat/Lon).")
+        except Exception as proj_err:
+            st.error(f"❌ خطا در تبدیل مختصات UTM به جغرافیایی: {proj_err}")
+            st.error(traceback.format_exc())
+            st.error("لطفاً از صحت فرمت ستون‌های مختصات و انتخاب زون UTM صحیح (39N) اطمینان حاصل کنید.")
+            st.stop()
+        # --- End Coordinate Conversion ---
+
+
         # --- Create ee.Geometry.Polygon for each farm ---
         def create_ee_polygon(row):
             try:
                 # Coordinates must be in counter-clockwise order for GEE Polygons
-                # Ensure the order [lon, lat] for GEE
+                # Ensure the order [lon, lat] for GEE, using the CONVERTED coordinates
                 coords = [
-                    [row['lon1'], row['lat1']],
-                    [row['lon2'], row['lat2']],
-                    [row['lon3'], row['lat3']],
-                    [row['lon4'], row['lat4']],
-                    [row['lon1'], row['lat1']] # Close the loop
+                    [row['lon1_geo'], row['lat1_geo']],
+                    [row['lon2_geo'], row['lat2_geo']],
+                    [row['lon3_geo'], row['lat3_geo']],
+                    [row['lon4_geo'], row['lat4_geo']],
+                    [row['lon1_geo'], row['lat1_geo']] # Close the loop
                 ]
-                
-                # --- DEBUGGING: Print coordinates for the first few rows ---
-                if row.name < 5: # Print for first 5 rows (adjust as needed)
-                    st.info(f"Row {row.name} - Coords for {row['مزرعه']}: {coords}")
-                    # Check data types
-                    coord_types = [(type(lon), type(lat)) for lon, lat in coords[:-1]]
-                    st.info(f"Row {row.name} - Coord Types: {coord_types}")
+
+                # --- DEBUGGING: Print CONVERTED coordinates ---
+                if row.name < 2: # Print for first 2 rows
+                    # st.info(f"Row {row.name} - Original UTM Coords (lon1, lat1): {row['lon1']}, {row['lat1']}")
+                    st.info(f"Row {row.name} - Converted Geo Coords for {row['مزرعه']}: {coords}")
+                    # coord_types = [(type(lon), type(lat)) for lon, lat in coords[:-1]]
+                    # st.info(f"Row {row.name} - Converted Coord Types: {coord_types}")
                 # --- END DEBUGGING ---
-                
-                # Basic check for valid coordinates (e.g., within expected range and numeric)
+
+                # Basic check for valid CONVERTED coordinates (e.g., within expected range and numeric)
                 # Use pd.isna explicitly to check for NaN after coercion
                 is_valid = True
                 for i, (lon, lat) in enumerate(coords[:-1]): # Check points 1 to 4
                     if pd.isna(lon) or pd.isna(lat) or not (-180 <= lon <= 180) or not (-90 <= lat <= 90):
                          if row.name < 5: # Log details for first few failures
-                             st.warning(f"Invalid coordinate found in row {row.name} for {row['مزرعه']} at point {i+1}: lon={lon}, lat={lat}")
+                             st.warning(f"Invalid CONVERTED coordinate found in row {row.name} for {row['مزرعه']} at point {i+1}: lon={lon}, lat={lat}")
                          is_valid = False
                          break # No need to check further points in this row
-                
+
                 if not is_valid:
+                     st.warning(f"Skipping row {row.name} ({row['مزرعه']}) due to invalid converted coordinates.")
                      return None # Return None if any coordinate is invalid
-                     
+
                 return ee.Geometry.Polygon(coords)
             except Exception as e:
                 # Log the error with more details for the first few rows
                 if row.name < 5:
-                    st.error(f"Error creating polygon for مزرعه {row['مزرعه']} (Row {row.name}): {e}")
-                    st.error(f"Data: lat1={row['lat1']}, lon1={row['lon1']}, ..., lat4={row['lat4']}, lon4={row['lon4']}")
+                    st.error(f"Error creating polygon for مزرعه {row['مزرعه']} (Row {row.name}) using converted coords: {e}")
+                    st.error(f"Converted Data: lon1_geo={row.get('lon1_geo', 'N/A')}, lat1_geo={row.get('lat1_geo', 'N/A')}, ...")
+                    st.error(traceback.format_exc()) # Add traceback for detailed debugging
                 # else: # Optionally log a generic warning for subsequent errors to avoid flooding the UI
                     # st.warning(f"Failed to create polygon for مزرعه {row['مزرعه']}")
                 return None
@@ -1431,4 +1470,4 @@ with tab3:
 
 st.markdown("---")
 st.sidebar.markdown("---")
-st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap") # Removed geopandas
+st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap")
