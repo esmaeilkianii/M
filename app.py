@@ -14,7 +14,7 @@ import traceback  # Add missing traceback import
 from streamlit_folium import st_folium  # Add missing st_folium import
 import base64
 import google.generativeai as genai # Gemini API
-TODO: Add 'import pyproj' here after installing it
+#TODO: Add 'import pyproj' here after installing it
 import pyproj
 
 def fix_farm_name_display(farm_name):
