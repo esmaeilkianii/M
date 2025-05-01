@@ -150,7 +150,7 @@ INITIAL_ZOOM = 12
 
 # --- File Paths (Relative to the script location in Hugging Face) ---
 # GEOJSON_FILE_PATH = 'farm_geodata_ready.geojson' # Old GeoJSON path
-CSV_FILE_PATH = 'farm_geodata_ready.csv' # Use the new CSV file
+CSV_FILE_PATH = 'farm_geodata_ready (1).csv' # Use the new CSV file
 SERVICE_ACCOUNT_FILE = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json'
 
 # --- GEE Authentication ---
