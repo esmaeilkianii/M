@@ -1378,29 +1378,3 @@ with tab3:
 st.markdown("---")
 st.sidebar.markdown("---")
 st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap")
-
-# --- Modern UI Helper Functions ---
-def modern_metric_card(title, value, icon=None, color='#43cea2', extra_html=''):
-    icon_html = f"<i class='fa {icon}' style='font-size:2rem; margin-bottom:8px;'></i><br>" if icon else ""
-    return f"""
-    <div class='modern-card' style='background: linear-gradient(135deg, {color} 0%, #185a9d 100%);'>
-        {icon_html}
-        <span style='font-size:1.1rem; font-weight:600;'>{title}</span>
-        <div style='font-size:2.2rem; font-weight:bold; margin: 8px 0 0 0;'>{value}</div>
-        {extra_html}
-    </div>
-    """
-
-def status_badge(status):
-    color = '#43cea2' if 'بهبود' in status else ('#ffc107' if 'ثابت' in status else ('#e74c3c' if 'تنش' in status or 'کاهش' in status or 'بدتر' in status else '#bdbdbd'))
-    icon = 'fa-arrow-up' if 'بهبود' in status else ('fa-minus' if 'ثابت' in status else ('fa-arrow-down' if 'تنش' in status or 'کاهش' in status or 'بدتر' in status else 'fa-question'))
-    return f"<span style='display:inline-block; padding:4px 14px; border-radius:16px; background:{color}; color:#fff; font-size:1rem; font-weight:600; margin:2px 0;'><i class='fa {icon}' style='margin-left:6px;'></i>{status}</span>"
-
-def modern_progress_bar(progress, text="در حال محاسبه..."):
-    percent = int(progress * 100)
-    return f"""
-    <div style='width:100%; background:#e0e0e0; border-radius:12px; margin:10px 0; height:22px; position:relative;'>
-        <div style='width:{percent}%; background:linear-gradient(90deg,#43cea2,#185a9d); height:100%; border-radius:12px; transition:width 0.4s;'></div>
-        <span style='position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); color:#222; font-weight:600;'>{text} {percent}%</span>
-    </div>
-    """
