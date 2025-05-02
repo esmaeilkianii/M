@@ -14,21 +14,6 @@ import traceback  # Add missing traceback import
 from streamlit_folium import st_folium  # Add missing st_folium import
 import base64
 import google.generativeai as genai # Gemini API
-#TODO: Add 'import pyproj' here after installing it
-import pyproj
-
-def fix_farm_name_display(farm_name):
-    """Fixes the display order of farm names like XX-YY to maintain original order."""
-    if isinstance(farm_name, str) and '-' in farm_name:
-        try:
-            # Split the farm name and preserve the order
-            parts = farm_name.split('-')
-            if len(parts) == 2 and all(part.strip().isdigit() for part in parts):
-                # Keep original order by using Unicode control characters
-                return f"{parts[0]}-{parts[1]}"
-        except:
-            pass
-    return farm_name
 
 # --- Custom CSS ---
 st.set_page_config(
@@ -37,109 +22,78 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom CSS for Persian text alignment, professional styling, and animations
+# Custom CSS for Persian text alignment and professional styling
 st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700&display=swap');
         
-        /* Main container with animation */
+        /* Main container */
         .main {
             font-family: 'Vazirmatn', sans-serif;
-            animation: fadeIn 1s ease-in;
         }
         
-        /* Animated sugarcane background */
-        .stApp::before {
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(rgba(255,255,255,0.95), rgba(255,255,255,0.95)),
-                        url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M30,90 Q50,20 70,90" stroke="green" fill="none" stroke-width="2"><animate attributeName="d" dur="3s" repeatCount="indefinite" values="M30,90 Q50,20 70,90;M30,90 Q50,30 70,90;M30,90 Q50,20 70,90"/></path></svg>');
-            background-size: 100px 100px;
-            opacity: 0.1;
-            z-index: -1;
-            animation: sway 3s ease-in-out infinite;
-        }
-        
-        /* Animations */
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        @keyframes sway {
-            0% { background-position: 0 0; }
-            50% { background-position: -50px 0; }
-            100% { background-position: 0 0; }
-        }
-        
-        /* Cards with hover effect */
-        .element-container {
-            background: rgba(255,255,255,0.8);
-            border-radius: 10px;
-            padding: 1rem;
-            margin: 0.5rem 0;
-            transition: all 0.3s ease;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-        
-        .element-container:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
-        }
-        
-        /* Headers with animation */
+        /* Headers */
         h1, h2, h3 {
             font-family: 'Vazirmatn', sans-serif;
             color: #2c3e50;
             text-align: right;
-            position: relative;
-            overflow: hidden;
         }
         
-        h1::after, h2::after, h3::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            right: 0;
-            width: 100%;
-            height: 2px;
-            background: linear-gradient(to left, #2ecc71, transparent);
-            animation: slideIn 1s ease-out;
-        }
-        
-        @keyframes slideIn {
-            from { transform: translateX(100%); }
-            to { transform: translateX(0); }
-        }
-        
-        /* Metrics with animation */
+        /* Metrics */
         .css-1xarl3l {
             font-family: 'Vazirmatn', sans-serif;
             background-color: #f8f9fa;
             border-radius: 10px;
             padding: 1rem;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            transition: all 0.3s ease;
-            animation: scaleIn 0.5s ease-out;
         }
         
-        @keyframes scaleIn {
-            from { transform: scale(0.95); opacity: 0; }
-            to { transform: scale(1); opacity: 1; }
+        /* Tabs */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 2px;
+            direction: rtl;
         }
         
-        /* Other existing styles... */
+        .stTabs [data-baseweb="tab"] {
+            height: 50px;
+            padding: 10px 20px;
+            background-color: #f8f9fa;
+            border-radius: 5px 5px 0 0;
+            font-family: 'Vazirmatn', sans-serif;
+            font-weight: 600;
+        }
         
-        /* Fix for farm name display */
-        .farm-name {
-            unicode-bidi: plaintext;
+        /* Tables */
+        .dataframe {
+            font-family: 'Vazirmatn', sans-serif;
             text-align: right;
         }
         
+        /* Sidebar */
+        .css-1d391kg {
+            font-family: 'Vazirmatn', sans-serif;
+            direction: rtl;
+        }
+        
+        /* Custom status badges */
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 15px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        .status-positive {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status-neutral {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .status-negative {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -151,8 +105,7 @@ INITIAL_LON = 48.724416
 INITIAL_ZOOM = 12
 
 # --- File Paths (Relative to the script location in Hugging Face) ---
-# GEOJSON_FILE_PATH = 'farm_geodata_ready.geojson' # Old GeoJSON path
-CSV_FILE_PATH = 'farm_geodata_ready (1).csv' # Use the new CSV file
+CSV_FILE_PATH = 'برنامه_ریزی_با_مختصات (1).csv'
 SERVICE_ACCOUNT_FILE = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json'
 
 # --- GEE Authentication ---
@@ -163,205 +116,53 @@ def initialize_gee():
         if not os.path.exists(SERVICE_ACCOUNT_FILE):
             st.error(f"خطا: فایل Service Account در مسیر '{SERVICE_ACCOUNT_FILE}' یافت نشد.")
             st.stop()
-            
-        # Try to read and validate the service account file
-        try:
-            with open(SERVICE_ACCOUNT_FILE, 'r') as f:
-                creds_json = json.load(f)
-                required_keys = ['type', 'project_id', 'private_key', 'client_email']
-                if not all(key in creds_json for key in required_keys):
-                    st.error("خطا: فایل Service Account ناقص است. لطفاً از صحت محتویات فایل اطمینان حاصل کنید.")
-                    st.stop()
-                st.info(f"Service Account Email: {creds_json['client_email']}")
-        except json.JSONDecodeError:
-            st.error("خطا: فایل Service Account قابل خواندن نیست. لطفاً از صحت فرمت JSON اطمینان حاصل کنید.")
-            st.stop()
-            
-        # Initialize with more detailed error handling
-        try:
-            credentials = ee.ServiceAccountCredentials(None, key_file=SERVICE_ACCOUNT_FILE)
-            ee.Initialize(credentials=credentials, opt_url='https://earthengine-highvolume.googleapis.com')
-            
-            # Test the connection by making a simple API call
-            ee.Number(1).getInfo()
-            
-            print("GEE Initialized Successfully using Service Account.")
-            st.success("✅ اتصال به Google Earth Engine با موفقیت برقرار شد.")
-            return True
-            
-        except ee.EEException as e:
-            error_msg = str(e)
-            if "permission" in error_msg.lower() or "forbidden" in error_msg.lower():
-                st.error("""
-                خطای دسترسی به Google Earth Engine. لطفاً موارد زیر را بررسی کنید:
-                1. آیا Service Account در Earth Engine ثبت شده است؟ (https://code.earthengine.google.com/register)
-                2. آیا API های لازم در Google Cloud Console فعال هستند؟
-                3. آیا Service Account دسترسی‌های لازم را دارد؟
-                
-                خطای اصلی: {}
-                """.format(error_msg))
-            else:
-                st.error(f"خطای Google Earth Engine: {error_msg}")
-            st.stop()
-            
+        credentials = ee.ServiceAccountCredentials(None, key_file=SERVICE_ACCOUNT_FILE)
+        ee.Initialize(credentials=credentials, opt_url='https://earthengine-highvolume.googleapis.com')
+        print("GEE Initialized Successfully using Service Account.")
+        return True
+    except ee.EEException as e:
+        st.error(f"خطا در اتصال به Google Earth Engine: {e}")
+        st.error("لطفاً از صحت فایل Service Account و فعال بودن آن در پروژه GEE اطمینان حاصل کنید.")
+        st.stop()
     except Exception as e:
         st.error(f"خطای غیرمنتظره هنگام اتصال به GEE: {e}")
-        st.error(traceback.format_exc())
         st.stop()
 
 
 # --- Load Farm Data ---
-@st.cache_data(show_spinner="در حال بارگذاری داده‌های مزارع (CSV با گوشه‌ها)...")
+@st.cache_data(show_spinner="در حال بارگذاری داده‌های مزارع...")
 def load_farm_data(csv_path=CSV_FILE_PATH):
-    """Loads farm data from CSV including corner coordinates and creates ee.Geometry.Polygon."""
+    """Loads farm data from the specified CSV file."""
     try:
-        # Read CSV, handle potential BOM in the first column name
         df = pd.read_csv(csv_path)
-        # Clean column names (remove BOM if present)
-        df.columns = df.columns.str.replace('\ufeff', '', regex=True)
-        st.info(f"Columns from CSV: {list(df.columns)}")
-
-        # --- Column Validation ---
-        required_cols = [
-            'مزرعه', 'سن', 'واریته', 'روز', 'گروه',
-            'lat1', 'lon1', 'lat2', 'lon2',
-            'lat3', 'lon3', 'lat4', 'lon4'
-        ]
+        # Basic validation
+        required_cols = ['مزرعه', 'longitude', 'latitude', 'روز', 'گروه']
         if not all(col in df.columns for col in required_cols):
-            missing_cols = [col for col in required_cols if col not in df.columns]
-            st.error(f"❌ فایل CSV باید شامل ستون‌های ضروری باشد. ستون‌های یافت نشده: {', '.join(missing_cols)}")
+            st.error(f"❌ فایل CSV باید شامل ستون‌های ضروری باشد: {', '.join(required_cols)}")
             st.stop()
+        # Convert coordinate columns to numeric, coercing errors
+        df['longitude'] = pd.to_numeric(df['longitude'], errors='coerce')
+        df['latitude'] = pd.to_numeric(df['latitude'], errors='coerce')
 
-        # --- Data Cleaning and Conversion ---
-        coord_cols = ['lat1', 'lon1', 'lat2', 'lon2', 'lat3', 'lon3', 'lat4', 'lon4']
-        # Replace Persian decimal separators and slashes with periods IN COORDINATE COLUMNS ONLY
-        for col in coord_cols:
-            if col in df.columns:
-                # Ensure column is string type before replacing
-                df[col] = df[col].astype(str)
-                df[col] = df[col].str.replace(',', '.', regex=False) # Replace Persian comma (momayyez)
-                df[col] = df[col].str.replace('/', '.', regex=False) # Replace slash
-                # Add replacement for standard comma if necessary
-                # df[col] = df[col].str.replace(',', '.', regex=False) 
-                
-        # Convert coordinate columns to numeric after replacement
-        for col in coord_cols:
-            if col in df.columns: # Check again in case a column was missing
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-
-        # Drop rows with missing coordinates or essential identifiers
+        # Drop rows where essential coordinates are actually missing after coercion
         initial_count = len(df)
-        essential_check_cols = ['مزرعه', 'روز'] + coord_cols
-        df = df.dropna(subset=essential_check_cols)
+        df = df.dropna(subset=['longitude', 'latitude', 'روز'])
         dropped_count = initial_count - len(df)
         if dropped_count > 0:
-            st.warning(f"⚠️ {dropped_count} رکورد به دلیل مقادیر خالی یا نامعتبر در ستون‌های 'مزرعه', 'روز' یا مختصات حذف شدند.")
+            st.warning(f"⚠️ {dropped_count} رکورد به دلیل مقادیر نامعتبر یا خالی در ستون‌های مختصات یا روز حذف شدند.")
+
 
         if df.empty:
-            st.warning("⚠️ داده معتبری برای مزارع یافت نشد (پس از حذف رکوردهای نامعتبر).")
+            st.warning("⚠️ داده معتبری برای مزارع یافت نشد (پس از حذف رکوردهای بدون مختصات یا روز).")
             st.stop()
 
-        # Ensure 'روز' and 'گروه' are strings and normalized
+        # Ensure 'روز' is string type and normalize spaces (including non-breaking spaces)
         df['روز'] = df['روز'].astype(str).str.replace(r'\s+', ' ', regex=True).str.strip()
+        # Ensure 'گروه' is treated appropriately (e.g., as string or category)
         df['گروه'] = df['گروه'].astype(str).str.strip()
-        # Convert other attributes if needed (e.g., سن, مساحت if it existed)
-        # df['سن'] = pd.to_numeric(df['سن'], errors='coerce') # Example
-
-        # --- Coordinate System Conversion (UTM to Lat/Lon) ---
-        # The coordinates in the CSV appear to be UTM (likely Zone 39N for this region).
-        # Google Earth Engine requires geographic coordinates (Latitude/Longitude, WGS84).
-        # We need to convert them using the pyproj library.
-        # Make sure 'pyproj' is installed (pip install pyproj) and added to requirements.txt
-        try:
-            import pyproj
-        except ImportError:
-            st.error("❌ کتابخانه 'pyproj' برای تبدیل مختصات UTM به جغرافیایی مورد نیاز است.")
-            st.error("لطفاً آن را نصب کنید: pip install pyproj و به requirements.txt اضافه کنید و برنامه را مجددا اجرا کنید.")
-            st.stop()
-
-        # Define the UTM projection (Zone 39N, WGS84 datum) and the target geographic projection (WGS84)
-        # Confirmed Khuzestan is typically Zone 39N.
-        utm_proj = pyproj.Proj(proj='utm', zone=39, ellps='WGS84', south=False)
-        wgs84_proj = pyproj.Proj(proj='latlong', datum='WGS84')
-        transformer = pyproj.Transformer.from_proj(utm_proj, wgs84_proj, always_xy=True) # Ensure lon, lat output order
-
-        # Convert corner coordinates
-        try:
-            # Apply the transformation - note the input order might be easting (lon-like), northing (lat-like) from UTM
-            # pyproj expects x, y input, which corresponds to lon, lat for geographic but easting, northing for UTM
-            df['lon1_geo'], df['lat1_geo'] = transformer.transform(df['lon1'].values, df['lat1'].values)
-            df['lon2_geo'], df['lat2_geo'] = transformer.transform(df['lon2'].values, df['lat2'].values)
-            df['lon3_geo'], df['lat3_geo'] = transformer.transform(df['lon3'].values, df['lat3'].values)
-            df['lon4_geo'], df['lat4_geo'] = transformer.transform(df['lon4'].values, df['lat4'].values)
-            st.info("Coordinates successfully converted from UTM to Geographic (Lat/Lon).")
-        except Exception as proj_err:
-            st.error(f"❌ خطا در تبدیل مختصات UTM به جغرافیایی: {proj_err}")
-            st.error(traceback.format_exc())
-            st.error("لطفاً از صحت فرمت ستون‌های مختصات و انتخاب زون UTM صحیح (39N) اطمینان حاصل کنید.")
-            st.stop()
-        # --- End Coordinate Conversion ---
 
 
-        # --- Create ee.Geometry.Polygon for each farm ---
-        def create_ee_polygon(row):
-            try:
-                # Coordinates must be in counter-clockwise order for GEE Polygons
-                # Ensure the order [lon, lat] for GEE, using the CONVERTED coordinates
-                coords = [
-                    [row['lon1_geo'], row['lat1_geo']],
-                    [row['lon2_geo'], row['lat2_geo']],
-                    [row['lon3_geo'], row['lat3_geo']],
-                    [row['lon4_geo'], row['lat4_geo']],
-                    [row['lon1_geo'], row['lat1_geo']] # Close the loop
-                ]
-
-                # --- DEBUGGING: Print CONVERTED coordinates ---
-                if row.name < 2: # Print for first 2 rows
-                    # st.info(f"Row {row.name} - Original UTM Coords (lon1, lat1): {row['lon1']}, {row['lat1']}")
-                    st.info(f"Row {row.name} - Converted Geo Coords for {row['مزرعه']}: {coords}")
-                    # coord_types = [(type(lon), type(lat)) for lon, lat in coords[:-1]]
-                    # st.info(f"Row {row.name} - Converted Coord Types: {coord_types}")
-                # --- END DEBUGGING ---
-
-                # Basic check for valid CONVERTED coordinates (e.g., within expected range and numeric)
-                # Use pd.isna explicitly to check for NaN after coercion
-                is_valid = True
-                for i, (lon, lat) in enumerate(coords[:-1]): # Check points 1 to 4
-                    if pd.isna(lon) or pd.isna(lat) or not (-180 <= lon <= 180) or not (-90 <= lat <= 90):
-                         if row.name < 5: # Log details for first few failures
-                             st.warning(f"Invalid CONVERTED coordinate found in row {row.name} for {row['مزرعه']} at point {i+1}: lon={lon}, lat={lat}")
-                         is_valid = False
-                         break # No need to check further points in this row
-
-                if not is_valid:
-                     st.warning(f"Skipping row {row.name} ({row['مزرعه']}) due to invalid converted coordinates.")
-                     return None # Return None if any coordinate is invalid
-
-                return ee.Geometry.Polygon(coords)
-            except Exception as e:
-                # Log the error with more details for the first few rows
-                if row.name < 5:
-                    st.error(f"Error creating polygon for مزرعه {row['مزرعه']} (Row {row.name}) using converted coords: {e}")
-                    st.error(f"Converted Data: lon1_geo={row.get('lon1_geo', 'N/A')}, lat1_geo={row.get('lat1_geo', 'N/A')}, ...")
-                    st.error(traceback.format_exc()) # Add traceback for detailed debugging
-                # else: # Optionally log a generic warning for subsequent errors to avoid flooding the UI
-                    # st.warning(f"Failed to create polygon for مزرعه {row['مزرعه']}")
-                return None
-
-        df['ee_geometry'] = df.apply(create_ee_polygon, axis=1)
-
-        # Drop rows where polygon creation failed
-        initial_count_geom = len(df)
-        df = df.dropna(subset=['ee_geometry']) # Ensure we have a valid geometry object
-        dropped_geom_count = initial_count_geom - len(df)
-        if dropped_geom_count > 0:
-             st.warning(f"⚠️ {dropped_geom_count} رکورد به دلیل خطا در ایجاد هندسه چندضلعی حذف شدند.")
-
-        if df.empty:
-            st.warning("⚠️ هیچ مزرعه‌ای با هندسه معتبر یافت نشد.")
-            st.stop()
-
-        st.success(f"✅ داده‌های {len(df)} مزرعه (با هندسه چندضلعی از CSV) با موفقیت بارگذاری شد.")
+        st.success(f"✅ داده‌های {len(df)} مزرعه با موفقیت بارگذاری شد.")
         return df
     except FileNotFoundError:
         st.error(f"❌ فایل '{csv_path}' یافت نشد. لطفاً فایل CSV داده‌های مزارع را در مسیر صحیح قرار دهید.")
@@ -486,7 +287,7 @@ def load_analysis_data(csv_path='محاسبات 2.csv'):
 
 # Initialize GEE and Load Data
 if initialize_gee():
-    farm_data_df = load_farm_data() # Now returns DataFrame with ee_geometry column
+    farm_data_df = load_farm_data()
 
 # Load Analysis Data
 analysis_area_df, analysis_prod_df = load_analysis_data()
@@ -497,7 +298,7 @@ analysis_area_df, analysis_prod_df = load_analysis_data()
 st.sidebar.header("تنظیمات نمایش")
 
 # --- Day of the Week Selection ---
-available_days = sorted(farm_data_df['روز'].unique()) # Use df
+available_days = sorted(farm_data_df['روز'].unique())
 selected_day = st.sidebar.selectbox(
     "📅 روز هفته را انتخاب کنید:",
     options=available_days,
@@ -506,20 +307,20 @@ selected_day = st.sidebar.selectbox(
 )
 
 # --- Filter Data Based on Selected Day ---
-filtered_farms_df = farm_data_df[farm_data_df['روز'] == selected_day].copy() # Use df
+filtered_farms_df = farm_data_df[farm_data_df['روز'] == selected_day].copy()
 
 if filtered_farms_df.empty:
     st.warning(f"⚠️ هیچ مزرعه‌ای برای روز '{selected_day}' یافت نشد.")
     st.stop()
 
 # --- Farm Selection ---
-available_farms = sorted(filtered_farms_df['مزرعه'].unique()) # Use df
+available_farms = sorted(filtered_farms_df['مزرعه'].unique())
 # Add an option for "All Farms"
-farm_options = ["همه مزارع"] + [fix_farm_name_display(farm) for farm in available_farms]
+farm_options = ["همه مزارع"] + available_farms
 selected_farm_name = st.sidebar.selectbox(
     "🌾 مزرعه مورد نظر را انتخاب کنید:",
     options=farm_options,
-    index=0,
+    index=0, # Default to "All Farms"
     help="مزرعه‌ای که می‌خواهید جزئیات آن را ببینید یا 'همه مزارع' برای نمایش کلی."
 )
 
@@ -531,7 +332,6 @@ index_options = {
     "LAI": "شاخص سطح برگ (تخمینی)",
     "MSI": "شاخص تنش رطوبتی",
     "CVI": "شاخص کلروفیل (تخمینی)",
-    "NI": "شاخص نیتروژن (تخمینی)",
     # Add more indices if needed and implemented
     # "Biomass": "زیست‌توده (تخمینی)",
     # "ET": "تبخیر و تعرق (تخمینی)",
@@ -618,46 +418,72 @@ def maskS2clouds(image):
 # --- Index Calculation Functions ---
 def add_indices(image):
     """Calculates and adds various indices as bands to an image."""
+    # NDVI: (NIR - Red) / (NIR + Red) | Sentinel-2: (B8 - B4) / (B8 + B4)
     ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI')
+
+    # EVI: 2.5 * (NIR - Red) / (NIR + 6 * Red - 7.5 * Blue + 1) | S2: 2.5 * (B8 - B4) / (B8 + 6 * B4 - 7.5 * B2 + 1)
     evi = image.expression(
         '2.5 * (NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1)', {
             'NIR': image.select('B8'),
             'RED': image.select('B4'),
             'BLUE': image.select('B2')
         }).rename('EVI')
+
+    # NDMI (Normalized Difference Moisture Index): (NIR - SWIR1) / (NIR + SWIR1) | S2: (B8 - B11) / (B8 + B11)
     ndmi = image.normalizedDifference(['B8', 'B11']).rename('NDMI')
+
+    # SAVI (Soil-Adjusted Vegetation Index): ((NIR - Red) / (NIR + Red + L)) * (1 + L) | L=0.5
+    # S2: ((B8 - B4) / (B8 + B4 + 0.5)) * 1.5
+    savi = image.expression(
+        '((NIR - RED) / (NIR + RED + L)) * (1 + L)',
+        {
+            'NIR': image.select('B8'),
+            'RED': image.select('B4'),
+            'L': 0.5
+        }
+    ).rename('SAVI')
+
+    # MSI (Moisture Stress Index): SWIR1 / NIR | S2: B11 / B8
     msi = image.expression('SWIR1 / NIR', {
         'SWIR1': image.select('B11'),
         'NIR': image.select('B8')
     }).rename('MSI')
-    lai = ndvi.multiply(3.5).rename('LAI')
-    green_safe = image.select('B3').max(ee.Image(0.0001))
+
+    # LAI (Leaf Area Index) - Simple estimation using NDVI (Needs calibration for accuracy)
+    # Example formula: LAI = a * exp(b * NDVI) or simpler linear/polynomial fits
+    # Using a very basic placeholder: LAI = 3.618 * EVI - 0.118 (adjust based on research/calibration)
+    # Or even simpler: LAI proportional to NDVI
+    lai = ndvi.multiply(3.5).rename('LAI') # Placeholder - Needs proper calibration
+
+    # CVI (Chlorophyll Vegetation Index) - (NIR / Green) * (Red / Green) | S2: (B8 / B3) * (B4 / B3)
+    # Handle potential division by zero if Green band is 0
+    green_safe = image.select('B3').max(ee.Image(0.0001)) # Avoid division by zero
     cvi = image.expression('(NIR / GREEN) * (RED / GREEN)', {
         'NIR': image.select('B8'),
         'GREEN': green_safe,
         'RED': image.select('B4')
     }).rename('CVI')
-    ni = image.expression(
-        '((RE3 - RE1) / (RE3 + RE1)) * ((RE2) / (NIR))', {
-            'RE1': image.select('B5'),
-            'RE2': image.select('B6'),
-            'RE3': image.select('B7'),
-            'NIR': image.select('B8')
-        }).rename('NI')
-    return image.addBands([ndvi, evi, ndmi, msi, lai, cvi, ni])
+
+    # Biomass - Placeholder: Needs calibration (e.g., Biomass = a * LAI + b)
+    # biomass = lai.multiply(1.5).add(0.5).rename('Biomass') # Example: a=1.5, b=0.5
+
+    # ET (Evapotranspiration) - Complex: Requires meteorological data or specialized models/datasets (e.g., MODIS ET, SSEBop)
+    # Not calculating directly here, would typically use a pre-existing GEE product if available.
+
+    return image.addBands([ndvi, evi, ndmi, msi, lai, cvi, savi]) # Add calculated indices, including SAVI
 
 # --- Function to get processed image for a date range and geometry ---
 @st.cache_data(show_spinner="در حال پردازش تصاویر ماهواره‌ای...", persist=True)
 def get_processed_image(_geometry, start_date, end_date, index_name):
     """
     Gets cloud-masked, index-calculated Sentinel-2 median composite for a given geometry and date range.
-    _geometry: ee.Geometry (Polygon, MultiPolygon, Point, Rectangle)
+    _geometry: ee.Geometry (Point or Polygon)
     start_date, end_date: YYYY-MM-DD strings
     index_name: Name of the primary index band to return (e.g., 'NDVI')
     """
     try:
         s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-                     .filterBounds(_geometry) # Works with polygons too
+                     .filterBounds(_geometry)
                      .filterDate(start_date, end_date)
                      .map(maskS2clouds)) # Apply cloud masking
 
@@ -699,26 +525,22 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
 
 # --- Function to get time series data for a point ---
 @st.cache_data(show_spinner="در حال دریافت سری زمانی شاخص...", persist=True)
-def get_index_time_series(_geometry, index_name, start_date='2023-01-01', end_date=today.strftime('%Y-%m-%d')):
-    """
-    Gets a time series of a specified index for a geometry (calculates mean over the area).
-    _geometry: ee.Geometry (Polygon, MultiPolygon, Point)
-    """
+def get_index_time_series(_point_geom, index_name, start_date='2023-01-01', end_date=today.strftime('%Y-%m-%d')):
+    """Gets a time series of a specified index for a point geometry."""
     try:
         s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-                     .filterBounds(_geometry)
+                     .filterBounds(_point_geom)
                      .filterDate(start_date, end_date)
                      .map(maskS2clouds)
                      .map(add_indices))
 
         def extract_value(image):
-            # Extract the mean index value over the geometry
-            # Use reduceRegion for polygons; scale should match sensor resolution (e.g., 10m for S2 NDVI)
+            # Extract the index value at the point
+            # Use reduceRegion for points; scale should match sensor resolution (e.g., 10m for S2 NDVI)
             value = image.reduceRegion(
-                reducer=ee.Reducer.mean(), # Use mean for polygon average
-                geometry=_geometry,
-                scale=10, # Scale in meters (10m for Sentinel-2 RGB/NIR)
-                maxPixels=1e9 # Increase maxPixels for potentially larger geometries
+                reducer=ee.Reducer.first(), # Use 'first' or 'mean' if point covers multiple pixels
+                geometry=_point_geom,
+                scale=10 # Scale in meters (10m for Sentinel-2 RGB/NIR)
             ).get(index_name)
             # Return a feature with the value and the image date
             return ee.Feature(None, {
@@ -756,18 +578,14 @@ def get_index_time_series(_geometry, index_name, start_date='2023-01-01', end_da
 # NEW: Function to get all relevant indices for a farm point for two periods
 # ==============================================================================
 @st.cache_data(show_spinner="در حال محاسبه شاخص‌های نیازسنجی...", persist=True)
-def get_farm_needs_data(_geometry, start_curr, end_curr, start_prev, end_prev):
-    """
-    Calculates mean NDVI, NDMI, EVI for current and previous periods over a geometry.
-     _geometry: ee.Geometry (Polygon, MultiPolygon, Point)
-     """
+def get_farm_needs_data(_point_geom, start_curr, end_curr, start_prev, end_prev):
+    """Calculates mean NDVI, NDMI, EVI, SAVI for current and previous periods."""
     results = {
-        'NDVI_curr': None, 'NDMI_curr': None, 'EVI_curr': None,
-        'NDVI_prev': None, 'NDMI_prev': None, 'EVI_prev': None,
+        'NDVI_curr': None, 'NDMI_curr': None, 'EVI_curr': None, 'SAVI_curr': None,
+        'NDVI_prev': None, 'NDMI_prev': None, 'EVI_prev': None, 'SAVI_prev': None,
         'error': None
     }
-    # Remove SAVI from the list of indices to get
-    indices_to_get = ['NDVI', 'NDMI', 'EVI']
+    indices_to_get = ['NDVI', 'NDMI', 'EVI', 'SAVI']
 
     def get_mean_values_for_period(start, end):
         period_values = {index: None for index in indices_to_get}
@@ -775,10 +593,10 @@ def get_farm_needs_data(_geometry, start_curr, end_curr, start_prev, end_prev):
         try:
             # Get median composite image with all indices calculated
             s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-                         .filterBounds(_geometry) # Use polygon
+                         .filterBounds(_point_geom)
                          .filterDate(start, end)
                          .map(maskS2clouds)
-                         .map(add_indices)) # add_indices already updated to exclude SAVI
+                         .map(add_indices))
 
             count = s2_sr_col.size().getInfo()
             if count == 0:
@@ -786,12 +604,11 @@ def get_farm_needs_data(_geometry, start_curr, end_curr, start_prev, end_prev):
 
             median_image = s2_sr_col.median()
 
-            # Reduce region to get the mean value at the point for all required indices
+            # Reduce region to get the mean value at the point for all indices
             mean_dict = median_image.select(indices_to_get).reduceRegion(
-                reducer=ee.Reducer.mean(), # Use mean for polygon average
-                geometry=_geometry, # Use polygon
-                scale=10,  # Scale in meters
-                maxPixels=1e9 # Increase maxPixels
+                reducer=ee.Reducer.mean(),
+                geometry=_point_geom,
+                scale=10  # Scale in meters
             ).getInfo()
 
             if mean_dict:
@@ -813,8 +630,7 @@ def get_farm_needs_data(_geometry, start_curr, end_curr, start_prev, end_prev):
         results['NDVI_curr'] = curr_values['NDVI']
         results['NDMI_curr'] = curr_values['NDMI']
         results['EVI_curr'] = curr_values['EVI']
-        # Remove SAVI from results assignment
-        # results['SAVI_curr'] = curr_values['SAVI']
+        results['SAVI_curr'] = curr_values['SAVI']
 
     # Get data for previous period
     prev_values, err_prev = get_mean_values_for_period(start_prev, end_prev)
@@ -824,8 +640,7 @@ def get_farm_needs_data(_geometry, start_curr, end_curr, start_prev, end_prev):
         results['NDVI_prev'] = prev_values['NDVI']
         results['NDMI_prev'] = prev_values['NDMI']
         results['EVI_prev'] = prev_values['EVI']
-        # Remove SAVI from results assignment
-        # results['SAVI_prev'] = prev_values['SAVI']
+        results['SAVI_prev'] = prev_values['SAVI']
 
     return results
 
@@ -904,7 +719,7 @@ def get_ai_analysis(_model, farm_name, index_data, recommendations):
 # Configure Gemini Model at the start
 gemini_model = configure_gemini()
 
-tab1, tab3 = st.tabs(["📊 پایش مزارع", "💧کود و آبیاری"])
+tab1, tab2, tab3 = st.tabs(["📊 پایش مزارع", "📈 تحلیل محاسبات", "💧کود و آبیاری"])
 
 with tab1:
     # ==============================================================================
@@ -913,70 +728,32 @@ with tab1:
 
     # --- Get Selected Farm Geometry and Details ---
     selected_farm_details = None
-    selected_farm_geom_ee = None # GEE geometry object
-    selected_farm_geometry_shapely = None # Shapely geometry object (from GeoDataFrame)
+    selected_farm_geom = None
 
     if selected_farm_name == "همه مزارع":
-        # Create a FeatureCollection of all filtered farms for GEE processing/clipping
-        try:
-            # Convert DataFrame rows to ee.Features with geometry
-            features = []
-            for index, row in filtered_farms_df.iterrows():
-                if row['ee_geometry']:
-                    # Create feature with geometry and properties
-                    feature = ee.Feature(row['ee_geometry'], row.drop(['ee_geometry']).to_dict())
-                    features.append(feature)
-            if features:
-                 selected_farm_geom_ee = ee.FeatureCollection(features).geometry() # Use combined geometry
-                 # For map extent, get bounds from the df coordinates
-                 min_lon = filtered_farms_df[['lon1', 'lon2', 'lon3', 'lon4']].min().min()
-                 min_lat = filtered_farms_df[['lat1', 'lat2', 'lat3', 'lat4']].min().min()
-                 max_lon = filtered_farms_df[['lon1', 'lon2', 'lon3', 'lon4']].max().max()
-                 max_lat = filtered_farms_df[['lat1', 'lat2', 'lat3', 'lat4']].max().max()
-                 map_bounds = [[min_lat, min_lon], [max_lat, max_lon]]
-            else:
-                 st.warning("هندسه‌ای برای نمایش کلی مزارع یافت نشد.")
-                 selected_farm_geom_ee = None
-                 map_bounds = None
-        except Exception as e:
-            st.error(f"خطا در ایجاد هندسه ترکیبی برای همه مزارع: {e}")
-            selected_farm_geom_ee = None
-            map_bounds = None
-
-        # Store the DataFrame for map plotting
-        selected_farms_df_for_map = filtered_farms_df
+        # Use the bounding box of all filtered farms for the map view
+        min_lon, min_lat = filtered_farms_df['longitude'].min(), filtered_farms_df['latitude'].min()
+        max_lon, max_lat = filtered_farms_df['longitude'].max(), filtered_farms_df['latitude'].max()
+        # Create a bounding box geometry
+        selected_farm_geom = ee.Geometry.Rectangle([min_lon, min_lat, max_lon, max_lat])
         st.subheader(f"نمایش کلی مزارع برای روز: {selected_day}")
         st.info(f"تعداد مزارع در این روز: {len(filtered_farms_df)}")
     else:
-        # Get the row for the selected farm
-        selected_farm_details_series = filtered_farms_df[filtered_farms_df['مزرعه'] == selected_farm_name.replace('\u202B', '').replace('\u202C', '')].iloc[0]
-        selected_farm_details = selected_farm_details_series.to_dict() # Convert Series to Dict for easier access
-        selected_farm_geom_ee = selected_farm_details['ee_geometry'] # Get the pre-calculated ee.Geometry
-
-        if not selected_farm_geom_ee:
-             st.error(f"هندسه GEE برای مزرعه '{selected_farm_name}' یافت نشد یا نامعتبر است.")
-             # Optionally try to recalculate it here if needed
-
-        st.subheader(f"جزئیات مزرعه: {fix_farm_name_display(selected_farm_name)} (روز: {selected_day})")
-        # Display farm details (use .get for safety)
+        selected_farm_details = filtered_farms_df[filtered_farms_df['مزرعه'] == selected_farm_name].iloc[0]
+        lat = selected_farm_details['latitude']
+        lon = selected_farm_details['longitude']
+        selected_farm_geom = ee.Geometry.Point([lon, lat])
+        st.subheader(f"جزئیات مزرعه: {selected_farm_name} (روز: {selected_day})")
+        # Display farm details
         details_cols = st.columns(3)
         with details_cols[0]:
-            # مساحت might not be in the new CSV, handle gracefully
             st.metric("مساحت داشت (هکتار)", f"{selected_farm_details.get('مساحت', 'N/A'):,.2f}" if pd.notna(selected_farm_details.get('مساحت')) else "N/A")
             st.metric("واریته", f"{selected_farm_details.get('واریته', 'N/A')}")
         with details_cols[1]:
             st.metric("گروه", f"{selected_farm_details.get('گروه', 'N/A')}")
             st.metric("سن", f"{selected_farm_details.get('سن', 'N/A')}")
         with details_cols[2]:
-             # Display centroid coordinates (calculate from ee_geometry if needed)
-             try:
-                 if selected_farm_geom_ee:
-                    centroid_ee = selected_farm_geom_ee.centroid(maxError=1).coordinates().getInfo()
-                    st.metric("مرکز مزرعه", f"{centroid_ee[1]:.5f}, {centroid_ee[0]:.5f}")
-                 else:
-                    st.metric("مرکز مزرعه", "N/A")
-             except Exception:
-                  st.metric("مرکز مزرعه", "خطا در محاسبه")
+            st.metric("مختصات", f"{lat:.5f}, {lon:.5f}")
 
 
     # --- Map Display ---
@@ -988,10 +765,10 @@ with tab1:
         'NDVI': {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']},
         'EVI': {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']},
         'NDMI': {'min': -1, 'max': 1, 'palette': ['brown', 'white', 'blue']},
-        'LAI': {'min': 0, 'max': 6, 'palette': ['white', 'lightgreen', 'darkgreen']},
-        'MSI': {'min': 0, 'max': 3, 'palette': ['blue', 'white', 'brown']},
-        'CVI': {'min': 0, 'max': 20, 'palette': ['yellow', 'lightgreen', 'darkgreen']},
-        'NI': {'min': -1, 'max': 1, 'palette': ['red', 'yellow', 'green']},  # Red indicates nitrogen deficiency
+        'LAI': {'min': 0, 'max': 6, 'palette': ['white', 'lightgreen', 'darkgreen']}, # Adjust max based on expected values
+        'MSI': {'min': 0, 'max': 3, 'palette': ['blue', 'white', 'brown']}, # Lower values = more moisture
+        'CVI': {'min': 0, 'max': 20, 'palette': ['yellow', 'lightgreen', 'darkgreen']}, # Adjust max based on expected values
+        # Add vis params for other indices if implemented
     }
 
     map_center_lat = 31.534442
@@ -1006,30 +783,30 @@ with tab1:
     )
     m.add_basemap("HYBRID") # Add Google Satellite Hybrid basemap
 
-    # Get the processed image for the current week using ee.Geometry
-    if selected_farm_geom_ee:
+    # Get the processed image for the current week
+    if selected_farm_geom:
         gee_image_current, error_msg_current = get_processed_image(
-            selected_farm_geom_ee, start_date_current_str, end_date_current_str, selected_index
+            selected_farm_geom, start_date_current_str, end_date_current_str, selected_index
         )
 
         if gee_image_current:
             # Add the GEE layer to the map
             try:
                 m.addLayer(
-                    gee_image_current.clip(selected_farm_geom_ee), # Clip the image to the farm boundary(ies)
+                    gee_image_current,
                     vis_params.get(selected_index, {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']}), # Default vis
-                    f"{selected_index} (محدوده مزارع)"
+                    f"{selected_index} ({start_date_current_str} to {end_date_current_str})"
                 )
 
                 # Remove the problematic add_legend call and replace with a custom legend
                 # Create a custom legend using folium
-                if selected_index in ['NDVI', 'EVI', 'LAI', 'CVI', 'NI']:
+                if selected_index in ['NDVI', 'EVI', 'LAI', 'CVI']:
                     legend_html = '''
                     <div style="position: fixed; bottom: 50px; right: 50px; z-index: 1000; background-color: white; padding: 10px; border: 2px solid grey; border-radius: 5px;">
                         <p style="margin: 0;"><strong>{} Legend</strong></p>
-                        <p style="margin: 0; color: red;">کمبود/بحرانی</p>
+                        <p style="margin: 0; color: red;">بحرانی/پایین</p>
                         <p style="margin: 0; color: yellow;">متوسط</p>
-                        <p style="margin: 0; color: green;">مطلوب/بالا</p>
+                        <p style="margin: 0; color: green;">سالم/بالا</p>
                     </div>
                     '''.format(selected_index)
                 elif selected_index in ['NDMI', 'MSI']:
@@ -1055,69 +832,27 @@ with tab1:
                 # Add the custom legend to the map
                 m.get_root().html.add_child(folium.Element(legend_html))
 
-                # Add farm boundaries to the map using folium.Polygon
+                # Add markers for farms
                 if selected_farm_name == "همه مزارع":
-                     # Add all filtered farms as polygons
-                     if not selected_farms_df_for_map.empty:
-                         for idx, farm in selected_farms_df_for_map.iterrows():
-                             coords = [
-                                [farm['lat1'], farm['lon1']], [farm['lat2'], farm['lon2']],
-                                [farm['lat3'], farm['lon3']], [farm['lat4'], farm['lon4']]
-                                # No need to close the loop for folium.Polygon
-                             ]
-                             # Check for NaN coords before plotting
-                             if not any(pd.isna(c) for point in coords for c in point):
-                                 folium.Polygon(
-                                     locations=coords,
-                                     popup=f"مزرعه: {farm['مزرعه']}\nگروه: {farm.get('گروه', 'N/A')}",
-                                     tooltip=farm['مزرعه'],
-                                     color='cyan',
-                                     fill=True,
-                                     fill_color='cyan',
-                                     fill_opacity=0.1,
-                                     weight=2
-                                 ).add_to(m)
-                         # Adjust map bounds to fit all farms
-                         if map_bounds:
-                             m.fit_bounds(map_bounds, padding=(30, 30))
-
-                elif selected_farm_geom_ee:
-                    # Add single selected farm polygon
-                    try:
-                        # Get coordinates from the ee.Geometry object
-                        poly_coords_ee = selected_farm_geom_ee.coordinates().get(0).getInfo() # Get outer ring
-                        # Convert [[lon, lat], ...] to [[lat, lon], ...] for folium
-                        poly_coords_folium = [[lat, lon] for lon, lat in poly_coords_ee]
-                        folium.Polygon(
-                            locations=poly_coords_folium,
-                            popup=f"مزرعه: {selected_farm_name}",
-                            tooltip=selected_farm_name,
-                            color='red',
-                            fill=True,
-                            fill_color='red',
-                            fill_opacity=0.2,
-                            weight=3
-                        ).add_to(m)
-                        # Center map on the selected farm's centroid
-                        centroid_ee = selected_farm_geom_ee.centroid(maxError=1).coordinates().getInfo()
-                        m.location = [centroid_ee[1], centroid_ee[0]] # lat, lon
-                        m.zoom = 15 # Zoom closer for a single polygon
-                    except Exception as poly_err:
-                        st.error(f"خطا در رسم چندضلعی مزرعه {selected_farm_name} روی نقشه: {poly_err}")
-                         # Fallback: use corner coordinates if ee geometry fails for folium
-                        coords = [
-                            [selected_farm_details['lat1'], selected_farm_details['lon1']],
-                            [selected_farm_details['lat2'], selected_farm_details['lon2']],
-                            [selected_farm_details['lat3'], selected_farm_details['lon3']],
-                            [selected_farm_details['lat4'], selected_farm_details['lon4']]
-                         ]
-                        if not any(pd.isna(c) for point in coords for c in point):
-                            folium.Polygon(locations=coords, color='red', fill=True, fill_color='red', fill_opacity=0.2, weight=3, tooltip=selected_farm_name).add_to(m)
-                            # Center based on average coordinates
-                            avg_lat = (selected_farm_details['lat1'] + selected_farm_details['lat2'] + selected_farm_details['lat3'] + selected_farm_details['lat4']) / 4
-                            avg_lon = (selected_farm_details['lon1'] + selected_farm_details['lon2'] + selected_farm_details['lon3'] + selected_farm_details['lon4']) / 4
-                            m.location = [avg_lat, avg_lon]
-                            m.zoom = 15
+                     # Add markers for all filtered farms
+                     for idx, farm in filtered_farms_df.iterrows():
+                         folium.Marker(
+                             location=[farm['latitude'], farm['longitude']],
+                             popup=f"مزرعه: {farm['مزرعه']}\nگروه: {farm.get('گروه', 'N/A')}",
+                             tooltip=farm['مزرعه'],
+                             icon=folium.Icon(color='blue', icon='info-sign')
+                         ).add_to(m)
+                     # Adjust map bounds if showing all farms
+                     m.center_object(selected_farm_geom, zoom=initial_zoom) # Center on the bounding box
+                else:
+                     # Add marker for the single selected farm
+                     folium.Marker(
+                         location=[lat, lon],
+                         popup=f"مزرعه: {selected_farm_name}\n{selected_index} (هفته جاری): محاسبه می‌شود...", # Placeholder popup
+                         tooltip=selected_farm_name,
+                         icon=folium.Icon(color='red', icon='star')
+                     ).add_to(m)
+                     m.center_object(selected_farm_geom, zoom=14) # Zoom closer for a single farm
 
                 m.add_layer_control() # Add layer control to toggle base maps and layers
 
@@ -1140,29 +875,32 @@ with tab1:
 
     if selected_farm_name == "همه مزارع":
         st.info("لطفاً یک مزرعه خاص را از پنل کناری انتخاب کنید تا نمودار روند زمانی آن نمایش داده شود.")
-    elif selected_farm_geom_ee: # Use the ee.Geometry object
-        # Define a longer period for the time series chart (e.g., last 6 months)
-        timeseries_end_date = today.strftime('%Y-%m-%d')
-        timeseries_start_date = (today - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
+    elif selected_farm_geom:
+        # Fix the isinstance check - use string comparison instead
+        # Check if the geometry type is Point by converting to string and checking
+        is_point = str(selected_farm_geom).find('Point') >= 0
+        
+        if is_point:
+            # Define a longer period for the time series chart (e.g., last 6 months)
+            timeseries_end_date = today.strftime('%Y-%m-%d')
+            timeseries_start_date = (today - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
 
-        # Pass the ee.Geometry (could be polygon) to the time series function
-        ts_df, ts_error = get_index_time_series(
-            selected_farm_geom_ee,
-            selected_index,
-            start_date=timeseries_start_date,
-            end_date=timeseries_end_date
-        )
+            ts_df, ts_error = get_index_time_series(
+                selected_farm_geom,
+                selected_index,
+                start_date=timeseries_start_date,
+                end_date=timeseries_end_date
+            )
 
-        if ts_error:
-            st.warning(f"خطا در دریافت داده‌های سری زمانی: {ts_error}")
-        elif not ts_df.empty:
-            st.line_chart(ts_df[selected_index])
-            st.caption(f"نمودار تغییرات میانگین شاخص {selected_index} برای کل مساحت مزرعه {selected_farm_name} در 6 ماه گذشته.")
+            if ts_error:
+                st.warning(f"خطا در دریافت داده‌های سری زمانی: {ts_error}")
+            elif not ts_df.empty:
+                st.line_chart(ts_df[selected_index])
+                st.caption(f"نمودار تغییرات شاخص {selected_index} برای مزرعه {selected_farm_name} در 6 ماه گذشته.")
+            else:
+                st.info(f"داده‌ای برای نمایش نمودار سری زمانی {selected_index} در بازه مشخص شده یافت نشد.")
         else:
-            st.info(f"داده‌ای برای نمایش نمودار سری زمانی {selected_index} در بازه مشخص شده یافت نشد.")
-    # Remove the old geometry type check
-    # else:
-    #     st.warning("نوع هندسه مزرعه برای نمودار سری زمانی پشتیبانی نمی‌شود (فقط نقطه).")
+            st.warning("نوع هندسه مزرعه برای نمودار سری زمانی پشتیبانی نمی‌شود (فقط نقطه).")
     else:
         st.warning("هندسه مزرعه برای نمودار سری زمانی در دسترس نیست.")
 
@@ -1209,48 +947,38 @@ with tab1:
 
     @st.cache_data(show_spinner=f"در حال محاسبه {selected_index} برای مزارع...", persist=True)
     def calculate_weekly_indices(_farms_df, index_name, start_curr, end_curr, start_prev, end_prev):
-        """Calculates the average index value for the current and previous week for a list of farms using their ee.Geometry."""
+        """Calculates the average index value for the current and previous week for a list of farms."""
         results = []
         errors = []
         total_farms = len(_farms_df)
         progress_bar = st.progress(0)
 
-        # Geometries are already in 'ee_geometry' column
-
         for i, (idx, farm) in enumerate(_farms_df.iterrows()):
             farm_name = farm['مزرعه']
-            ee_geom = farm['ee_geometry'] # Get the ee.Geometry object
-
-            if not ee_geom:
-                # This should ideally be caught during loading, but double-check
-                errors.append(f"هندسه نامعتبر برای {farm_name} در محاسبه هفتگی.")
-                progress_bar.progress((i + 1) / total_farms) # Update progress even on error
-                continue # Skip this farm
+            lat = farm['latitude']
+            lon = farm['longitude']
+            point_geom = ee.Geometry.Point([lon, lat])
 
             def get_mean_value(start, end):
                 try:
-                    image, error = get_processed_image(ee_geom, start, end, index_name)
+                    image, error = get_processed_image(point_geom, start, end, index_name)
                     if image:
-                        # Reduce region to get the mean value over the polygon
+                        # Reduce region to get the mean value at the point
                         mean_dict = image.reduceRegion(
                             reducer=ee.Reducer.mean(),
-                            geometry=ee_geom,
-                            scale=10,  # Scale in meters
-                            maxPixels=1e9 # Increase maxPixels
+                            geometry=point_geom,
+                            scale=10  # Scale in meters
                         ).getInfo()
-                        # Handle potential null result from reduceRegion
-                        if mean_dict is None:
-                            return None, f"reduceRegion نتیجه‌ای برای {farm_name} ({start}-{end}) برنگرداند."
-                        return mean_dict.get(index_name), None
+                        return mean_dict.get(index_name) if mean_dict else None, None
                     else:
                         return None, error
-                except ee.EEException as e_ee:
-                     error_msg = f"خطای GEE در محاسبه مقدار برای {farm_name} ({start}-{end}): {e_ee}"
+                except Exception as e:
+                     # Catch errors during reduceRegion or getInfo
+                     error_msg = f"خطا در محاسبه مقدار برای {farm_name} ({start}-{end}): {e}"
+                     # errors.append(error_msg) # Collect errors
+                     # st.warning(error_msg) # Show warning immediately
                      return None, error_msg
-                except Exception as e_other:
-                     # Catch other errors during reduceRegion or getInfo
-                     error_msg = f"خطای ناشناخته در محاسبه مقدار برای {farm_name} ({start}-{end}): {e_other}"
-                     return None, error_msg
+
 
             # Calculate for current week
             current_val, err_curr = get_mean_value(start_curr, end_curr)
@@ -1285,7 +1013,7 @@ with tab1:
 
     # Calculate and display the ranking table
     ranking_df, calculation_errors = calculate_weekly_indices(
-        filtered_farms_df, # Pass the filtered DataFrame
+        filtered_farms_df,
         selected_index,
         start_date_current_str,
         end_date_current_str,
@@ -1390,7 +1118,129 @@ with tab1:
 
     st.markdown("---")
     st.sidebar.markdown("---")
-    st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap") # Removed geopandas
+    st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap")
+
+
+# --- New Tab for Analysis Data ---
+with tab2:
+    st.header("تحلیل داده‌های فایل محاسبات")
+    st.markdown("نمایش گرافیکی داده‌های مساحت و تولید به تفکیک اداره و سن.")
+
+    if analysis_area_df is not None or analysis_prod_df is not None:
+
+        # Get unique 'اداره' values from both dataframes if they exist
+        available_edareh = []
+        if analysis_area_df is not None and 'اداره' in analysis_area_df.index.names:
+            available_edareh.extend(analysis_area_df.index.get_level_values('اداره').unique().tolist())
+        if analysis_prod_df is not None and 'اداره' in analysis_prod_df.index.names:
+            available_edareh.extend(analysis_prod_df.index.get_level_values('اداره').unique().tolist())
+        
+        # Ensure unique and sorted list
+        available_edareh = sorted(list(set(available_edareh)))
+
+        if not available_edareh:
+            st.warning("هیچ اداره‌ای برای نمایش در داده‌های تحلیلی یافت نشد.")
+        else:
+            selected_edareh = st.selectbox(
+                "اداره مورد نظر را انتخاب کنید:",
+                options=available_edareh,
+                key='analysis_edareh_select'
+            )
+
+            # --- Display Data for Selected Edareh ---
+            st.subheader(f"داده‌های اداره: {selected_edareh}")
+
+            col1, col2 = st.columns(2)
+
+            # --- Area Data Visualization ---
+            with col1:
+                st.markdown("#### مساحت (هکتار)")
+                if analysis_area_df is not None and selected_edareh in analysis_area_df.index.get_level_values('اداره'):
+                    df_area_selected = analysis_area_df.loc[selected_edareh].copy()
+                    # Prepare data for 3D surface plot
+                    # X = سن, Y = واریته (ستون ها), Z = مقدار
+                    varieties = df_area_selected.columns.tolist()
+                    ages = df_area_selected.index.tolist()
+                    z_data = df_area_selected.values
+
+                    if len(ages) > 1 and len(varieties) > 1 :
+                         try:
+                             fig_3d_area = go.Figure(data=[go.Surface(z=z_data, x=ages, y=varieties, colorscale='Viridis')])
+                             fig_3d_area.update_layout(
+                                 title=f'Surface Plot مساحت - اداره {selected_edareh}',
+                                 scene=dict(
+                                     xaxis_title='سن',
+                                     yaxis_title='واریته',
+                                     zaxis_title='مساحت (هکتار)'),
+                                 autosize=True, height=500)
+                             st.plotly_chart(fig_3d_area, use_container_width=True)
+                         except Exception as e:
+                             st.error(f"خطا در ایجاد نمودار Surface Plot مساحت: {e}")
+                             st.dataframe(df_area_selected) # Show table as fallback
+                    else:
+                         st.info("داده کافی برای رسم نمودار Surface Plot مساحت وجود ندارد (نیاز به بیش از یک سن و یک واریته).")
+                         st.dataframe(df_area_selected) # Show table if not enough data for 3D
+
+
+                    # Histogram of Area per Variety
+                    df_area_melt = df_area_selected.reset_index().melt(id_vars='سن', var_name='واریته', value_name='مساحت')
+                    df_area_melt = df_area_melt.dropna(subset=['مساحت']) # Drop NA values for plotting
+                    if not df_area_melt.empty:
+                        fig_hist_area = px.histogram(df_area_melt, x='واریته', y='مساحت', color='سن',
+                                                   title=f'هیستوگرام مساحت بر اساس واریته - اداره {selected_edareh}',
+                                                   labels={'مساحت':'مجموع مساحت (هکتار)'})
+                        st.plotly_chart(fig_hist_area, use_container_width=True)
+                    else:
+                        st.info(f"داده معتبری برای هیستوگرام مساحت در اداره {selected_edareh} یافت نشد.")
+
+                else:
+                    st.info(f"داده مساحت برای اداره {selected_edareh} یافت نشد.")
+
+            # --- Production Data Visualization ---
+            with col2:
+                st.markdown("#### تولید (تن)")
+                if analysis_prod_df is not None and selected_edareh in analysis_prod_df.index.get_level_values('اداره'):
+                    df_prod_selected = analysis_prod_df.loc[selected_edareh].copy()
+                    # Prepare data for 3D surface plot
+                    varieties_prod = df_prod_selected.columns.tolist()
+                    ages_prod = df_prod_selected.index.tolist()
+                    z_data_prod = df_prod_selected.values
+
+                    if len(ages_prod) > 1 and len(varieties_prod) > 1:
+                         try:
+                             fig_3d_prod = go.Figure(data=[go.Surface(z=z_data_prod, x=ages_prod, y=varieties_prod, colorscale='Plasma')])
+                             fig_3d_prod.update_layout(
+                                 title=f'Surface Plot تولید - اداره {selected_edareh}',
+                                 scene=dict(
+                                     xaxis_title='سن',
+                                     yaxis_title='واریته',
+                                     zaxis_title='تولید (تن)'),
+                                 autosize=True, height=500)
+                             st.plotly_chart(fig_3d_prod, use_container_width=True)
+                         except Exception as e:
+                              st.error(f"خطا در ایجاد نمودار Surface Plot تولید: {e}")
+                              st.dataframe(df_prod_selected) # Show table as fallback
+                    else:
+                         st.info("داده کافی برای رسم نمودار Surface Plot تولید وجود ندارد (نیاز به بیش از یک سن و یک واریته).")
+                         st.dataframe(df_prod_selected) # Show table if not enough data for 3D
+
+
+                    # Histogram of Production per Variety
+                    df_prod_melt = df_prod_selected.reset_index().melt(id_vars='سن', var_name='واریته', value_name='تولید')
+                    df_prod_melt = df_prod_melt.dropna(subset=['تولید']) # Drop NA values for plotting
+                    if not df_prod_melt.empty:
+                        fig_hist_prod = px.histogram(df_prod_melt, x='واریته', y='تولید', color='سن',
+                                                   title=f'هیستوگرام تولید بر اساس واریته - اداره {selected_edareh}',
+                                                   labels={'تولید':'مجموع تولید (تن)'})
+                        st.plotly_chart(fig_hist_prod, use_container_width=True)
+                    else:
+                         st.info(f"داده معتبری برای هیستوگرام تولید در اداره {selected_edareh} یافت نشد.")
+
+                else:
+                    st.info(f"داده تولید برای اداره {selected_edareh} یافت نشد.")
+
+    else:
+        st.error("خطا در بارگذاری یا پردازش داده‌های تحلیل.")
 
 
 # --- New Tab for Needs Analysis ---
@@ -1399,70 +1249,77 @@ with tab3:
 
     if selected_farm_name == "همه مزارع":
         st.info("لطفاً یک مزرعه خاص را از پنل کناری انتخاب کنید تا تحلیل نیازهای آن نمایش داده شود.")
-    elif selected_farm_geom_ee: # Use the ee.Geometry object
-        st.subheader(f"تحلیل برای مزرعه: {fix_farm_name_display(selected_farm_name)}")
+    elif selected_farm_geom:
+        # Check if it's a point geometry
+        is_point = str(selected_farm_geom).find('Point') >= 0
+        if not is_point:
+            st.warning("تحلیل نیازها فقط برای مزارع با مختصات نقطه‌ای (تک مزرعه) در دسترس است.")
+        else:
+            st.subheader(f"تحلیل برای مزرعه: {selected_farm_name}")
 
-        # Define thresholds (allow user adjustment)
-        st.markdown("**تنظیم آستانه‌ها:**")
-        ndmi_threshold = st.slider("آستانه NDMI برای هشدار آبیاری:", 0.0, 0.5, 0.25, 0.01,
+            # Define thresholds (allow user adjustment)
+            st.markdown("**تنظیم آستانه‌ها:**")
+            ndmi_threshold = st.slider("آستانه NDMI برای هشدار آبیاری:", 0.0, 0.5, 0.25, 0.01,
                                      help="اگر NDMI کمتر از این مقدار باشد، نیاز به آبیاری اعلام می‌شود.")
-        ndvi_drop_threshold = st.slider("آستانه افت NDVI برای بررسی کوددهی (%):", 0.0, 20.0, 5.0, 0.5,
+            ndvi_drop_threshold = st.slider("آستانه افت NDVI برای بررسی کوددهی (%):", 0.0, 20.0, 5.0, 0.5,
                                         help="اگر NDVI نسبت به هفته قبل بیش از این درصد افت کند، نیاز به بررسی کوددهی اعلام می‌شود.")
 
-        # Get the required index data for the selected farm using its ee.Geometry
-        farm_needs_data = get_farm_needs_data(
-            selected_farm_geom_ee, # Pass ee.Geometry
-            start_date_current_str, end_date_current_str,
-            start_date_previous_str, end_date_previous_str
-        )
+            # Get the required index data for the selected farm
+            farm_needs_data = get_farm_needs_data(
+                selected_farm_geom,
+                start_date_current_str, end_date_current_str,
+                start_date_previous_str, end_date_previous_str
+            )
 
-        if farm_needs_data['error']:
-            st.error(f"خطا در دریافت داده‌های شاخص برای تحلیل نیازها: {farm_needs_data['error']}")
-        elif farm_needs_data['NDMI_curr'] is None or farm_needs_data['NDVI_curr'] is None:
-            st.warning("داده‌های شاخص لازم (NDMI/NDVI) برای تحلیل در دوره فعلی یافت نشد.")
-        else:
-            # --- Display Current Indices ---
-            st.markdown("**مقادیر شاخص‌ها (هفته جاری):**")
-            idx_cols = st.columns(3)
-            with idx_cols[0]:
-                st.metric("NDVI", f"{farm_needs_data['NDVI_curr']:.3f}")
-            with idx_cols[1]:
-                st.metric("NDMI", f"{farm_needs_data['NDMI_curr']:.3f}")
-            with idx_cols[2]:
-                st.metric("EVI", f"{farm_needs_data.get('EVI_curr', 'N/A'):.3f}" if farm_needs_data.get('EVI_curr') else "N/A")
-
-            # --- Generate Recommendations ---
-            recommendations = []
-            # 1. Irrigation Check
-            if farm_needs_data['NDMI_curr'] < ndmi_threshold:
-                recommendations.append("💧 نیاز به آبیاری")
-
-            # 2. Fertilization Check (NDVI drop)
-            if farm_needs_data['NDVI_prev'] is not None and farm_needs_data['NDVI_curr'] < farm_needs_data['NDVI_prev']:
-                ndvi_change_percent = ((farm_needs_data['NDVI_prev'] - farm_needs_data['NDVI_curr']) / farm_needs_data['NDVI_prev']) * 100
-                if ndvi_change_percent > ndvi_drop_threshold:
-                    recommendations.append(f"⚠️ نیاز به بررسی کوددهی (افت {ndvi_change_percent:.1f}% در NDVI)")
-            elif farm_needs_data['NDVI_prev'] is None:
-                 st.caption("داده NDVI هفته قبل برای بررسی افت در دسترس نیست.")
-
-            # 3. Default if no issues
-            if not recommendations:
-                recommendations.append("✅ وضعیت فعلی مطلوب به نظر می‌رسد.")
-
-            # Display Recommendations
-            st.markdown("**توصیه‌های اولیه:**")
-            for rec in recommendations:
-                if "آبیاری" in rec: st.error(rec)
-                elif "کوددهی" in rec: st.warning(rec)
-                else: st.success(rec)
-
-            # --- Get and Display AI Analysis ---
-            if gemini_model:
-                st.markdown("**تحلیل هوش مصنوعی:**")
-                ai_explanation = get_ai_analysis(gemini_model, selected_farm_name, farm_needs_data, recommendations)
-                st.markdown(ai_explanation)
+            if farm_needs_data['error']:
+                st.error(f"خطا در دریافت داده‌های شاخص برای تحلیل نیازها: {farm_needs_data['error']}")
+            elif farm_needs_data['NDMI_curr'] is None or farm_needs_data['NDVI_curr'] is None:
+                st.warning("داده‌های شاخص لازم (NDMI/NDVI) برای تحلیل در دوره فعلی یافت نشد.")
             else:
-                st.info("سرویس تحلیل هوش مصنوعی پیکربندی نشده است.")
+                # --- Display Current Indices ---
+                st.markdown("**مقادیر شاخص‌ها (هفته جاری):**")
+                idx_cols = st.columns(4)
+                with idx_cols[0]:
+                    st.metric("NDVI", f"{farm_needs_data['NDVI_curr']:.3f}")
+                with idx_cols[1]:
+                    st.metric("NDMI", f"{farm_needs_data['NDMI_curr']:.3f}")
+                with idx_cols[2]:
+                    st.metric("EVI", f"{farm_needs_data.get('EVI_curr', 'N/A'):.3f}" if farm_needs_data.get('EVI_curr') else "N/A")
+                with idx_cols[3]:
+                    st.metric("SAVI", f"{farm_needs_data.get('SAVI_curr', 'N/A'):.3f}" if farm_needs_data.get('SAVI_curr') else "N/A")
+
+                # --- Generate Recommendations ---
+                recommendations = []
+                # 1. Irrigation Check
+                if farm_needs_data['NDMI_curr'] < ndmi_threshold:
+                    recommendations.append("💧 نیاز به آبیاری")
+
+                # 2. Fertilization Check (NDVI drop)
+                if farm_needs_data['NDVI_prev'] is not None and farm_needs_data['NDVI_curr'] < farm_needs_data['NDVI_prev']:
+                    ndvi_change_percent = ((farm_needs_data['NDVI_prev'] - farm_needs_data['NDVI_curr']) / farm_needs_data['NDVI_prev']) * 100
+                    if ndvi_change_percent > ndvi_drop_threshold:
+                        recommendations.append(f"⚠️ نیاز به بررسی کوددهی (افت {ndvi_change_percent:.1f}% در NDVI)")
+                elif farm_needs_data['NDVI_prev'] is None:
+                     st.caption("داده NDVI هفته قبل برای بررسی افت در دسترس نیست.")
+
+                # 3. Default if no issues
+                if not recommendations:
+                    recommendations.append("✅ وضعیت فعلی مطلوب به نظر می‌رسد.")
+
+                # Display Recommendations
+                st.markdown("**توصیه‌های اولیه:**")
+                for rec in recommendations:
+                    if "آبیاری" in rec: st.error(rec)
+                    elif "کوددهی" in rec: st.warning(rec)
+                    else: st.success(rec)
+
+                # --- Get and Display AI Analysis ---
+                if gemini_model:
+                    st.markdown("**تحلیل هوش مصنوعی:**")
+                    ai_explanation = get_ai_analysis(gemini_model, selected_farm_name, farm_needs_data, recommendations)
+                    st.markdown(ai_explanation)
+                else:
+                    st.info("سرویس تحلیل هوش مصنوعی پیکربندی نشده است.")
 
     else:
          st.info("ابتدا یک مزرعه را از پنل کناری انتخاب کنید.")
