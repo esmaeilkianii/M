@@ -22,80 +22,85 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom CSS for Persian text alignment and professional styling
+# Modern CSS with dark mode and color palette
 st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700&display=swap');
-        
-        /* Main container */
-        .main {
-            font-family: 'Vazirmatn', sans-serif;
+        @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css');
+        html, body, .main, .stApp {
+            font-family: 'Vazirmatn', sans-serif !important;
+            background: linear-gradient(135deg, #e0f7fa 0%, #f8fafc 100%);
         }
-        
-        /* Headers */
-        h1, h2, h3 {
-            font-family: 'Vazirmatn', sans-serif;
-            color: #2c3e50;
-            text-align: right;
+        /* Modern card style */
+        .modern-card {
+            background: linear-gradient(135deg, #43cea2 0%, #185a9d 100%);
+            color: white;
+            border-radius: 18px;
+            padding: 24px 18px;
+            margin: 10px 0;
+            box-shadow: 0 4px 16px rgba(30,60,114,0.08);
+            text-align: center;
+            transition: transform 0.2s;
         }
-        
-        /* Metrics */
-        .css-1xarl3l {
-            font-family: 'Vazirmatn', sans-serif;
-            background-color: #f8f9fa;
-            border-radius: 10px;
-            padding: 1rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        .modern-card:hover {
+            transform: translateY(-4px) scale(1.02);
         }
-        
-        /* Tabs */
-        .stTabs [data-baseweb="tab-list"] {
-            gap: 2px;
-            direction: rtl;
+        /* Sidebar logo */
+        .sidebar-logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1.5rem;
         }
-        
-        .stTabs [data-baseweb="tab"] {
-            height: 50px;
-            padding: 10px 20px;
-            background-color: #f8f9fa;
-            border-radius: 5px 5px 0 0;
-            font-family: 'Vazirmatn', sans-serif;
-            font-weight: 600;
+        .sidebar-logo img {
+            width: 90px;
+            height: 90px;
+            border-radius: 18px;
+            box-shadow: 0 2px 8px rgba(30,60,114,0.12);
         }
-        
-        /* Tables */
-        .dataframe {
-            font-family: 'Vazirmatn', sans-serif;
-            text-align: right;
+        /* Main header logo */
+        .main-logo {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            margin-left: 12px;
+            vertical-align: middle;
         }
-        
-        /* Sidebar */
-        .css-1d391kg {
-            font-family: 'Vazirmatn', sans-serif;
-            direction: rtl;
-        }
-        
-        /* Custom status badges */
-        .status-badge {
-            padding: 4px 8px;
-            border-radius: 15px;
-            font-size: 0.8em;
-            font-weight: bold;
-        }
-        .status-positive {
-            background-color: #d4edda;
-            color: #155724;
-        }
-        .status-neutral {
-            background-color: #fff3cd;
-            color: #856404;
-        }
-        .status-negative {
-            background-color: #f8d7da;
-            color: #721c24;
+        /* Dark mode support */
+        @media (prefers-color-scheme: dark) {
+            html, body, .main, .stApp {
+                background: linear-gradient(135deg, #232526 0%, #414345 100%);
+                color: #f8fafc;
+            }
+            .modern-card {
+                background: linear-gradient(135deg, #185a9d 0%, #43cea2 100%);
+                color: #fff;
+            }
         }
     </style>
 """, unsafe_allow_html=True)
+
+# --- Sidebar Logo ---
+st.sidebar.markdown(
+    """
+    <div class='sidebar-logo'>
+        <img src='MonitoringSugarcane-13/logo (1).png' alt='لوگو سامانه' />
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+# --- Main Header with Logo ---
+st.markdown(
+    """
+    <div style='display: flex; align-items: center; gap: 16px; margin-bottom: 0.5rem;'>
+        <img src='MonitoringSugarcane-13/logo (1).png' class='main-logo' alt='لوگو' />
+        <h1 style='font-family: Vazirmatn, sans-serif; color: #185a9d; margin: 0;'>سامانه پایش هوشمند نیشکر</h1>
+    </div>
+    <h4 style='color: #43cea2; margin-top: 0;'>مطالعات کاربردی شرکت کشت و صنعت دهخدا</h4>
+    """,
+    unsafe_allow_html=True
+)
 
 # --- Configuration ---
 APP_TITLE = "سامانه پایش هوشمند نیشکر"
@@ -719,7 +724,7 @@ def get_ai_analysis(_model, farm_name, index_data, recommendations):
 # Configure Gemini Model at the start
 gemini_model = configure_gemini()
 
-tab1, tab2, tab3 = st.tabs(["📊 پایش مزارع", "📈 تحلیل محاسبات", "💧کود و آبیاری"])
+tab1, tab3 = st.tabs(["📊 پایش مزارع", "💧کود و آبیاری"])
 
 with tab1:
     # ==============================================================================
@@ -747,21 +752,16 @@ with tab1:
         # Display farm details
         details_cols = st.columns(3)
         with details_cols[0]:
-            st.metric("مساحت داشت (هکتار)", f"{selected_farm_details.get('مساحت', 'N/A'):,.2f}" if pd.notna(selected_farm_details.get('مساحت')) else "N/A")
-            st.metric("واریته", f"{selected_farm_details.get('واریته', 'N/A')}")
+            st.markdown(modern_metric_card("مساحت داشت (هکتار)", f"{selected_farm_details.get('مساحت', 'N/A'):,.2f}" if pd.notna(selected_farm_details.get('مساحت')) else "N/A", icon="fa-ruler-combined", color="#43cea2"), unsafe_allow_html=True)
+            st.markdown(modern_metric_card("واریته", f"{selected_farm_details.get('واریته', 'N/A')}", icon="fa-seedling", color="#43cea2"), unsafe_allow_html=True)
         with details_cols[1]:
-            st.metric("گروه", f"{selected_farm_details.get('گروه', 'N/A')}")
-            st.metric("سن", f"{selected_farm_details.get('سن', 'N/A')}")
+            st.markdown(modern_metric_card("گروه", f"{selected_farm_details.get('گروه', 'N/A')}", icon="fa-users", color="#43cea2"), unsafe_allow_html=True)
+            st.markdown(modern_metric_card("سن", f"{selected_farm_details.get('سن', 'N/A')}", icon="fa-hourglass-half", color="#43cea2"), unsafe_allow_html=True)
         with details_cols[2]:
-            st.metric("مختصات", f"{lat:.5f}, {lon:.5f}")
+            st.markdown(modern_metric_card("مختصات", f"{lat:.5f}, {lon:.5f}", icon="fa-map-marker-alt", color="#43cea2"), unsafe_allow_html=True)
 
         # --- تعداد مزارع در این روز (کارت زیبا) ---
-        st.markdown("""
-            <div style='background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: white; border-radius: 15px; padding: 20px; margin: 10px 0; text-align: center; font-family: Vazirmatn, sans-serif;'>
-                <h3>تعداد مزارع در این روز</h3>
-                <h1 style='font-size: 3rem;'>{:,}</h1>
-            </div>
-        """.format(len(filtered_farms_df)), unsafe_allow_html=True)
+        st.markdown(modern_metric_card("تعداد مزارع در این روز", f"{len(filtered_farms_df):,}", icon="fa-leaf", color="#185a9d"), unsafe_allow_html=True)
         st.caption("تعداد کل مزارع ثبت شده برای روز انتخاب شده.")
 
         # --- نمودار سه بعدی متحرک درصد هر واریته در این روز ---
@@ -1052,7 +1052,7 @@ with tab1:
             })
 
             # Update progress bar
-            progress_bar.progress((i + 1) / total_farms)
+            st.markdown(modern_progress_bar((i + 1) / total_farms), unsafe_allow_html=True)
 
         progress_bar.empty() # Remove progress bar after completion
         return pd.DataFrame(results), errors
@@ -1094,6 +1094,9 @@ with tab1:
             lambda row: determine_status(row, selected_index), axis=1
         )
 
+        # Modernize status badge
+        ranking_df_sorted['وضعیت'] = ranking_df_sorted['وضعیت'].apply(lambda s: status_badge(s))
+
         # Format numbers for better readability
         cols_to_format = [f'{selected_index} (هفته جاری)', f'{selected_index} (هفته قبل)', 'تغییر']
         for col in cols_to_format:
@@ -1107,7 +1110,8 @@ with tab1:
         display_columns = [col for col in display_columns if col in ranking_df_sorted.columns]
 
         # Display the table with color coding and selected columns
-        st.dataframe(ranking_df_sorted[display_columns], use_container_width=True)
+        st.write("<style>td {vertical-align: middle !important;}</style>", unsafe_allow_html=True)
+        st.write(ranking_df_sorted[display_columns].to_html(escape=False, index=True), unsafe_allow_html=True)
         
         # Add a summary of farm statuses
         st.subheader("📊 خلاصه وضعیت مزارع")
@@ -1165,128 +1169,6 @@ with tab1:
     st.markdown("---")
     st.sidebar.markdown("---")
     st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap")
-
-
-# --- New Tab for Analysis Data ---
-with tab2:
-    st.header("تحلیل داده‌های فایل محاسبات")
-    st.markdown("نمایش گرافیکی داده‌های مساحت و تولید به تفکیک اداره و سن.")
-
-    if analysis_area_df is not None or analysis_prod_df is not None:
-
-        # Get unique 'اداره' values from both dataframes if they exist
-        available_edareh = []
-        if analysis_area_df is not None and 'اداره' in analysis_area_df.index.names:
-            available_edareh.extend(analysis_area_df.index.get_level_values('اداره').unique().tolist())
-        if analysis_prod_df is not None and 'اداره' in analysis_prod_df.index.names:
-            available_edareh.extend(analysis_prod_df.index.get_level_values('اداره').unique().tolist())
-        
-        # Ensure unique and sorted list
-        available_edareh = sorted(list(set(available_edareh)))
-
-        if not available_edareh:
-            st.warning("هیچ اداره‌ای برای نمایش در داده‌های تحلیلی یافت نشد.")
-        else:
-            selected_edareh = st.selectbox(
-                "اداره مورد نظر را انتخاب کنید:",
-                options=available_edareh,
-                key='analysis_edareh_select'
-            )
-
-            # --- Display Data for Selected Edareh ---
-            st.subheader(f"داده‌های اداره: {selected_edareh}")
-
-            col1, col2 = st.columns(2)
-
-            # --- Area Data Visualization ---
-            with col1:
-                st.markdown("#### مساحت (هکتار)")
-                if analysis_area_df is not None and selected_edareh in analysis_area_df.index.get_level_values('اداره'):
-                    df_area_selected = analysis_area_df.loc[selected_edareh].copy()
-                    # Prepare data for 3D surface plot
-                    # X = سن, Y = واریته (ستون ها), Z = مقدار
-                    varieties = df_area_selected.columns.tolist()
-                    ages = df_area_selected.index.tolist()
-                    z_data = df_area_selected.values
-
-                    if len(ages) > 1 and len(varieties) > 1 :
-                         try:
-                             fig_3d_area = go.Figure(data=[go.Surface(z=z_data, x=ages, y=varieties, colorscale='Viridis')])
-                             fig_3d_area.update_layout(
-                                 title=f'Surface Plot مساحت - اداره {selected_edareh}',
-                                 scene=dict(
-                                     xaxis_title='سن',
-                                     yaxis_title='واریته',
-                                     zaxis_title='مساحت (هکتار)'),
-                                 autosize=True, height=500)
-                             st.plotly_chart(fig_3d_area, use_container_width=True)
-                         except Exception as e:
-                             st.error(f"خطا در ایجاد نمودار Surface Plot مساحت: {e}")
-                             st.dataframe(df_area_selected) # Show table as fallback
-                    else:
-                         st.info("داده کافی برای رسم نمودار Surface Plot مساحت وجود ندارد (نیاز به بیش از یک سن و یک واریته).")
-                         st.dataframe(df_area_selected) # Show table if not enough data for 3D
-
-
-                    # Histogram of Area per Variety
-                    df_area_melt = df_area_selected.reset_index().melt(id_vars='سن', var_name='واریته', value_name='مساحت')
-                    df_area_melt = df_area_melt.dropna(subset=['مساحت']) # Drop NA values for plotting
-                    if not df_area_melt.empty:
-                        fig_hist_area = px.histogram(df_area_melt, x='واریته', y='مساحت', color='سن',
-                                                   title=f'هیستوگرام مساحت بر اساس واریته - اداره {selected_edareh}',
-                                                   labels={'مساحت':'مجموع مساحت (هکتار)'})
-                        st.plotly_chart(fig_hist_area, use_container_width=True)
-                    else:
-                        st.info(f"داده معتبری برای هیستوگرام مساحت در اداره {selected_edareh} یافت نشد.")
-
-                else:
-                    st.info(f"داده مساحت برای اداره {selected_edareh} یافت نشد.")
-
-            # --- Production Data Visualization ---
-            with col2:
-                st.markdown("#### تولید (تن)")
-                if analysis_prod_df is not None and selected_edareh in analysis_prod_df.index.get_level_values('اداره'):
-                    df_prod_selected = analysis_prod_df.loc[selected_edareh].copy()
-                    # Prepare data for 3D surface plot
-                    varieties_prod = df_prod_selected.columns.tolist()
-                    ages_prod = df_prod_selected.index.tolist()
-                    z_data_prod = df_prod_selected.values
-
-                    if len(ages_prod) > 1 and len(varieties_prod) > 1:
-                         try:
-                             fig_3d_prod = go.Figure(data=[go.Surface(z=z_data_prod, x=ages_prod, y=varieties_prod, colorscale='Plasma')])
-                             fig_3d_prod.update_layout(
-                                 title=f'Surface Plot تولید - اداره {selected_edareh}',
-                                 scene=dict(
-                                     xaxis_title='سن',
-                                     yaxis_title='واریته',
-                                     zaxis_title='تولید (تن)'),
-                                 autosize=True, height=500)
-                             st.plotly_chart(fig_3d_prod, use_container_width=True)
-                         except Exception as e:
-                              st.error(f"خطا در ایجاد نمودار Surface Plot تولید: {e}")
-                              st.dataframe(df_prod_selected) # Show table as fallback
-                    else:
-                         st.info("داده کافی برای رسم نمودار Surface Plot تولید وجود ندارد (نیاز به بیش از یک سن و یک واریته).")
-                         st.dataframe(df_prod_selected) # Show table if not enough data for 3D
-
-
-                    # Histogram of Production per Variety
-                    df_prod_melt = df_prod_selected.reset_index().melt(id_vars='سن', var_name='واریته', value_name='تولید')
-                    df_prod_melt = df_prod_melt.dropna(subset=['تولید']) # Drop NA values for plotting
-                    if not df_prod_melt.empty:
-                        fig_hist_prod = px.histogram(df_prod_melt, x='واریته', y='تولید', color='سن',
-                                                   title=f'هیستوگرام تولید بر اساس واریته - اداره {selected_edareh}',
-                                                   labels={'تولید':'مجموع تولید (تن)'})
-                        st.plotly_chart(fig_hist_prod, use_container_width=True)
-                    else:
-                         st.info(f"داده معتبری برای هیستوگرام تولید در اداره {selected_edareh} یافت نشد.")
-
-                else:
-                    st.info(f"داده تولید برای اداره {selected_edareh} یافت نشد.")
-
-    else:
-        st.error("خطا در بارگذاری یا پردازش داده‌های تحلیل.")
 
 
 # --- New Tab for Needs Analysis ---
@@ -1374,3 +1256,29 @@ with tab3:
 st.markdown("---")
 st.sidebar.markdown("---")
 st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap")
+
+# --- Modern UI Helper Functions ---
+def modern_metric_card(title, value, icon=None, color='#43cea2', extra_html=''):
+    icon_html = f"<i class='fa {icon}' style='font-size:2rem; margin-bottom:8px;'></i><br>" if icon else ""
+    return f"""
+    <div class='modern-card' style='background: linear-gradient(135deg, {color} 0%, #185a9d 100%);'>
+        {icon_html}
+        <span style='font-size:1.1rem; font-weight:600;'>{title}</span>
+        <div style='font-size:2.2rem; font-weight:bold; margin: 8px 0 0 0;'>{value}</div>
+        {extra_html}
+    </div>
+    """
+
+def status_badge(status):
+    color = '#43cea2' if 'بهبود' in status else ('#ffc107' if 'ثابت' in status else ('#e74c3c' if 'تنش' in status or 'کاهش' in status or 'بدتر' in status else '#bdbdbd'))
+    icon = 'fa-arrow-up' if 'بهبود' in status else ('fa-minus' if 'ثابت' in status else ('fa-arrow-down' if 'تنش' in status or 'کاهش' in status or 'بدتر' in status else 'fa-question'))
+    return f"<span style='display:inline-block; padding:4px 14px; border-radius:16px; background:{color}; color:#fff; font-size:1rem; font-weight:600; margin:2px 0;'><i class='fa {icon}' style='margin-left:6px;'></i>{status}</span>"
+
+def modern_progress_bar(progress, text="در حال محاسبه..."):
+    percent = int(progress * 100)
+    return f"""
+    <div style='width:100%; background:#e0e0e0; border-radius:12px; margin:10px 0; height:22px; position:relative;'>
+        <div style='width:{percent}%; background:linear-gradient(90deg,#43cea2,#185a9d); height:100%; border-radius:12px; transition:width 0.4s;'></div>
+        <span style='position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); color:#222; font-weight:600;'>{text} {percent}%</span>
+    </div>
+    """
