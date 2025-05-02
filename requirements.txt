@@ -1,12 +1,10 @@
 streamlit
 pandas
+geopandas>=0.10.0
 earthengine-api
 geemap
-folium>=0.12.1 # geemap often depends on a specific folium version
+folium>=0.12.1
 plotly
 requests
-traceback # This is a standard library, no need to list
 streamlit-folium
-base64 # This is a standard library, no need to list
 google-generativeai
-geopandas>=0.10.0 # Added 
