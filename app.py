@@ -22,15 +22,16 @@ SOURCE_CRS = "EPSG:32639" # WGS 84 / UTM zone 39N (Assuming this based on typica
 TARGET_CRS = "EPSG:4326" # WGS 84 geographic 2D
 
 # Create a transformer for coordinate transformation
+transformer = None
 try:
     transformer = pyproj.Transformer.from_crs(SOURCE_CRS, TARGET_CRS, always_xy=True)
     print(f"Coordinate transformer created: {SOURCE_CRS} to {TARGET_CRS}")
 except pyproj.exceptions.CRSError as e:
     st.error(f"❌ خطای پیکربندی سیستم مختصات: {e}. لطفاً کدهای EPSG {SOURCE_CRS} و {TARGET_CRS} را بررسی کنید.")
-    transformer = None # Set transformer to None if creation fails
+    # transformer remains None
 except Exception as e:
      st.error(f"❌ خطای ناشناخته در ایجاد تبدیل کننده مختصات: {e}")
-     transformer = None
+     # transformer remains None
 
 
 # --- Custom CSS for an Amazing and User-Friendly UI ---
@@ -449,10 +450,10 @@ def status_badge(status: str) -> str:
         badge_class = "status-negative"
     elif "ثابت" in status:
         badge_class = "status-neutral"
-    elif "بدون داده" in status or "N/A" in status: # Also handle N/A from calculations
+    elif "بدون داده" in status or "N/A" in status:
          badge_class = "status-nodata"
     else:
-        badge_class = "status-neutral" # Default or unknown status
+        badge_class = "status-neutral"
 
     return f'<span class="status-badge {badge_class}">{status}</span>'
 
@@ -474,44 +475,36 @@ def modern_metric_card(title: str, value: str, icon: str, color: str) -> str:
     '''
 
 # --- Modern Progress Bar (HTML) ---
-# Moved this function definition BEFORE its usage in calculate_weekly_indices
 def modern_progress_bar(progress: float) -> str:
     """
     Returns a modern styled HTML progress bar for Streamlit.
     :param progress: float between 0 and 1
     :return: HTML string
     """
-    percent = max(0, min(100, int(progress * 100))) # Ensure percent is between 0 and 100
-    # Adjust color gradient based on progress for visual feedback
-    # Gradient from red (low) to yellow (mid) to green (high)
-    color_start = '#dc3545' # Red (Low Progress)
-    color_mid = '#ffc107'   # Yellow (Medium Progress)
-    color_end = '#28a745'   # Green (High Progress)
+    percent = max(0, min(100, int(progress * 100)))
+    color_start = '#dc3545'
+    color_mid = '#ffc107'
+    color_end = '#28a745'
 
-    # Interpolate colors based on percentage
     if percent <= 50:
-        # Interpolate between red and yellow
         r = int(0xdc + (0xff - 0xdc) * (percent / 50))
         g = int(0x35 + (0xc1 - 0x35) * (percent / 50))
         b = int(0x45 + (0x07 - 0x45) * (percent / 50))
         current_color = f"#{r:02x}{g:02x}{b:02x}"
         background_gradient = f"linear-gradient(90deg, {color_start} 0%, {current_color} 100%)"
     else:
-        # Interpolate between yellow and green
         r = int(0xff + (0x28 - 0xff) * ((percent - 50) / 50))
         g = int(0xc1 + (0xa7 - 0xc1) * ((percent - 50) / 50))
         b = int(0x07 + (0x45 - 0x07) * ((percent - 50) / 50))
         current_color = f"#{r:02x}{g:02x}{b:02x}"
-        # Use the start of the gradient from yellow for smooth transition
         background_gradient = f"linear-gradient(90deg, {color_mid} 0%, {current_color} 100%)"
 
-    # Override to a final color when 100%
     if percent == 100:
-        background_gradient = f"linear-gradient(90deg, {color_end} 0%, #1a9850 100%)" # Green to Darker Green/Blue
+        background_gradient = f"linear-gradient(90deg, {color_end} 0%, #1a9850 100%)"
 
 
     return f'''
-    <div style="width: 100%; background: #e0f7fa; border-radius: 12px; height: 22px; margin: 8px 0; box-shadow: 0 2px 8px rgba(30,60,114,0.08); overflow: hidden; /* Ensure the gradient stays within bounds */ position: relative;">
+    <div style="width: 100%; background: #e0f7fa; border-radius: 12px; height: 22px; margin: 8px 0; box-shadow: 0 2px 8px rgba(30,60,114,0.08); overflow: hidden; position: relative;">
       <div style="width: {percent}%; background: {background_gradient}; height: 100%; border-radius: 12px; transition: width 0.3s ease-in-out;"></div>
       <span style="position: absolute; left: 50%; top: 0; transform: translateX(-50%); color: #185a9d; font-weight: bold; line-height: 22px; text-shadow: 0 0 2px rgba(255,255,255,0.5); /* Add subtle text shadow for readability */">
           {percent}%
@@ -549,14 +542,13 @@ INITIAL_LON = 48.724416
 INITIAL_ZOOM = 12
 
 # --- File Paths (Relative to the script location or accessible via URL) ---
-# Using the new CSV file for farm data
 FARM_DATA_CSV_PATH = 'merged_farm_data_renamed (1).csv'
 SERVICE_ACCOUNT_FILE = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json'
 ANALYSIS_CSV_PATH = 'محاسبات 2.csv'
 
 
 # --- GEE Authentication ---
-@st.cache_resource(show_spinner="در حال اتصال به Google Earth Engine...") # Cache the GEE initialization
+@st.cache_resource(show_spinner="در حال اتصال به Google Earth Engine...")
 def initialize_gee():
     """Initializes Google Earth Engine using the Service Account."""
     try:
@@ -575,24 +567,23 @@ def initialize_gee():
             except Exception as e:
                  st.error(f"❌ خطا در دریافت اطلاعات Service Account از Secrets: {e}")
                  st.info("لطفاً از تنظیم صحیح Secrets برای Google Earth Engine اطمینان حاصل کنید. (به خصوص secret 'gee_auth_json').")
-                 return None # Indicate failure
-
+                 return None
 
         ee.Initialize(credentials=credentials, opt_url='https://earthengine-highvolume.googleapis.com')
         print("GEE Initialized Successfully.")
-        return True # Indicate success
+        return True
     except ee.EEException as e:
         st.error(f"❌ خطا در اتصال به Google Earth Engine: {e}")
         st.error("لطفاً از صحت فایل Service Account یا تنظیمات Secrets و فعال بودن آن در پروژه GEE اطمینان حاصل کنید.")
-        return None # Indicate failure
+        return None
     except Exception as e:
         st.error(f"❌ خطای غیرمنتظره هنگام اتصال به GEE: {e}")
         st.error(traceback.format_exc())
-        return None # Indicate failure
+        return None
 
 
 # --- Load Farm Data from CSV ---
-@st.cache_data(show_spinner="در حال بارگذاری و پردازش داده‌های مزارع...", persist="앱") # Cache data persistently
+@st.cache_data(show_spinner="در حال بارگذاری و پردازش داده‌های مزارع...", persist="disk") # Corrected persist option
 def load_farm_data_from_csv(csv_path=FARM_DATA_CSV_PATH):
     """Loads farm data from the specified CSV file and processes coordinates."""
     if transformer is None:
@@ -601,24 +592,22 @@ def load_farm_data_from_csv(csv_path=FARM_DATA_CSV_PATH):
 
     try:
         df = None
-        # Attempt to load from local path first
         if os.path.exists(csv_path):
             df = pd.read_csv(csv_path, encoding='utf-8')
             print(f"Loaded Farm data from local CSV: {csv_path}")
         else:
-            # Fallback to fetching from a URL (e.g., GitHub raw file)
             github_raw_url = f'https://raw.githubusercontent.com/esmaeilkiani13877/MonitoringSugarcane-13/main/{csv_path}'
             try:
                 response = requests.get(github_raw_url)
-                response.raise_for_status() # Raise an HTTPError for bad responses (4xx or 5xx)
+                response.raise_for_status()
                 df = pd.read_csv(BytesIO(response.content), encoding='utf-8')
                 print(f"Loaded Farm data from URL: {github_raw_url}")
             except requests.exceptions.RequestException as e:
-                 st.error(f"❌ فایل '{csv_path}' در مسیر محلی یا از URL گیت‌هاب '{github_raw_url}' یافت نشد یا قابل دسترسی نیست: {e}")
-                 return pd.DataFrame() # Return empty DataFrame on error
+                 st.error(f"❌ فایل '{csv_path}' در مسیر محلی یا از URL گیت‌هاب '{github_url}' یافت نشد یا قابل دسترسی نیست: {e}") # Corrected variable name
+                 return pd.DataFrame()
             except Exception as e:
                  st.error(f"❌ خطای غیرمنتظره در دریافت فایل CSV از URL: {e}")
-                 return pd.DataFrame() # Return empty DataFrame
+                 return pd.DataFrame()
 
 
         if df is None or df.empty:
@@ -626,20 +615,18 @@ def load_farm_data_from_csv(csv_path=FARM_DATA_CSV_PATH):
              return pd.DataFrame()
 
 
-        # Clean column names (remove potential BOM, leading/trailing spaces)
-        df.columns = df.columns.str.strip().str.replace('\ufeff', '') # Remove BOM
+        df.columns = df.columns.str.strip().str.replace('\ufeff', '')
 
-        # Basic validation: check for required columns
         required_cols = ['مزرعه', 'روز', 'lat1', 'lon1', 'lat2', 'lon2', 'lat3', 'lon3', 'lat4', 'lon4']
         if not all(col in df.columns for col in required_cols):
             missing_cols = [col for col in required_cols if col not in df.columns]
             st.error(f"❌ فایل CSV مزارع باید شامل ستون‌های ضروری باشد. ستون‌های یافت نشد: {', '.join(missing_cols)}")
-            return pd.DataFrame() # Return empty DataFrame on error
+            return pd.DataFrame()
 
-        # Initialize new columns for WGS84 data and GEE geometry
         df['wgs84_centroid_lon'] = None
         df['wgs84_centroid_lat'] = None
-        df['ee_geometry'] = None # Store GEE geometry object (handle caching implications)
+        df['ee_geometry'] = None
+        df['wgs84_polygon_coords'] = None # Column to store WGS84 polygon coordinates
 
         processed_records = []
         skipped_farms = []
@@ -647,34 +634,29 @@ def load_farm_data_from_csv(csv_path=FARM_DATA_CSV_PATH):
         for index, row in df.iterrows():
             farm_name = row.get('مزرعه', f'مزرعه ناشناس ردیف {index+1}')
             try:
-                # Extract coordinates for 4 points
                 points_utm = []
                 valid_points = True
                 for i in range(1, 5):
                     lat_col = f'lat{i}'
                     lon_col = f'lon{i}'
-                    # Ensure coordinates are numeric and not NaN
                     if pd.notna(row.get(lat_col)) and pd.notna(row.get(lon_col)):
                         try:
-                            # Assuming UTM is Easting/Northing, which maps to lon/lat in standard GIS order
-                            # Pyproj's always_xy=True handles this: x=lon/easting, y=lat/northing
                             easting = float(row[lon_col])
                             northing = float(row[lat_col])
                             points_utm.append((easting, northing))
                         except ValueError:
                             valid_points = False
-                            break # Exit loop if coordinates are not numbers
+                            break
                     else:
                         valid_points = False
-                        break # Exit loop if coordinates are missing
+                        break
 
 
                 if not valid_points or len(points_utm) < 4:
                     skipped_farms.append(f"مزرعه '{farm_name}': مختصات نامعتبر یا ناقص (نیاز به ۴ نقطه).")
-                    continue # Skip this farm
+                    continue
 
 
-                # Transform UTM points to WGS84
                 points_wgs84 = []
                 try:
                     for easting, northing in points_utm:
@@ -682,14 +664,12 @@ def load_farm_data_from_csv(csv_path=FARM_DATA_CSV_PATH):
                          points_wgs84.append((lon_wgs84, lat_wgs84))
                 except pyproj.exceptions.TransformerError as te:
                      skipped_farms.append(f"مزرعه '{farm_name}': خطای تبدیل مختصات UTM به WGS84: {te}")
-                     continue # Skip this farm
+                     continue
                 except Exception as e:
                      skipped_farms.append(f"مزرعه '{farm_name}': خطای ناشناخته در تبدیل مختصات: {e}")
-                     continue # Skip this farm
+                     continue
 
 
-                # Create a Shapely Polygon from WGS84 points
-                # Ensure the polygon is closed by adding the first point at the end
                 if points_wgs84[-1] != points_wgs84[0]:
                      polygon_coords_wgs84 = points_wgs84 + [points_wgs84[0]]
                 else:
@@ -697,28 +677,22 @@ def load_farm_data_from_csv(csv_path=FARM_DATA_CSV_PATH):
 
                 try:
                     shapely_polygon = Polygon(polygon_coords_wgs84)
-                     # Ensure the polygon is valid or try to fix it
                     if not shapely_polygon.is_valid:
-                         # Attempt to make the polygon valid (e.g., fix self-intersections)
                          shapely_polygon = shapely_polygon.buffer(0)
                          if not shapely_polygon.is_valid:
                              skipped_farms.append(f"مزرعه '{farm_name}': پلی‌گون WGS84 نامعتبر باقی ماند پس از buffer(0).")
-                             continue # Skip if fixing fails
+                             continue
 
-                    # Convert Shapely Polygon to ee.Geometry.Polygon
-                    ee_polygon = ee.Geometry.Polygon(list(shapely_polygon.exterior.coords)) # Use exterior.coords to get the points
+                    ee_polygon = ee.Geometry.Polygon(list(shapely_polygon.exterior.coords))
 
-                    # Calculate centroid in WGS84
                     centroid_ee = ee_polygon.centroid(maxError=1)
                     centroid_coords_wgs84 = centroid_ee.getInfo()['coordinates']
                     centroid_lon_wgs84, centroid_lat_wgs84 = centroid_coords_wgs84[0], centroid_coords_wgs84[1]
 
-                    # Append the processed data including WGS84 centroid and GEE geometry
-                    processed_row = row.copy() # Keep original columns
+                    processed_row = row.copy()
                     processed_row['wgs84_centroid_lon'] = centroid_lon_wgs84
                     processed_row['wgs84_centroid_lat'] = centroid_lat_wgs84
-                    processed_row['ee_geometry'] = ee_polygon # Store the GEE geometry object
-                    # Store WGS84 polygon coordinates for potential drawing on map
+                    processed_row['ee_geometry'] = ee_polygon
                     processed_row['wgs84_polygon_coords'] = [list(coord) for coord in shapely_polygon.exterior.coords] # Store as list of lists
 
                     processed_records.append(processed_row)
@@ -733,7 +707,7 @@ def load_farm_data_from_csv(csv_path=FARM_DATA_CSV_PATH):
 
             except Exception as e:
                 skipped_farms.append(f"مزرعه '{farm_name}': خطای عمومی در پردازش ردیف: {e}")
-                continue # Skip row on general error
+                continue
 
         processed_df = pd.DataFrame(processed_records)
 
@@ -747,51 +721,45 @@ def load_farm_data_from_csv(csv_path=FARM_DATA_CSV_PATH):
 
         if processed_df.empty:
             st.error("❌ هیچ داده معتبری پس از پردازش فایل CSV مزارع باقی نماند.")
-            return pd.DataFrame() # Return empty DataFrame
+            return pd.DataFrame()
 
 
-        # Clean 'روز', 'گروه', 'واریته' columns and ensure existence
-        for col in ['روز', 'گروه', 'واریته', 'سن']: # Added 'سن' for cleaning
+        for col in ['روز', 'گروه', 'واریته', 'سن']:
             if col in processed_df.columns:
                 processed_df[col] = processed_df[col].astype(str).str.replace(r'\s+', ' ', regex=True).str.strip()
-                # Replace 'nan' strings and empty strings resulting from NaN/empty conversion
                 processed_df[col] = processed_df[col].replace(['nan', ''], 'نامشخص')
             else:
-                 processed_df[col] = 'نامشخص' # Add column with default if missing
+                 processed_df[col] = 'نامشخص'
 
-        # Ensure 'مساحت' column exists and is numeric
         if 'مساحت' in processed_df.columns:
              processed_df['مساحت'] = pd.to_numeric(processed_df['مساحت'], errors='coerce')
-             # Fill NaN or NaT in 'مساحت' with a placeholder like 0 or 'N/A' string
-             processed_df['مساحت'] = processed_df['مساحت'].fillna(0) # Fill missing area with 0
+             processed_df['مساحت'] = processed_df['مساحت'].fillna(0)
         else:
-            processed_df['مساحت'] = 0 # Add column if missing
+            processed_df['مساحت'] = 0
 
 
         st.success(f"✅ داده‌های {len(processed_df)} مزرعه با موفقیت از CSV بارگذاری و پردازش شد.")
         return processed_df
     except FileNotFoundError:
         st.error(f"❌ فایل '{csv_path}' یافت نشد. لطفاً فایل CSV داده‌های مزارع را در مسیر صحیح قرار دهید.")
-        return pd.DataFrame() # Return empty DataFrame on error
+        return pd.DataFrame()
     except Exception as e:
         st.error(f"❌ خطا در بارگذاری یا پردازش فایل CSV: {e}")
         st.error(traceback.format_exc())
-        return pd.DataFrame() # Return empty DataFrame on error
+        return pd.DataFrame()
 
 
 # --- Load Analysis Data ---
-@st.cache_data(show_spinner="در حال بارگذاری داده‌های محاسبات...", persist="앱") # Cache data persistently
+@st.cache_data(show_spinner="در حال بارگذاری داده‌های محاسبات...", persist="disk") # Corrected persist option
 def load_analysis_data(csv_path=ANALYSIS_CSV_PATH):
     """Loads and preprocesses data from the analysis CSV file."""
     try:
         lines = None
-        # Attempt to load from local path first
         if os.path.exists(csv_path):
             with open(csv_path, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
             print(f"Loaded Analysis CSV from local path: {csv_path}")
         else:
-             # Fallback to fetching from a URL (e.g., GitHub raw file)
              github_raw_url = f'https://raw.githubusercontent.com/esmaeilkiani13877/MonitoringSugarcane-13/main/{csv_path}'
              try:
                  response = requests.get(github_raw_url)
@@ -807,41 +775,35 @@ def load_analysis_data(csv_path=ANALYSIS_CSV_PATH):
 
 
         if lines is None:
-             return None, None # Return None if loading failed
+             return None, None
 
 
-        # Find the headers and split points
-        # Look for lines starting with 'اداره,سن,' or 'تولید,سن,' after stripping BOM
         headers_indices = [i for i, line in enumerate(lines) if line.strip().lstrip('\ufeff').startswith('اداره,سن,') or line.strip().lstrip('\ufeff').startswith('تولید,سن,')]
 
-        if len(headers_indices) < 1: # Must find at least one header
+        if len(headers_indices) < 1:
             st.error(f"❌ ساختار فایل '{csv_path}' قابل شناسایی نیست. هدرهای مورد انتظار ('اداره,سن,' یا 'تولید,سن,') یافت نشد.")
             return None, None
 
         section1_start_line_num = headers_indices[0]
-        section2_start_line_num = len(lines) # Assume end of file if no second header
+        section2_start_line_num = len(lines)
 
         if len(headers_indices) > 1:
             section2_start_line_num = headers_indices[1]
 
-
-        # Read the first section (Area)
-        end_row_area_line_num = section2_start_line_num # Default end is before the second section header
+        end_row_area_line_num = section2_start_line_num
 
         try:
             area_section_io = BytesIO("\n".join(lines[section1_start_line_num : end_row_area_line_num]).encode('utf-8'))
             df_area = pd.read_csv(area_section_io, encoding='utf-8')
         except Exception as e:
              st.warning(f"⚠️ خطا در خواندن بخش مساحت از فایل محاسبات: {e}")
-             df_area = pd.DataFrame() # Set to empty DataFrame on error
+             df_area = pd.DataFrame()
 
 
-        # Read the second section (Production) if found
-        df_prod = pd.DataFrame() # Default to empty
+        df_prod = pd.DataFrame()
         if len(headers_indices) > 1:
-             # Find the end of the second section (look for 'Grand Total' or end of file)
              end_row_prod_line_num = len(lines)
-             for i in range(section2_start_line_num + 1, len(lines)): # Start search after header
+             for i in range(section2_start_line_num + 1, len(lines)):
                  if "Grand Total" in lines[i] or len(lines[i].strip()) < 5:
                      end_row_prod_line_num = i
                      break
@@ -851,17 +813,15 @@ def load_analysis_data(csv_path=ANALYSIS_CSV_PATH):
                   df_prod = pd.read_csv(prod_section_io, encoding='utf-8')
              except Exception as e:
                   st.warning(f"⚠️ خطا در خواندن بخش تولید از فایل محاسبات: {e}")
-                  df_prod = pd.DataFrame() # Set to empty DataFrame on error
+                  df_prod = pd.DataFrame()
 
 
-        # --- Preprocessing Function ---
         def preprocess_df(df, section_name):
             if df is None or df.empty:
                 return None
 
-            df.columns = df.columns.str.strip().str.replace('\ufeff', '') # Remove BOM
+            df.columns = df.columns.str.strip().str.replace('\ufeff', '')
 
-            # Ensure 'اداره' is the first column if it got misplaced or is unnamed
             if df.columns.tolist() and 'اداره' not in df.columns:
                 df.rename(columns={df.columns[0]: 'اداره'}, inplace=True)
 
@@ -884,7 +844,6 @@ def load_analysis_data(csv_path=ANALYSIS_CSV_PATH):
             for col in value_cols:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
 
-            # Drop columns with all NaN values after conversion
             df = df.dropna(axis=1, how='all').copy()
 
             df = df.drop(columns=['Grand Total', 'درصد'], errors='ignore')
@@ -919,14 +878,13 @@ def load_analysis_data(csv_path=ANALYSIS_CSV_PATH):
 # Initialize GEE and Load Data
 gee_initialized = initialize_gee()
 
-# Check if transformer is available before loading farm data
-if transformer is not None:
+farm_data_df = pd.DataFrame()
+if transformer is not None: # Only try to load farm data if transformer is available
     farm_data_df = load_farm_data_from_csv() # Load from CSV
 else:
      st.error("❌ بارگذاری داده‌های مزارع به دلیل خطای پیکربندی سیستم مختصات امکان‌پذیر نیست.")
-     farm_data_df = pd.DataFrame()
 
-# Load Analysis Data
+
 analysis_area_df, analysis_prod_df = load_analysis_data() # Load from CSV
 
 
@@ -935,7 +893,6 @@ analysis_area_df, analysis_prod_df = load_analysis_data() # Load from CSV
 # ==============================================================================
 st.sidebar.header("تنظیمات نمایش")
 
-# --- Day of the Week Selection ---
 selected_day = None
 if not farm_data_df.empty and 'روز' in farm_data_df.columns:
     available_days = sorted(farm_data_df['روز'].unique())
@@ -951,7 +908,7 @@ if not farm_data_df.empty and 'روز' in farm_data_df.columns:
             selected_day = st.sidebar.selectbox(
                 "📅 روز هفته را انتخاب کنید:",
                 options=valid_days,
-                index=0, # Default to the first day
+                index=0,
                 help="داده‌های مزارع بر اساس این روز فیلتر می‌شوند."
             )
 else:
@@ -959,46 +916,41 @@ else:
      selected_day = None
 
 
-# --- Filter Data Based on Selected Day ---
 filtered_farms_df = pd.DataFrame()
 if selected_day and not farm_data_df.empty:
     filtered_farms_df = farm_data_df[farm_data_df['روز'] == selected_day].copy()
 
-# --- Farm Selection ---
-selected_farm_name = "همه مزارع" # Default value
+selected_farm_name = "همه مزارع"
 available_farms = []
 if not filtered_farms_df.empty:
     available_farms = sorted(filtered_farms_df['مزرعه'].unique())
-    # Add an option for "All Farms"
     farm_options = ["همه مزارع"] + available_farms
     selected_farm_name = st.sidebar.selectbox(
         "🌾 مزرعه مورد نظر را انتخاب کنید:",
         options=farm_options,
-        index=0, # Default to "All Farms"
+        index=0,
         help="مزرعه‌ای که می‌خواهید جزئیات آن را ببینید یا 'همه مزارع' برای نمایش کلی."
     )
 else:
     st.sidebar.info("ℹ️ مزارعی برای روز انتخابی یافت نشد.")
 
 
-# --- Index Selection ---
 index_options = {
     "NDVI": "شاخص پوشش گیاهی تفاضلی نرمال شده",
     "EVI": "شاخص پوشش گیاهی بهبود یافته",
-    "NDMI": "شاخص رطوبتی تفاضلی نرمال شده", # Updated description for clarity
+    "NDMI": "شاخص رطوبتی تفاضلی نرمال شده",
     "LAI": "شاخص سطح برگ (تخمینی)",
     "MSI": "شاخص تنش رطوبتی",
     "CVI": "شاخص کلروفیل (تخمینی)",
     "SAVI": "شاخص پوشش گیاهی تعدیل شده با خاک",
 }
 selected_index = st.sidebar.selectbox(
-    "📈 شاخص مورد نظر برای نمایش و رتبه‌بندی:", # Updated label
+    "📈 شاخص مورد نظر برای نمایش و رتبه‌بندی:",
     options=list(index_options.keys()),
     format_func=lambda x: f"{x} ({index_options[x]})",
-    index=0 # Default to NDVI
+    index=0
 )
 
-# --- Date Range Calculation ---
 today = datetime.date.today()
 start_date_current_str = None
 end_date_current_str = None
@@ -1042,12 +994,9 @@ st.sidebar.markdown("ساخته شده با ❤️ با استفاده از Stre
 
 # ==============================================================================
 # Google Earth Engine Functions
-# (These functions are adapted to use the 'ee_geometry' column from the DataFrame)
 # ==============================================================================
 
-# --- Cloud Masking Function for Sentinel-2 ---
 def maskS2clouds(image):
-    """Masks clouds in a Sentinel-2 SR image using the QA band and SCL band."""
     qa = image.select('QA60')
     cloudBitMask = 1 << 10
     cirrusBitMask = 1 << 11
@@ -1055,102 +1004,60 @@ def maskS2clouds(image):
              qa.bitwiseAnd(cirrusBitMask).eq(0))
 
     scl = image.select('SCL')
-    masked_classes = [0, 1, 2, 3, 7, 8, 9, 10, 11] # No Data, Saturated, Dark Area, Cloud Medium, Unclassified, Cloud High, Cirrus, Snow/Ice, Cloud Shadow
+    masked_classes = [0, 1, 2, 3, 7, 8, 9, 10, 11]
     mask_scl = scl.remap(masked_classes, [0] * len(masked_classes), 1)
 
     final_mask = mask_qa.And(mask_scl)
-
-    # Scale and offset factors for Sentinel-2 SR bands
     opticalBands = image.select('B.*').multiply(0.0001)
 
     return image.addBands(opticalBands, None, True)\
                 .updateMask(final_mask)
 
-
-# --- Index Calculation Functions ---
 def add_indices(image):
-    """Calculates and adds various indices as bands to an image."""
-    # Use scaled bands for calculations
     red = image.select('B4')
     nir = image.select('B8')
     blue = image.select('B2')
     green = image.select('B3')
     swir1 = image.select('B11')
 
-    epsilon = 1e-9 # Small value to prevent division by zero
+    epsilon = 1e-9
 
-    # NDVI: (NIR - Red) / (NIR + Red)
     ndvi_denominator = nir.add(red)
     ndvi = image.expression(
         '(NIR - RED) / (NIR + RED)',
-        {
-            'NIR': nir,
-            'RED': red
-        }
+        {'NIR': nir, 'RED': red}
     ).rename('NDVI').updateMask(ndvi_denominator.gt(epsilon))
 
-
-    # EVI: 2.5 * (NIR - Red) / (NIR + 6 * Red - 7.5 * Blue + 1)
     evi_denominator = nir.add(red.multiply(6)).subtract(blue.multiply(7.5)).add(1)
     evi = image.expression(
-        '2.5 * (NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1)', {
-            'NIR': nir,
-            'RED': red,
-            'BLUE': blue
-        }).rename('EVI').updateMask(evi_denominator.abs().gt(epsilon))
+        '2.5 * (NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1)',
+        {'NIR': nir, 'RED': red, 'BLUE': blue}
+    ).rename('EVI').updateMask(evi_denominator.abs().gt(epsilon))
 
-
-    # NDMI (Normalized Difference Moisture Index): (NIR - SWIR1) / (NIR + SWIR1)
     ndmi_denominator = nir.add(swir1)
     ndmi = image.normalizedDifference(['B8', 'B11']).rename('NDMI').updateMask(ndmi_denominator.gt(epsilon))
 
-
-    # SAVI (Soil-Adjusted Vegetation Index): ((NIR - Red) / (NIR + Red + L)) * (1 + L) | L=0.5
     savi_denominator = nir.add(red).add(0.5)
     savi = image.expression(
         '((NIR - RED) / (NIR + RED + L)) * (1 + L)',
-        {
-            'NIR': nir,
-            'RED': red,
-            'L': 0.5
-        }
+        {'NIR': nir, 'RED': red, 'L': 0.5}
     ).rename('SAVI').updateMask(savi_denominator.gt(epsilon))
 
-
-    # MSI (Moisture Stress Index): SWIR1 / NIR
     nir_safe = nir.max(ee.Image(epsilon))
-    msi = image.expression('SWIR1 / NIR', {
-        'SWIR1': swir1,
-        'NIR': nir_safe
-    }).rename('MSI')
+    msi = image.expression('SWIR1 / NIR', {'SWIR1': swir1, 'NIR': nir_safe}).rename('MSI')
 
-
-    # LAI (Leaf Area Index) - Simple estimation using EVI (Needs calibration for accuracy)
     lai = evi.multiply(3.618).subtract(0.118).rename('LAI').reproject(crs=image.projection().crs(), scale=10)
     lai = lai.updateMask(lai.gt(0))
 
-
-    # CVI (Chlorophyll Vegetation Index) - (NIR / Green) * (Red / Green)
     green_safe = green.max(ee.Image(epsilon))
-    cvi = image.expression('(NIR / GREEN) * (RED / GREEN)', {
-        'NIR': nir,
-        'GREEN': green_safe,
-        'RED': red
-    }).rename('CVI').reproject(crs=image.projection().crs(), scale=10)
-
+    cvi = image.expression('(NIR / GREEN) * (RED / GREEN)',
+                         {'NIR': nir, 'GREEN': green_safe, 'RED': red}
+    ).rename('CVI').reproject(crs=image.projection().crs(), scale=10)
 
     return image.addBands([ndvi, evi, ndmi, msi, lai, cvi, savi])
 
-
-# --- Function to get processed image for a date range and geometry ---
-@st.cache_data(show_spinner=False, persist="앱") # Cache data persistently, hide default spinner
+@st.cache_data(show_spinner=False, persist="disk") # Corrected persist option
 def get_processed_image(_geometry, start_date, end_date, index_name):
-    """
-    Gets cloud-masked, index-calculated Sentinel-2 median composite for a given geometry and date range.
-    _geometry: ee.Geometry (Point or Polygon)
-    start_date, end_date: YYYY-MM-DD strings
-    index_name: Name of the primary index band to return (e.g., 'NDVI')
-    """
     if not gee_initialized:
         return None, "Google Earth Engine مقداردهی اولیه نشده است."
     if _geometry is None:
@@ -1174,7 +1081,7 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
 
         output_image = median_image.select(index_name)
 
-        return output_image, None # Return the image and no error message
+        return output_image, None
     except ee.EEException as e:
         error_message = f"خطای Google Earth Engine: {e}"
         try:
@@ -1190,10 +1097,8 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
         error_message = f"خطای ناشناخته در پردازش GEE: {e}\n{traceback.format_exc()}"
         return None, error_message
 
-# --- Function to get time series data for a point (using centroid) ---
-@st.cache_data(show_spinner="در حال دریافت سری زمانی شاخص...", persist="앱") # Cache data persistently
+@st.cache_data(show_spinner="در حال دریافت سری زمانی شاخص...", persist="disk") # Corrected persist option
 def get_index_time_series(_point_geom, index_name, start_date='2023-01-01', end_date=today.strftime('%Y-%m-%d')):
-    """Gets a time series of a specified index for a point geometry."""
     if not gee_initialized:
         return pd.DataFrame(columns=['date', index_name]), "Google Earth Engine مقداردهی اولیه نشده است."
     if _point_geom is None:
@@ -1206,7 +1111,6 @@ def get_index_time_series(_point_geom, index_name, start_date='2023-01-01', end_
                      .map(add_indices))
 
         s2_sr_col = s2_sr_col.select([index_name])
-
 
         def extract_value(image):
             try:
@@ -1261,25 +1165,20 @@ def get_index_time_series(_point_geom, index_name, start_date='2023-01-01', end_
         st.error(error_message)
         return pd.DataFrame(columns=['date', index_name]), error_message
 
-
-# ==============================================================================
-# Function to get all relevant indices for a farm (using polygon geometry)
-# ==============================================================================
-@st.cache_data(show_spinner=False, persist="앱") # Cache data persistently, hide default spinner
+@st.cache_data(show_spinner=False, persist="disk") # Corrected persist option
 def get_farm_needs_data(_farm_geometry, start_curr, end_curr, start_prev, end_prev):
-    """Calculates mean NDVI, NDMI, EVI, SAVI for current and previous periods using farm polygon."""
+    if not gee_initialized:
+        results = {'error': "Google Earth Engine مقداردهی اولیه نشده است."}
+        return results
+    if _farm_geometry is None:
+        results = {'error': "هندسه معتبر برای محاسبه شاخص‌های نیازسنجی وجود ندارد."}
+        return results
+
     results = {
         'NDVI_curr': None, 'NDMI_curr': None, 'EVI_curr': None, 'SAVI_curr': None,
         'NDVI_prev': None, 'NDMI_prev': None, 'EVI_prev': None, 'SAVI_prev': None,
         'error': None
     }
-    if not gee_initialized:
-        results['error'] = "Google Earth Engine مقداردهی اولیه نشده است."
-        return results
-    if _farm_geometry is None:
-        results['error'] = "هندسه معتبر برای محاسبه شاخص‌های نیازسنجی وجود ندارد."
-        return results
-
     indices_to_get = ['NDVI', 'NDMI', 'EVI', 'SAVI']
 
     def get_mean_values_for_period(start, end):
@@ -1287,7 +1186,7 @@ def get_farm_needs_data(_farm_geometry, start_curr, end_curr, start_prev, end_pr
         error_msg = None
         try:
             s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-                         .filterBounds(_farm_geometry) # Filter by the farm's polygon
+                         .filterBounds(_farm_geometry)
                          .filterDate(start, end)
                          .map(maskS2clouds)
                          .map(add_indices))
@@ -1306,13 +1205,12 @@ def get_farm_needs_data(_farm_geometry, start_curr, end_curr, start_prev, end_pr
 
 
             selected_bands = median_image.select(indices_to_reduce)
-            # Reduce region using the farm's polygon geometry
             mean_dict = selected_bands.reduceRegion(
                 reducer=ee.Reducer.mean(),
-                geometry=_farm_geometry, # Use farm polygon
+                geometry=_farm_geometry,
                 scale=10,
                 bestEffort=True,
-                maxPixels=1e8 # Increased maxPixels for polygon reduction
+                maxPixels=1e8
             ).getInfo()
 
             if mean_dict:
@@ -1344,11 +1242,6 @@ def get_farm_needs_data(_farm_geometry, start_curr, end_curr, start_prev, end_pr
         else:
              results['error'] = f"خطا در بازه قبلی: {err_prev}"
 
-    results['NDVI_prev'] = prev_values.get('NDVI')
-    results['NDMI_prev'] = prev_values.get('NDMI')
-    results['EVI_prev'] = prev_values.get('EVI')
-    results['SAVI_prev'] = prev_values.get('SAVI')
-
     if results.get('error') and 'خطا در بازه جاری:' in results['error'] and 'خطا در بازه قبلی:' in results['error']:
          results['error'] = "خطا در هر دو بازه زمانی هنگام محاسبه شاخص‌های نیازسنجی."
     elif results.get('error'):
@@ -1356,6 +1249,11 @@ def get_farm_needs_data(_farm_geometry, start_curr, end_curr, start_prev, end_pr
     elif pd.isna(results['NDVI_curr']) and pd.isna(results['NDMI_curr']) and pd.isna(results['EVI_curr']) and pd.isna(results['SAVI_curr']) and \
          pd.isna(results['NDVI_prev']) and pd.isna(results['NDMI_prev']) and pd.isna(results['EVI_prev']) and pd.isna(results['SAVI_prev']):
          results['error'] = "هیچ داده شاخصی برای بازه‌های زمانی مشخص شده یافت نشد."
+
+    results['NDVI_prev'] = prev_values.get('NDVI')
+    results['NDMI_prev'] = prev_values.get('NDMI')
+    results['EVI_prev'] = prev_values.get('EVI')
+    results['SAVI_prev'] = prev_values.get('SAVI')
 
 
     return results
@@ -1392,7 +1290,7 @@ def configure_gemini():
         st.error(traceback.format_exc())
         return None
 
-@st.cache_data(show_spinner="در حال دریافت تحلیل هوش مصنوعی...", persist="앱")
+@st.cache_data(show_spinner="در حال دریافت تحلیل هوش مصنوعی...", persist="disk") # Corrected persist option
 def get_ai_needs_analysis(_model, farm_name, index_data, recommendations):
     """Generates AI analysis for the farm's condition related to needs."""
     if _model is None:
@@ -1420,7 +1318,6 @@ def get_ai_needs_analysis(_model, farm_name, index_data, recommendations):
 
     data_str = "\n".join(data_str_parts) if data_str_parts else "داده‌های شاخص در دسترس نیست."
 
-    # Format recommendations
     recommendations_str = "\n".join([f"- {rec}" for rec in recommendations]) if recommendations else 'هیچ توصیه‌ای بر اساس قوانین اولیه وجود ندارد.'
 
 
@@ -1454,7 +1351,7 @@ def get_ai_needs_analysis(_model, farm_name, index_data, recommendations):
         return "خطا در دریافت تحلیل هوش مصنوعی."
 
 
-@st.cache_data(show_spinner="در حال دریافت خلاصه هوش مصنوعی نقشه...", persist="앱")
+@st.cache_data(show_spinner="در حال دریافت خلاصه هوش مصنوعی نقشه...", persist="disk") # Corrected persist option
 def get_ai_map_summary(_model, ranking_df_sorted, selected_index, selected_day):
     """Generates AI summary for the overall map/ranking status."""
     if _model is None:
@@ -1479,16 +1376,13 @@ def get_ai_map_summary(_model, ranking_df_sorted, selected_index, selected_day):
         summary_text += "مزارع با بیشترین تنش/کاهش (بر اساس رتبه، تا ۵ مزرعه اول):\n"
         top_problem_farms = negative_status_farms.head(5)
         for idx, row in top_problem_farms.iterrows():
-            # Safer access and clean status string
             farm_name_ai = row.get('مزرعه', 'نامشخص')
-            status_html_ai = row.get('وضعیت_نمایش', 'نامشخص') # Get the HTML status column
-            # Clean the status HTML for AI text
+            status_html_ai = row.get('وضعیت_نمایش', 'نامشخص')
             status_text_ai = status_html_ai.replace('<span class="status-badge status-positive">', '').replace('<span class="status-badge status-negative">', '').replace('<span class="status-badge status-neutral">', '').replace('<span class="status-badge status-nodata">', '').replace('</span>', '')
 
             current_index_val_ai = row.get(f'{selected_index} (هفته جاری)', 'N/A')
             change_val_ai = row.get('تغییر', 'N/A')
 
-            # Format index values and change for display in summary
             current_index_display = f"{current_index_val_ai:.3f}" if pd.notna(current_index_val_ai) else 'N/A'
             change_display = f"{change_val_ai:.3f}" if pd.notna(change_val_ai) else 'N/A'
 
@@ -1561,7 +1455,7 @@ def determine_status(row, index_name):
                  percentage_change = None
 
 
-        if index_name in ['NDVI', 'EVI', 'LAI', 'CVI', 'NDMI', 'SAVI']: # Added SAVI
+        if index_name in ['NDVI', 'EVI', 'LAI', 'CVI', 'NDMI', 'SAVI']:
             is_significant_positive = change_val > absolute_threshold or (percentage_change is not None and percentage_change > percentage_threshold)
             is_significant_negative = change_val < -absolute_threshold or (percentage_change is not None and percentage_change < -percentage_threshold)
 
@@ -1595,18 +1489,15 @@ def determine_status(row, index_name):
 # Main Application Layout (Using Tabs)
 # ==============================================================================
 
-# Configure Gemini Model at the start
 gemini_model = None
 if gee_initialized:
     gemini_model = configure_gemini()
     if gemini_model is None:
-         st.warning("⚠️ سرویس هوش مصنوعی به دلیل خطای پیکربندی در دسترس نیست. قابلیت‌های تحلیل هوش مصنوعی غیرفعال است.")
+         st.warning("⚠️ سرویس تحلیل هوش مصنوعی به دلیل خطای پیکربندی در دسترس نیست. قابلیت‌های تحلیل هوش مصنوعی غیرفعال است.")
 
 
-# Define tabs
 tab1, tab2, tab3 = st.tabs(["📊 پایش مزارع (نقشه و رتبه‌بندی)", "📈 تحلیل داده‌های محاسبات", "💧 تحلیل نیاز آبیاری و کوددهی"])
 
-# --- Tab 1: Map and Ranking ---
 with tab1:
     st.header("📊 پایش مزارع (نقشه و رتبه‌بندی)")
     st.markdown("""
@@ -1616,14 +1507,15 @@ with tab1:
     """, unsafe_allow_html=True)
 
 
-    if filtered_farms_df.empty:
+    if farm_data_df.empty:
+        st.error("❌ داده‌های مزارع بارگذاری نشد یا خالی است. لطفاً فایل CSV مزارع را بررسی کنید.")
+    elif filtered_farms_df.empty:
         st.warning("⚠️ هیچ مزرعه‌ای برای روز و فیلترهای انتخابی یافت نشد. نمایش نقشه و رتبه‌بندی امکان‌پذیر نیست. لطفاً داده‌های مزارع یا فیلترهای انتخابی را بررسی کنید.")
     elif not gee_initialized:
          st.warning("⚠️ اتصال به Google Earth Engine برقرار نیست. نمایش نقشه و شاخص‌های ماهواره‌ای امکان‌پذیر نمی‌باشد.")
     else:
-        # --- Get Selected Farm Geometry and Details ---
         selected_farm_details = None
-        selected_farm_gee_geom = None # Will store the ee.Geometry object
+        selected_farm_gee_geom = None
         center_lat = INITIAL_LAT
         center_lon = INITIAL_LON
         zoom_level = INITIAL_ZOOM
@@ -1633,19 +1525,17 @@ with tab1:
             selected_farm_details_list = filtered_farms_df[filtered_farms_df['مزرعه'] == selected_farm_name]
             if not selected_farm_details_list.empty:
                  selected_farm_details = selected_farm_details_list.iloc[0]
-                 # Get WGS84 centroid and GEE geometry from the processed DataFrame
                  lat = selected_farm_details.get('wgs84_centroid_lat')
                  lon = selected_farm_details.get('wgs84_centroid_lon')
                  selected_farm_gee_geom = selected_farm_details.get('ee_geometry')
 
                  if pd.notna(lat) and pd.notna(lon) and selected_farm_gee_geom is not None:
-                     # Use calculated centroid for map centering
                      center_lat = lat
                      center_lon = lon
                      zoom_level = 14
                  else:
                       st.warning(f"⚠️ مختصات WGS84 یا هندسه GEE معتبر برای مزرعه '{selected_farm_name}' یافت نشد. نمایش نقشه محدود خواهد بود.")
-                      selected_farm_gee_geom = None # Cannot create point geometry
+                      selected_farm_gee_geom = None
 
 
                  st.subheader(f"جزئیات مزرعه: {selected_farm_name} (روز: {selected_day})")
@@ -1663,30 +1553,21 @@ with tab1:
                  is_single_farm = False
 
 
-        if not is_single_farm: # Handle "همه مزارع" case
-            # Create a single GEE geometry covering all filtered farms for image filtering
-            # Use the 'ee_geometry' column from the DataFrame
+        if not is_single_farm:
             all_farm_geometries = [geom for geom in filtered_farms_df['ee_geometry'] if geom is not None]
             if all_farm_geometries:
                 try:
                     selected_farm_gee_geom = ee.Geometry.MultiPolygon(all_farm_geometries)
-                    # Center map on the union of farm geometries
                     center = selected_farm_gee_geom.centroid(maxError=1).getInfo()['coordinates']
                     center_lon, center_lat = center[0], center[1]
-                    # Estimate zoom based on the bounding box of all farms
                     bounds = selected_farm_gee_geom.bounds().getInfo()
-                    # Simple zoom estimation (can be improved)
                     lon_diff = bounds['even'][2] - bounds['even'][0]
                     lat_diff = bounds['even'][3] - bounds['even'][1]
-                    # Adjust zoom based on the larger difference (rough estimate)
-                    # Example: world=1, continent=4, country=6, state=8, city=10, neighborhood=12, street=14, building=18
-                    # These thresholds are approximate and need tuning
                     if max(lon_diff, lat_diff) > 10: zoom_level = 6
                     elif max(lon_diff, lat_diff) > 5: zoom_level = 8
                     elif max(lon_diff, lat_diff) > 2: zoom_level = 10
                     elif max(lon_diff, lat_diff) > 0.5: zoom_level = 12
                     else: zoom_level = 13
-
 
                 except Exception as e:
                      st.warning(f"⚠️ خطا در ایجاد هندسه GEE برای همه مزارع: {e}. نقشه با مرکز پیش‌فرض نمایش داده می‌شود.")
@@ -1697,11 +1578,9 @@ with tab1:
 
 
             st.subheader(f"نمایش کلی مزارع برای روز: {selected_day}")
-            # --- تعداد مزارع در این روز (کارت زیبا) ---
             st.markdown(modern_metric_card("تعداد مزارع در این روز", f"{len(filtered_farms_df):,}", icon="fa-leaf", color="#185a9d"), unsafe_allow_html=True)
             st.caption("تعداد کل مزارع ثبت شده برای روز انتخاب شده.")
 
-            # --- نمودار درصد واریته در این روز ---
             if 'واریته' in filtered_farms_df.columns and not filtered_farms_df['واریته'].isna().all():
                 variety_counts = filtered_farms_df[filtered_farms_df['واریته'].astype(str).str.lower() != 'نامشخص']['واریته'].value_counts().sort_values(ascending=False)
                 if not variety_counts.empty:
@@ -1728,7 +1607,6 @@ with tab1:
                 st.info("⚠️ ستون واریته در داده‌های این روز وجود ندارد یا خالی است.")
 
 
-        # --- Map Display ---
         st.markdown("---")
         st.subheader("🗺️ نقشه وضعیت مزارع")
         st.markdown("نقشه، مقدار شاخص انتخابی را در هفته جاری نمایش می‌دهد.")
@@ -1772,12 +1650,11 @@ with tab1:
                     f"{selected_index} ({start_date_current_str} تا {end_date_current_str})"
                 )
 
-                # Add a semi-transparent layer of farm boundaries using the 'ee_geometry' column
                 farm_boundary_collection = ee.FeatureCollection([ee.Feature(geom) for geom in filtered_farms_df['ee_geometry'] if geom is not None])
-                if not farm_boundary_collection.size().getInfo() == 0: # Check if collection is not empty
+                if not farm_boundary_collection.size().getInfo() == 0:
                      m.addLayer(
                          farm_boundary_collection,
-                         {'color': 'yellow', 'fillColor': '00000000'}, # Yellow outline, transparent fill
+                         {'color': 'yellow', 'fillColor': '00000000'},
                          'محدوده مزارع'
                      )
                 else:
@@ -1828,17 +1705,11 @@ with tab1:
                 '''
                 m.get_root().html.add_child(folium.Element(legend_html))
 
-                # --- Add Farm Markers with Popups ---
-                # Use WGS84 centroid coordinates for marker location
-                # Use data from calculate_weekly_indices_for_table for popup info
-
-                # Calculate ranking data for map popups if "همه مزارع" selected
                 ranking_df_map_popups = pd.DataFrame()
                 if not is_single_farm and start_date_current_str and end_date_current_str and start_date_previous_str and end_date_previous_str:
                      with st.spinner("در حال آماده‌سازی اطلاعات مزارع برای نمایش در پاپ‌آپ‌های نقشه..."):
-                         # Call the index calculation function (it's cached)
                          ranking_df_map_popups, popup_calculation_errors = calculate_weekly_indices_for_table(
-                              filtered_farms_df, # Use the filtered_farms_df which includes 'ee_geometry'
+                              filtered_farms_df,
                               selected_index,
                               start_date_current_str,
                               end_date_current_str,
@@ -1847,10 +1718,9 @@ with tab1:
                          )
                          if popup_calculation_errors:
                              st.warning("⚠️ برخی خطاها در حین محاسبه شاخص‌ها برای پاپ‌آپ‌های نقشه رخ داد (تا ۵ خطا):")
-                             for error in popup_calculation_errors[:5]: st.warning(f"- {error}") # Show first 5
+                             for error in popup_calculation_errors[:5]: st.warning(f"- {error}")
 
 
-                # Add markers for farms
                 if not filtered_farms_df.empty:
                      for idx, farm in filtered_farms_df.iterrows():
                           lat = farm.get('wgs84_centroid_lat')
@@ -1862,17 +1732,12 @@ with tab1:
                                age = farm.get('سن', 'نامشخص')
                                variety = farm.get('واریته', 'نامشخص')
 
-                               # Get index values and status for the popup
                                current_index_val = 'N/A'
                                previous_index_val = 'N/A'
                                change_val_display = 'N/A'
                                status_text = "بدون داده"
 
                                if is_single_farm and selected_farm_details is not None:
-                                   # Use data from the details row if available
-                                   # This assumes the details row is consistent with ranking data structure
-                                   # For a single farm, the results are likely calculated for the table later
-                                   # Try to get data from the potential ranking_df if it exists
                                    farm_data_for_popup = None
                                    if 'ranking_df' in locals() and not ranking_df.empty:
                                         farm_data_for_popup_list = ranking_df[ranking_df['مزرعه'] == farm_name]
@@ -1888,7 +1753,6 @@ with tab1:
 
 
                                elif not is_single_farm and not ranking_df_map_popups.empty:
-                                    # Use the pre-calculated data for popups from the batch run
                                     farm_data_for_popup_list = ranking_df_map_popups[ranking_df_map_popups['مزرعه'] == farm_name]
                                     if not farm_data_for_popup_list.empty:
                                         farm_data_for_popup = farm_data_for_popup_list.iloc[0]
@@ -1942,7 +1806,6 @@ with tab1:
         st.info("💡 برای ذخیره نقشه، می‌توانید از ابزار عکس گرفتن از صفحه (Screenshot) مرورگر یا سیستم عامل خود استفاده کنید.")
 
 
-        # --- Time Series Chart ---
         st.markdown("---")
         st.subheader(f"📈 نمودار روند زمانی شاخص {selected_index}")
         st.markdown("روند تغییرات شاخص انتخابی برای مزرعه در یک سال گذشته (بر اساس تصاویر ماهواره‌ای بدون ابر).")
@@ -1954,15 +1817,13 @@ with tab1:
         elif selected_farm_details is None or pd.isna(selected_farm_details.get('wgs84_centroid_lat')) or pd.isna(selected_farm_details.get('wgs84_centroid_lon')):
              st.warning(f"⚠️ مختصات WGS84 معتبر برای مزرعه '{selected_farm_name}' یافت نشد. نمودار روند زمانی امکان‌پذیر نیست.")
         else:
-             # Use the WGS84 centroid for time series calculation
              point_geom_ts = ee.Geometry.Point([selected_farm_details['wgs84_centroid_lon'], selected_farm_details['wgs84_centroid_lat']])
 
-             # Define a longer period for the time series chart (e.g., last 1 year)
              timeseries_end_date = today.strftime('%Y-%m-%d')
              timeseries_start_date = (today - datetime.timedelta(days=365)).strftime('%Y-%m-%d')
 
              ts_df, ts_error = get_index_time_series(
-                 point_geom_ts, # Use the centroid geometry
+                 point_geom_ts,
                  selected_index,
                  start_date=timeseries_start_date,
                  end_date=timeseries_end_date
@@ -1986,19 +1847,14 @@ with tab1:
                  st.info(f"ℹ️ داده‌ای برای نمایش نمودار سری زمانی شاخص {selected_index} در بازه مشخص شده یافت نشد (احتمالاً به دلیل پوشش ابری مداوم).")
 
 
-        # ==============================================================================
-        # Ranking Table
-        # ==============================================================================
         st.markdown("---")
         st.subheader(f"📊 جدول رتبه‌بندی مزارع بر اساس {selected_index} (روز: {selected_day})")
         st.markdown("مقایسه مقادیر متوسط شاخص در هفته جاری با هفته قبل و تعیین وضعیت هر مزرعه.")
 
-        # This function calculates the weekly indices and is decorated with cache
-        @st.cache_data(show_spinner=False, persist="앱") # Hide default spinner, use custom progress bar
+        @st.cache_data(show_spinner=False, persist="disk") # Corrected persist option
         def calculate_weekly_indices_for_table(
             _farms_df, index_name, start_curr, end_curr, start_prev, end_prev
         ):
-            """Calculates the average index value for the current and previous week for a list of farms."""
             results = []
             errors = []
             total_farms = len(_farms_df)
@@ -2007,7 +1863,6 @@ with tab1:
 
             for i, (idx, farm) in enumerate(_farms_df.iterrows()):
                 farm_name = farm.get('مزرعه', f'مزرعه ناشناس ردیف {i+1}')
-                # Use the GEE geometry stored in the DataFrame
                 farm_gee_geom = farm.get('ee_geometry')
 
                 if farm_gee_geom is None:
@@ -2025,19 +1880,18 @@ with tab1:
                     progress_placeholder.markdown(modern_progress_bar(progress), unsafe_allow_html=True)
                     continue
 
-                # Function to get mean value for a single index and period using the farm polygon
                 def get_mean_value_single_index(start, end, index):
                      try:
-                          image, error = get_processed_image(farm_gee_geom, start, end, index) # Use farm polygon
+                          image, error = get_processed_image(farm_gee_geom, start, end, index)
                           if image:
                               mean_dict = image.select(index).reduceRegion(
                                   reducer=ee.Reducer.mean(),
-                                  geometry=farm_gee_geom, # Use farm polygon
+                                  geometry=farm_gee_geom,
                                   scale=10,
                                   bestEffort=True,
-                                  maxPixels=1e8 # Use larger maxPixels for polygon reduction
-                              ).get(index).getInfo() # Get the value and getInfo() directly
-                              return mean_dict, None # mean_dict is the scalar value
+                                  maxPixels=1e8
+                              ).get(index).getInfo()
+                              return mean_dict, None
                           else:
                               return None, error
                      except ee.EEException as e:
@@ -2046,11 +1900,9 @@ with tab1:
                           return None, f"Unknown Error for {farm_name} ({start}-{end}): {e}"
 
 
-                # Calculate for current week (only the selected index)
                 current_val, err_curr = get_mean_value_single_index(start_curr, end_curr, index_name)
                 if err_curr: errors.append(f"مزرعه '{farm_name}' (هفته جاری): {err_curr}")
 
-                # Calculate for previous week (only the selected index)
                 previous_val, err_prev = get_mean_value_single_index(start_prev, end_prev, index_name)
                 if err_prev: errors.append(f"مزرعه '{farm_name}' (هفته قبل): {err_prev}")
 
@@ -2082,7 +1934,6 @@ with tab1:
         calculation_errors = []
 
         if gee_initialized and start_date_current_str and end_date_current_str and start_date_previous_str and end_date_previous_str and not filtered_farms_df.empty:
-             # Pass the filtered_farms_df which contains the 'ee_geometry' column
              ranking_df, calculation_errors = calculate_weekly_indices_for_table(
                  filtered_farms_df,
                  selected_index,
@@ -2192,7 +2043,6 @@ with tab1:
                  st.subheader("🤖 خلاصه هوش مصنوعی از وضعیت مزارع")
                  if gemini_model:
                       with st.spinner("در حال تولید خلاصه هوش مصنوعی..."):
-                          # Pass ranking_df_sorted which has the 'وضعیت_نمایش' column
                           ai_map_summary = get_ai_map_summary(gemini_model, ranking_df_sorted, selected_index, selected_day)
                       st.markdown(ai_map_summary)
                  else:
@@ -2215,7 +2065,6 @@ with tab1:
     st.markdown("---")
 
 
-# --- Tab 2: Analysis Data Visualization ---
 with tab2:
     st.header("📈 تحلیل داده‌های فایل محاسبات")
     st.markdown("""
@@ -2307,7 +2156,7 @@ with tab2:
                                 st.caption("توزیع مساحت هر واریته به تفکیک سن.")
                             except Exception as e:
                                  st.error(f"❌ خطا در ایجاد نمودار هیستوگرام مساحت: {e}")
-                                 st.dataframe(df_area_melt)
+                                 st.dataframe(df_area_selected)
                         else:
                             st.info(f"ℹ️ داده معتبری برای هیستوگرام مساحت در اداره {selected_edareh} یافت نشد.")
 
@@ -2392,7 +2241,7 @@ with tab2:
 
     st.markdown("---")
 
-# --- Tab 3: Needs Analysis ---
+
 with tab3:
     st.header("💧 تحلیل نیاز آبیاری و کوددهی")
     st.markdown("""
@@ -2433,12 +2282,10 @@ with tab3:
              help="اگر مقدار NDVI در هفته جاری نسبت به هفته قبل بیش از این درصد کاهش یابد، هشدار نیاز به بررسی کوددهی صادر می‌شود. (افت منفی درصد را نشان می‌دهد)."
          )
 
-        # Use the GEE geometry from the selected farm details
         farm_gee_geom_needs = selected_farm_details.get('ee_geometry')
 
-        # Get the required index data for the selected farm using the polygon geometry
         farm_needs_data = get_farm_needs_data(
-            farm_gee_geom_needs, # Use the polygon geometry
+            farm_gee_geom_needs,
             start_date_current_str, end_date_current_str,
             start_date_previous_str, end_date_previous_str
         )
