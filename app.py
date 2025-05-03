@@ -117,7 +117,7 @@ st.markdown("""
 
 # --- Sidebar Logo ---
 # Assuming the logo path is relative to the app's root directory in deployment
-logo_path = 'MonitoringSugarcane-13/logo (1).png'
+logo_path = 'logo (1).png'
 if os.path.exists(logo_path):
     st.sidebar.markdown(
         f"""
