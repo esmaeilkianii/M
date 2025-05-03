@@ -134,48 +134,68 @@ def initialize_gee():
         st.stop()
 
 
-# --- Load Farm Data ---
+# --- Load Farm Data from GeoJSON ---
 @st.cache_data(show_spinner="در حال بارگذاری داده‌های مزارع...")
-def load_farm_data(csv_path=CSV_FILE_PATH):
-    """Loads farm data from the specified CSV file."""
+def load_farm_data_from_geojson(geojson_path='farm_geodata_fixed.geojson'):
+    """Loads farm data from the specified GeoJSON file."""
     try:
-        df = pd.read_csv(csv_path)
+        with open(geojson_path, 'r', encoding='utf-8') as f:
+            gj = json.load(f)
+        features = gj['features']
+        # Extract properties and geometry
+        records = []
+        for feat in features:
+            props = feat['properties']
+            geom = feat['geometry']
+            # For polygons, you may want centroid or all coordinates
+            if geom['type'] == 'Polygon':
+                coords = geom['coordinates'][0]  # Outer ring
+                # Calculate centroid for display/analysis
+                lons = [pt[0] for pt in coords]
+                lats = [pt[1] for pt in coords]
+                centroid_lon = sum(lons) / len(lons)
+                centroid_lat = sum(lats) / len(lats)
+            else:
+                centroid_lon, centroid_lat = None, None
+            record = {
+                **props,
+                'geometry_type': geom['type'],
+                'coordinates': geom['coordinates'],
+                'centroid_lon': centroid_lon,
+                'centroid_lat': centroid_lat
+            }
+            records.append(record)
+        df = pd.DataFrame(records)
         # Basic validation
-        required_cols = ['مزرعه', 'longitude', 'latitude', 'روز', 'گروه']
+        required_cols = ['مزرعه', 'centroid_lon', 'centroid_lat', 'روز', 'گروه']
         if not all(col in df.columns for col in required_cols):
-            st.error(f"❌ فایل CSV باید شامل ستون‌های ضروری باشد: {', '.join(required_cols)}")
+            st.error(f"❌ فایل GeoJSON باید شامل ستون‌های ضروری باشد: {', '.join(required_cols)}")
             st.stop()
-        # Convert coordinate columns to numeric, coercing errors
-        df['longitude'] = pd.to_numeric(df['longitude'], errors='coerce')
-        df['latitude'] = pd.to_numeric(df['latitude'], errors='coerce')
-
-        # Drop rows where essential coordinates are actually missing after coercion
+        # Drop rows where essential coordinates are missing
         initial_count = len(df)
-        df = df.dropna(subset=['longitude', 'latitude', 'روز'])
+        df = df.dropna(subset=['centroid_lon', 'centroid_lat', 'روز'])
         dropped_count = initial_count - len(df)
         if dropped_count > 0:
-            st.warning(f"⚠️ {dropped_count} رکورد به دلیل مقادیر نامعتبر یا خالی در ستون‌های مختصات یا روز حذف شدند.")
-
-
+            st.warning(f"⚠️ {dropped_count} رکورد به دلیل مقادیر نامعتبر یا خالی در مختصات یا روز حذف شدند.")
         if df.empty:
             st.warning("⚠️ داده معتبری برای مزارع یافت نشد (پس از حذف رکوردهای بدون مختصات یا روز).")
             st.stop()
-
-        # Ensure 'روز' is string type and normalize spaces (including non-breaking spaces)
         df['روز'] = df['روز'].astype(str).str.replace(r'\s+', ' ', regex=True).str.strip()
-        # Ensure 'گروه' is treated appropriately (e.g., as string or category)
         df['گروه'] = df['گروه'].astype(str).str.strip()
-
-
-        st.success(f"✅ داده‌های {len(df)} مزرعه با موفقیت بارگذاری شد.")
+        st.success(f"✅ داده‌های {len(df)} مزرعه با موفقیت از GeoJSON بارگذاری شد.")
         return df
     except FileNotFoundError:
-        st.error(f"❌ فایل '{csv_path}' یافت نشد. لطفاً فایل CSV داده‌های مزارع را در مسیر صحیح قرار دهید.")
+        st.error(f"❌ فایل '{geojson_path}' یافت نشد. لطفاً فایل GeoJSON داده‌های مزارع را در مسیر صحیح قرار دهید.")
         st.stop()
     except Exception as e:
-        st.error(f"❌ خطا در بارگذاری یا پردازش فایل CSV: {e}")
+        st.error(f"❌ خطا در بارگذاری یا پردازش فایل GeoJSON: {e}")
         st.error(traceback.format_exc())
         st.stop()
+
+# --- Use GeoJSON for farm data ---
+FARM_GEOJSON_PATH = 'farm_geodata_fixed.geojson'
+farm_df = load_farm_data_from_geojson(FARM_GEOJSON_PATH)
+# از این به بعد به جای farm_df['longitude'] و farm_df['latitude'] از farm_df['centroid_lon'] و farm_df['centroid_lat'] استفاده کنید
 
 # --- Load Analysis Data ---
 @st.cache_data(show_spinner="در حال بارگذاری داده‌های محاسبات...")
@@ -292,7 +312,7 @@ def load_analysis_data(csv_path='محاسبات 2.csv'):
 
 # Initialize GEE and Load Data
 if initialize_gee():
-    farm_data_df = load_farm_data()
+    farm_data_df = load_farm_data_from_geojson()
 
 # Load Analysis Data
 analysis_area_df, analysis_prod_df = load_analysis_data()
@@ -737,16 +757,16 @@ with tab1:
 
     if selected_farm_name == "همه مزارع":
         # Use the bounding box of all filtered farms for the map view
-        min_lon, min_lat = filtered_farms_df['longitude'].min(), filtered_farms_df['latitude'].min()
-        max_lon, max_lat = filtered_farms_df['longitude'].max(), filtered_farms_df['latitude'].max()
+        min_lon, min_lat = filtered_farms_df['centroid_lon'].min(), filtered_farms_df['centroid_lat'].min()
+        max_lon, max_lat = filtered_farms_df['centroid_lon'].max(), filtered_farms_df['centroid_lat'].max()
         # Create a bounding box geometry
         selected_farm_geom = ee.Geometry.Rectangle([min_lon, min_lat, max_lon, max_lat])
         st.subheader(f"نمایش کلی مزارع برای روز: {selected_day}")
         st.info(f"تعداد مزارع در این روز: {len(filtered_farms_df)}")
     else:
         selected_farm_details = filtered_farms_df[filtered_farms_df['مزرعه'] == selected_farm_name].iloc[0]
-        lat = selected_farm_details['latitude']
-        lon = selected_farm_details['longitude']
+        lat = selected_farm_details['centroid_lat']
+        lon = selected_farm_details['centroid_lon']
         selected_farm_geom = ee.Geometry.Point([lon, lat])
         st.subheader(f"جزئیات مزرعه: {selected_farm_name} (روز: {selected_day})")
         # Display farm details
@@ -883,7 +903,7 @@ with tab1:
                      # Add markers for all filtered farms
                      for idx, farm in filtered_farms_df.iterrows():
                          folium.Marker(
-                             location=[farm['latitude'], farm['longitude']],
+                             location=[farm['centroid_lat'], farm['centroid_lon']],
                              popup=f"مزرعه: {farm['مزرعه']}\nگروه: {farm.get('گروه', 'N/A')}",
                              tooltip=farm['مزرعه'],
                              icon=folium.Icon(color='blue', icon='info-sign')
@@ -1001,8 +1021,8 @@ with tab1:
 
         for i, (idx, farm) in enumerate(_farms_df.iterrows()):
             farm_name = farm['مزرعه']
-            lat = farm['latitude']
-            lon = farm['longitude']
+            lat = farm['centroid_lat']
+            lon = farm['centroid_lon']
             point_geom = ee.Geometry.Point([lon, lat])
 
             def get_mean_value(start, end):
