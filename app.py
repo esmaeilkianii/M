@@ -82,7 +82,7 @@ st.markdown("""
             }
              .status-positive { background-color: #218838; }
              .status-negative { background-color: #c82333; }
-             .status-neutral { background-color: #5a6268; }
+             .status-neutral { background-color: #5a6268; color: #fff; }
              .status-nodata { background-color: #d39e00; color: #f8f8f8;}
 
         }
@@ -362,7 +362,7 @@ def status_badge(status: str) -> str:
         badge_class = "status-positive"
     elif "تنش" in status or "کاهش" in status or "بدتر شدن" in status:
         badge_class = "status-negative"
-    elif "ثابت" in status:
+    elif "ثابت" in status or "رطوبت ثابت" in status or "پوشش گیاهی پایین" in status: # Added NDMI/Low vegetation neutral terms
         badge_class = "status-neutral"
     elif "بدون داده" in status or "N/A" in status:
          badge_class = "status-nodata"
@@ -792,690 +792,11 @@ else:
 analysis_area_df, analysis_prod_df = load_analysis_data()
 
 
-st.sidebar.header("تنظیمات نمایش")
-
-selected_day = None
-if not farm_data_df.empty and 'روز' in farm_data_df.columns:
-    available_days = sorted(farm_data_df['روز'].unique())
-    if not available_days or (len(available_days) == 1 and available_days[0] == 'نامشخص'):
-         st.sidebar.warning("هیچ روز هفته‌ای معتبری در داده‌های مزارع یافت نشد.")
-         selected_day = None
-    else:
-         valid_days = [d for d in available_days if d != 'نامشخص']
-         if not valid_days:
-              st.sidebar.warning("هیچ روز هفته‌ای معتبری در داده‌های مزارع یافت نشد.")
-              selected_day = None
-         else:
-            selected_day = st.sidebar.selectbox(
-                "📅 روز هفته را انتخاب کنید:",
-                options=valid_days,
-                index=0,
-                help="داده‌های مزارع بر اساس این روز فیلتر می‌شوند."
-            )
-else:
-     st.sidebar.info("ℹ️ داده مزارع برای فیلتر روز هفته در دسترس نیست.")
-     selected_day = None
-
-
-filtered_farms_df = pd.DataFrame()
-if selected_day and not farm_data_df.empty:
-    filtered_farms_df = farm_data_df[farm_data_df['روز'] == selected_day].copy()
-
-selected_farm_name = "همه مزارع"
-available_farms = []
-if not filtered_farms_df.empty:
-    available_farms = sorted(filtered_farms_df['مزرعه'].unique())
-    farm_options = ["همه مزارع"] + available_farms
-    selected_farm_name = st.sidebar.selectbox(
-        "🌾 مزرعه مورد نظر را انتخاب کنید:",
-        options=farm_options,
-        index=0,
-        help="مزرعه‌ای که می‌خواهید جزئیات آن را ببینید یا 'همه مزارع' برای نمایش کلی."
-    )
-else:
-    st.sidebar.info("ℹ️ مزارعی برای روز انتخابی یافت نشد.")
-
-
-index_options = {
-    "NDVI": "شاخص پوشش گیاهی تفاضلی نرمال شده",
-    "EVI": "شاخص پوشش گیاهی بهبود یافته",
-    "NDMI": "شاخص رطوبتی تفاضلی نرمال شده",
-    "LAI": "شاخص سطح برگ (تخمینی)",
-    "MSI": "شاخص تنش رطوبتی",
-    "CVI": "شاخص کلروفیل (تخمینی)",
-    "SAVI": "شاخص پوشش گیاهی تعدیل شده با خاک",
-}
-selected_index = st.sidebar.selectbox(
-    "📈 شاخص مورد نظر برای نمایش و رتبه‌بندی:",
-    options=list(index_options.keys()),
-    format_func=lambda x: f"{x} ({index_options[x]})",
-    index=0
-)
-
-today = datetime.date.today()
-start_date_current_str = None
-end_date_current_str = None
-start_date_previous_str = None
-end_date_previous_str = None
-
-if selected_day:
-    try:
-        persian_to_weekday = {
-            "شنبه": 5, "یکشنبه": 6, "دوشنبه": 0, "سه شنبه": 1,
-            "چهارشنبه": 2, "پنجشنبه": 3, "جمعه": 4,
-        }
-        target_weekday = persian_to_weekday[selected_day.strip()]
-        today_weekday = today.weekday()
-
-        days_ago = (today_weekday - target_weekday + 7) % 7
-        end_date_current = today - datetime.timedelta(days=days_ago)
-
-        start_date_current = end_date_current - datetime.timedelta(days=6)
-
-        end_date_previous = start_date_current - datetime.timedelta(days=1)
-        start_date_previous = end_date_previous - datetime.timedelta(days=6)
-
-        start_date_current_str = start_date_current.strftime('%Y-%m-%d')
-        end_date_current_str = end_date_current.strftime('%Y-%m-%d')
-        start_date_previous_str = start_date_previous.strftime('%Y-%m-%d')
-        end_date_previous_str = end_date_previous.strftime('%Y-%m-%d')
-
-        st.sidebar.info(f"**بازه زمانی فعلی:** {start_date_current_str} تا {end_date_current_str}")
-        st.sidebar.info(f"**بازه زمانی قبلی:** {start_date_previous_str} تا {end_date_previous_str}")
-
-    except KeyError:
-        st.sidebar.error(f"❌ نام روز هفته '{selected_day}' قابل شناسایی نیست. لطفاً روز معتبری را انتخاب کنید.")
-    except Exception as e:
-        st.sidebar.error(f"❌ خطا در محاسبه بازه زمانی: {e}")
-        st.error(traceback.format_exc())
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("ساخته شده با ❤️ با استفاده از Streamlit, Google Earth Engine, و geemap")
-
-
-def maskS2clouds(image):
-    qa = image.select('QA60')
-    cloudBitMask = 1 << 10
-    cirrusBitMask = 1 << 11
-    mask_qa = qa.bitwiseAnd(cloudBitMask).eq(0).And(
-             qa.bitwiseAnd(cirrusBitMask).eq(0))
-
-    scl = image.select('SCL')
-    masked_classes = [0, 1, 2, 3, 7, 8, 9, 10, 11]
-    mask_scl = scl.remap(masked_classes, [0] * len(masked_classes), 1)
-
-    final_mask = mask_qa.And(mask_scl)
-    opticalBands = image.select('B.*').multiply(0.0001)
-
-    return image.addBands(opticalBands, None, True)\
-                .updateMask(final_mask)
-
-def add_indices(image):
-    red = image.select('B4')
-    nir = image.select('B8')
-    blue = image.select('B2')
-    green = image.select('B3')
-    swir1 = image.select('B11')
-
-    epsilon = 1e-9
-
-    ndvi_denominator = nir.add(red)
-    ndvi = image.expression(
-        '(NIR - RED) / (NIR + RED)',
-        {'NIR': nir, 'RED': red}
-    ).rename('NDVI').updateMask(ndvi_denominator.gt(epsilon))
-
-    evi_denominator = nir.add(red.multiply(6)).subtract(blue.multiply(7.5)).add(1)
-    evi = image.expression(
-        '2.5 * (NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1)',
-        {'NIR': nir, 'RED': red, 'BLUE': blue}
-    ).rename('EVI').updateMask(evi_denominator.abs().gt(epsilon))
-
-    ndmi_denominator = nir.add(swir1)
-    ndmi = image.normalizedDifference(['B8', 'B11']).rename('NDMI').updateMask(ndmi_denominator.gt(epsilon))
-
-    savi_denominator = nir.add(red).add(0.5)
-    savi = image.expression(
-        '((NIR - RED) / (NIR + RED + L)) * (1 + L)',
-        {'NIR': nir, 'RED': red, 'L': 0.5}
-    ).rename('SAVI').updateMask(savi_denominator.gt(epsilon))
-
-    nir_safe = nir.max(ee.Image(epsilon))
-    msi = image.expression('SWIR1 / NIR', {'SWIR1': swir1, 'NIR': nir_safe}).rename('MSI')
-
-    lai = evi.multiply(3.618).subtract(0.118).rename('LAI').reproject(crs=image.projection().crs(), scale=10)
-    lai = lai.updateMask(lai.gt(0))
-
-    green_safe = green.max(ee.Image(epsilon))
-    cvi = image.expression('(NIR / GREEN) * (RED / GREEN)',
-                         {'NIR': nir, 'GREEN': green_safe, 'RED': red}
-    ).rename('CVI').reproject(crs=image.projection().crs(), scale=10)
-
-    return image.addBands([ndvi, evi, ndmi, msi, lai, cvi, savi])
-
-@st.cache_data(show_spinner=False, persist="disk")
-def get_processed_image(_geometry, start_date, end_date, index_name):
-    """
-    Gets cloud-masked, index-calculated Sentinel-2 median composite for a given geometry and date range.
-    Includes fallback date range logic if no images are found initially.
-    """
-    if not gee_initialized:
-        return None, "Google Earth Engine مقداردهی اولیه نشده است."
-    if _geometry is None:
-        return None, "هندسه معتبر برای پردازش GEE وجود ندارد."
-
-    initial_start_date = start_date
-    initial_end_date = end_date
-
-    # Attempt with the exact date range first
-    try:
-        s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-                     .filterBounds(_geometry)
-                     .filterDate(initial_start_date, initial_end_date)
-                     .map(maskS2clouds))
-
-        count = s2_sr_col.size().getInfo()
-
-        if count == 0:
-            # Fallback: Try a slightly wider date range (e.g., +7 days)
-            fallback_end_date = (datetime.datetime.strptime(initial_end_date, '%Y-%m-%d') + datetime.timedelta(days=7)).strftime('%Y-%m-%d')
-            print(f"No images found for {initial_start_date} to {initial_end_date}. Trying fallback range: {initial_start_date} to {fallback_end_date}") # Log fallback attempt
-
-            s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-                         .filterBounds(_geometry)
-                         .filterDate(initial_start_date, fallback_end_date) # Use extended end date
-                         .map(maskS2clouds))
-            count = s2_sr_col.size().getInfo()
-            if count > 0:
-                print(f"Found {count} images in fallback range. Using median composite.") # Log successful fallback
-            else:
-                 return None, f"هیچ تصویر Sentinel-2 بدون ابر در بازه {initial_start_date} تا {initial_end_date} (و بازه جایگزین تا {fallback_end_date}) یافت نشد."
-
-
-        indexed_col = s2_sr_col.map(add_indices)
-        median_image = indexed_col.median()
-
-        available_bands = median_image.bandNames().getInfo()
-        if index_name not in available_bands:
-             return None, f"شاخص '{index_name}' در تصاویر پردازش شده یافت نشد. باندهای موجود: {', '.join(available_bands)}"
-
-        output_image = median_image.select(index_name)
-
-        return output_image, None
-    except ee.EEException as e:
-        error_message = f"خطای Google Earth Engine: {e}"
-        try:
-            error_details = e.args[0] if e.args else str(e)
-            if isinstance(error_details, str) and 'computation timed out' in error_details.lower():
-                 error_message += "\n(احتمالاً به دلیل حجم بالای پردازش یا بازه زمانی طولانی)"
-            elif isinstance(error_details, str) and 'user memory limit exceeded' in error_details.lower():
-                 error_message += "\n(احتمالاً به دلیل پردازش منطقه بزرگ یا عملیات پیچیده)"
-        except Exception:
-            pass
-        return None, error_message
-    except Exception as e:
-        error_message = f"خطای ناشناخته در پردازش GEE: {e}\n{traceback.format_exc()}"
-        return None, error_message
-
-@st.cache_data(show_spinner="در حال دریافت سری زمانی شاخص...", persist="disk")
-def get_index_time_series(_point_geom, index_name, start_date='2023-01-01', end_date=today.strftime('%Y-%m-%d')):
-    if not gee_initialized:
-        return pd.DataFrame(columns=['date', index_name]), "Google Earth Engine مقداردهی اولیه نشده است."
-    if _point_geom is None:
-        return pd.DataFrame(columns=['date', index_name]), "هندسه نقطه‌ای معتبر برای سری زمانی وجود ندارد."
-    try:
-        s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-                     .filterBounds(_point_geom)
-                     .filterDate(start_date, end_date)
-                     .map(maskS2clouds)
-                     .map(add_indices))
-
-        s2_sr_col = s2_sr_col.select([index_name])
-
-        def extract_value(image):
-            try:
-                value = image.reduceRegion(
-                    reducer=ee.Reducer.first(),
-                    geometry=_point_geom,
-                    scale=10,
-                    bestEffort=True
-                ).get(index_name)
-                return ee.Feature(None, {
-                    'date': image.date().format('YYYY-MM-dd'),
-                    index_name: value
-                })
-            except Exception as e:
-                 return ee.Feature(None, {
-                    'date': image.date().format('YYYY-MM-dd'),
-                    index_name: None
-                })
-
-        ts_features = s2_sr_col.map(extract_value).filter(ee.Filter.notNull([index_name]))
-
-        try:
-            ts_info = ts_features.getInfo()['features']
-        except ee.EEException as e:
-            return pd.DataFrame(columns=['date', index_name]), f"خطای GEE در دریافت اطلاعات سری زمانی: {e}"
-        except Exception as e:
-            return pd.DataFrame(columns=['date', index_name]), f"خطای ناشناخته در دریافت اطلاعات سری زمانی: {e}"
-
-        if not ts_info:
-            return pd.DataFrame(columns=['date', index_name]), "داده‌ای برای سری زمانی در بازه مشخص شده یافت نشد (ممکن است به دلیل پوشش ابری یا خطای پردازش باشد)."
-
-        ts_data = []
-        for f in ts_info:
-            properties = f['properties']
-            if index_name in properties:
-                 ts_data.append({'date': properties['date'], index_name: properties[index_name]})
-
-        ts_df = pd.DataFrame(ts_data)
-        if ts_df.empty:
-             return pd.DataFrame(columns=['date', index_name]), "داده معتبری برای سری زمانی یافت نشد (پس از حذف مقادیر خالی)."
-
-        ts_df['date'] = pd.to_datetime(ts_df['date'])
-        ts_df = ts_df.sort_values('date').set_index('date')
-
-        return ts_df, None
-    except ee.EEException as e:
-        error_message = f"خطای GEE در دریافت سری زمانی: {e}"
-        st.error(error_message)
-        return pd.DataFrame(columns=['date', index_name]), error_message
-    except Exception as e:
-        error_message = f"خطای ناشناخته در دریافت سری زمانی: {e}\n{traceback.format_exc()}"
-        st.error(error_message)
-        return pd.DataFrame(columns=['date', index_name]), error_message
-
-@st.cache_data(show_spinner=False, persist="disk")
-def get_farm_needs_data(_farm_geometry, start_curr, end_curr, start_prev, end_prev):
-    if not gee_initialized:
-        results = {'error': "Google Earth Engine مقداردهی اولیه نشده است."}
-        return results
-    if _farm_geometry is None:
-        results = {'error': "هندسه معتبر برای محاسبه شاخص‌های نیازسنجی وجود ندارد."}
-        return results
-
-    results = {
-        'NDVI_curr': None, 'NDMI_curr': None, 'EVI_curr': None, 'SAVI_curr': None,
-        'NDVI_prev': None, 'NDMI_prev': None, 'EVI_prev': None, 'SAVI_prev': None,
-        'error': None
-    }
-    indices_to_get = ['NDVI', 'NDMI', 'EVI', 'SAVI']
-
-    def get_mean_values_for_period(start, end):
-        period_values = {index: None for index in indices_to_get}
-        error_msg = None
-        try:
-            s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-                         .filterBounds(_farm_geometry)
-                         .filterDate(start, end)
-                         .map(maskS2clouds))
-
-            count = s2_sr_col.size().getInfo()
-            if count == 0:
-                # Fallback logic (similar to get_processed_image)
-                fallback_end_date = (datetime.datetime.strptime(end, '%Y-%m-%d') + datetime.timedelta(days=7)).strftime('%Y-%m-%d')
-                s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-                             .filterBounds(_farm_geometry)
-                             .filterDate(start, fallback_end_date)
-                             .map(maskS2clouds))
-                count = s2_sr_col.size().getInfo()
-                if count == 0:
-                    return period_values, f"هیچ تصویری در بازه {start}-{end} (و بازه جایگزین تا {fallback_end_date}) یافت نشد"
-
-
-            indexed_col = s2_sr_col.map(add_indices)
-            median_image = indexed_col.median()
-
-            available_bands = median_image.bandNames().getInfo()
-            indices_to_reduce = [idx for idx in indices_to_get if idx in available_bands]
-
-            if not indices_to_reduce:
-                 return period_values, f"هیچ یک از شاخص‌های مورد نیاز ({', '.join(indices_to_get)}) در تصاویر پردازش شده برای بازه {start}-{end} یافت نشد."
-
-
-            selected_bands = median_image.select(indices_to_reduce)
-            mean_dict = selected_bands.reduceRegion(
-                reducer=ee.Reducer.mean(),
-                geometry=_farm_geometry,
-                scale=10,
-                bestEffort=True,
-                maxPixels=1e8
-            ).getInfo()
-
-            if mean_dict:
-                for index in indices_to_reduce:
-                    if index in mean_dict and mean_dict[index] is not None:
-                         period_values[index] = mean_dict[index]
-
-            return period_values, None
-        except ee.EEException as e:
-            error_msg = f"خطای GEE در بازه {start}-{end}: {e}"
-            return period_values, error_msg
-        except Exception as e:
-            error_msg = f"خطای ناشناخته در بازه {start}-{end}: {e}\n{traceback.format_exc()}"
-            return period_values, error_msg
-
-    curr_values, err_curr = get_mean_values_for_period(start_curr, end_curr)
-    if err_curr:
-        results['error'] = f"خطا در بازه جاری: {err_curr}"
-    results['NDVI_curr'] = curr_values.get('NDVI')
-    results['NDMI_curr'] = curr_values.get('NDMI')
-    results['EVI_curr'] = curr_values.get('EVI')
-    results['SAVI_curr'] = curr_values.get('SAVI')
-
-
-    prev_values, err_prev = get_mean_values_for_period(start_prev, end_prev)
-    if err_prev:
-        if results.get('error'):
-             results['error'] += f"\nخطا در بازه قبلی: {err_prev}"
-        else:
-             results['error'] = f"خطا در بازه قبلی: {err_prev}"
-
-    if results.get('error') and 'خطا در بازه جاری:' in results['error'] and 'خطا در بازه قبلی:' in results['error']:
-         results['error'] = "خطا در هر دو بازه زمانی هنگام محاسبه شاخص‌های نیازسنجی."
-    elif results.get('error'):
-         pass
-    elif pd.isna(results['NDVI_curr']) and pd.isna(results['NDMI_curr']) and pd.isna(results['EVI_curr']) and pd.isna(results['SAVI_curr']) and \
-         pd.isna(results['NDVI_prev']) and pd.isna(results['NDMI_prev']) and pd.isna(results['EVI_prev']) and pd.isna(results['SAVI_prev']):
-         results['error'] = "هیچ داده شاخصی برای بازه‌های زمانی مشخص شده یافت نشد."
-
-    results['NDVI_prev'] = prev_values.get('NDVI')
-    results['NDMI_prev'] = prev_values.get('NDMI')
-    results['EVI_prev'] = prev_values.get('EVI')
-    results['SAVI_prev'] = prev_values.get('SAVI')
-
-
-    return results
-
-@st.cache_resource(show_spinner="در حال پیکربندی سرویس هوش مصنوعی...")
-def configure_gemini(api_key): # Accept API key as parameter
-    """Configures the Gemini API client."""
-    try:
-        if not api_key:
-             st.error("❌ کلید API جمینای در دسترس نیست.")
-             st.info("لطفاً کلید API را در کد برنامه یا در Streamlit Secrets تنظیم کنید.")
-             return None
-
-        genai.configure(api_key=api_key)
-
-        safety_settings = [
-            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-        ]
-
-        model = genai.GenerativeModel('gemini-1.5-flash', safety_settings=safety_settings)
-        print("Gemini Configured Successfully.")
-        return model
-    except Exception as e:
-        st.error(f"❌ خطا در تنظیم Gemini API: {e}")
-        st.error(traceback.format_exc())
-        return None
-
-@st.cache_data(show_spinner="در حال دریافت تحلیل هوش مصنوعی...", persist="disk")
-def get_ai_needs_analysis(_model, farm_name, index_data, recommendations):
-    """Generates AI analysis for the farm's condition related to needs."""
-    if _model is None:
-        return "سرویس هوش مصنوعی در دسترس نیست."
-
-    data_str_parts = []
-    indices_to_display = ['NDVI', 'NDMI', 'EVI', 'SAVI']
-    for idx in indices_to_display:
-         curr_val = index_data.get(f'{idx}_curr')
-         prev_val = index_data.get(f'{idx}_prev')
-
-         if pd.notna(curr_val):
-              line = f"- {idx} فعلی: {curr_val:.3f}"
-              if pd.notna(prev_val):
-                  line += f" (قبلی: {prev_val:.3f}"
-                  if prev_val is not None and prev_val != 0 and pd.notna(prev_val):
-                      change_percent = ((curr_val - prev_val) / prev_val) * 100
-                      # Provide context for change
-                      change_status = ""
-                      if idx in ['NDVI', 'EVI', 'LAI', 'CVI', 'SAVI']: # Higher is better
-                           change_status = "افزایش" if change_percent > 0 else ("کاهش" if change_percent < 0 else "بدون تغییر")
-                      elif idx == 'MSI': # Lower is better
-                           change_status = "بهبود (کاهش تنش)" if change_percent < 0 else ("افزایش تنش" if change_percent > 0 else "بدون تغییر")
-                      elif idx == 'NDMI': # Higher is better
-                            change_status = "افزایش رطوبت" if change_percent > 0 else ("کاهش رطوبت" if change_percent < 0 else "بدون تغییر")
-
-
-                      line += f", تغییر: {change_percent:.1f}%) - {change_status}"
-                  else:
-                      line += ")"
-              data_str_parts.append(line)
-         elif pd.notna(prev_val):
-              data_str_parts.append(f"- {idx} قبلی: {prev_val:.3f} (داده فعلی موجود نیست)")
-
-
-    data_str = "\n".join(data_str_parts) if data_str_parts else "داده‌های شاخص در دسترس نیست."
-
-    recommendations_str = "\n".join([f"- {rec}" for rec in recommendations]) if recommendations else 'هیچ توصیه‌ای بر اساس قوانین اولیه وجود ندارد.'
-
-
-    prompt = f"""
-    شما یک متخصص کشاورزی باتجربه هستید که در زمینه پایش نیشکر با استفاده از داده‌های ماهواره‌ای تخصص دارید. لطفاً وضعیت مزرعه '{farm_name}' را با جزئیات و دقت بیشتری بر اساس داده‌های شاخص ماهواره‌ای و توصیه‌های اولیه زیر تحلیل کنید. تحلیل شما باید جامع، کاربردی و قابل ارائه به مدیران یا کارشناسان کشاورزی باشد. به ارتباط بین شاخص‌ها (مثلاً NDMI و NDVI) و نیازهای احتمالی مزرعه (آبیاری، کوددهی، یا سایر عوامل تنش‌زا) اشاره کنید. تحلیل شما باید شامل موارد زیر باشد:
-
-    1.  **ارزیابی وضعیت فعلی:** وضعیت سلامت پوشش گیاهی و رطوبت بر اساس مقادیر شاخص‌های فعلی (NDVI, NDMI, EVI, SAVI).
-    2.  **تحلیل روند:** مقایسه شاخص‌های فعلی با هفته قبل و توضیح معانی تغییرات مشاهده شده (رشد مثبت، کاهش، تنش، بهبود رطوبت، افزایش تنش و...).
-    3.  **شناسایی نیازها و عوامل تنش‌زا:** با توجه به مقادیر و روند شاخص‌ها، به نیازهای احتمالی (آبیاری اگر NDMI پایین است، کوددهی اگر NDVI/EVI کاهش یافته با وجود رطوبت کافی، بررسی آفات یا بیماری‌ها اگر شاخص‌های سلامت کاهش یافته و رطوبت مناسب است و...) اشاره کنید. توصیه‌های اولیه (سیستم قوانین ساده) را در تحلیل خود لحاظ کنید.
-    4.  **توصیه‌های کلی:** ارائه راهنمایی کلی بر اساس تحلیل برای اقدامات بعدی (بازدید میدانی، تنظیم برنامه آبیاری/کوددهی و...).
-
-    زبان تحلیل باید فارسی، تخصصی اما قابل فهم باشد.
-
-    داده‌های شاخص:
-{data_str}
-
-    توصیه‌های اولیه (سیستم قوانین ساده):
-{recommendations_str}
-
-    تحلیل جامع شما:
-    """
-
-    try:
-        response = _model.generate_content(prompt)
-        if response.candidates and response.candidates[0].content.parts:
-             return "".join([part.text for part in response.candidates[0].content.parts])
-        elif response.prompt_feedback and response.prompt_feedback.block_reason:
-             block_reason = response.prompt_feedback.block_reason.name
-             st.warning(f"⚠️ پاسخ Gemini به دلیل '{block_reason}' مسدود شد. پرامپت ممکن است نیاز به بازبینی داشته باشد.")
-             return "پاسخ هوش مصنوعی مسدود شد."
-        else:
-             st.warning("⚠️ پاسخ معتبری از Gemini دریافت نشد.")
-             return "پاسخ هوش مصنوعی در دسترس نیست."
-
-    except Exception as e:
-        st.warning(f"⚠️ خطا در ارتباط با Gemini API هنگام تحلیل نیازها: {e}")
-        st.warning(traceback.format_exc())
-        return "خطا در دریافت تحلیل هوش مصنوعی."
-
-
-@st.cache_data(show_spinner="در حال دریافت خلاصه هوش مصنوعی نقشه...", persist="disk")
-def get_ai_map_summary(_model, ranking_df_sorted, selected_index, selected_day):
-    """Generates AI summary for the overall map/ranking status."""
-    if _model is None:
-        return "سرویس هوش مصنوعی در دسترس نیست."
-
-    if ranking_df_sorted.empty:
-        return "داده‌ای برای خلاصه‌سازی وضعیت مزارع در این روز وجود ندارد."
-
-    negative_status_farms = ranking_df_sorted[ranking_df_sorted['وضعیت'].astype(str).str.contains("تنش|کاهش|بدتر", case=False, na=False)].copy()
-    positive_status_farms = ranking_df_sorted[ranking_df_sorted['وضعیت'].astype(str).str.contains("بهبود|رشد مثبت", case=False, na=False)].copy()
-    nodata_farms = ranking_df_sorted[ranking_df_sorted['وضعیت'].astype(str).str.contains("بدون داده", case=False, na=False)].copy()
-    neutral_farms = ranking_df_sorted[ranking_df_sorted['وضعیت'].astype(str).str.contains("ثابت", case=False, na=False)].copy()
-
-    summary_text = f"خلاصه وضعیت کلی مزارع برای روز {selected_day} بر اساس شاخص {selected_index}:\n"
-    summary_text += f"تعداد کل مزارع بررسی شده: {len(ranking_df_sorted)}\n"
-    summary_text += f"تعداد مزارع با وضعیت 'تنش/کاهش': {len(negative_status_farms)}\n"
-    summary_text += f"تعداد مزارع با وضعیت 'بهبود/رشد مثبت': {len(positive_status_farms)}\n"
-    summary_text += f"تعداد مزارع با وضعیت 'ثابت': {len(neutral_farms)}\n"
-    summary_text += f"تعداد مزارع 'بدون داده': {len(nodata_farms)}\n\n"
-
-    if not negative_status_farms.empty:
-        summary_text += "مزارعی که بیشترین نیاز به توجه فوری دارند (بیشترین تنش یا کاهش، تا ۵ مزرعه اول بر اساس رتبه):\n"
-        top_problem_farms = negative_status_farms.head(5)
-        for idx, row in top_problem_farms.iterrows():
-            farm_name_ai = row.get('مزرعه', 'نامشخص')
-            status_html_ai = row.get('وضعیت_نمایش', 'نامشخص')
-            status_text_ai = status_html_ai.replace('<span class="status-badge status-positive">', '').replace('<span class="status-badge status-negative">', '').replace('<span class="status-badge status-neutral">', '').replace('<span class="status-badge status-nodata">', '').replace('</span>', '')
-
-            current_index_val_ai = row.get(f'{selected_index} (هفته جاری)', 'N/A')
-            change_val_ai = row.get('تغییر', 'N/A')
-
-            current_index_display = f"{current_index_val_ai:.3f}" if pd.notna(current_index_val_ai) else 'N/A'
-            change_display = f"{change_val_ai:.3f}" if pd.notna(change_val_ai) else 'N/A'
-
-            summary_text += f"- رتبه {idx}: مزرعه {farm_name_ai}, وضعیت {status_text_ai}, شاخص هفته جاری: {current_index_display}, تغییر: {change_display}\n"
-
-
-    if not positive_status_farms.empty and len(positive_status_farms) > 0:
-         summary_text += "\nمزارعی که وضعیت بهبود یافته یا رشد مثبت نشان می‌دهند (تا ۵ مزرعه اول بر اساس رتبه):\n"
-         top_improving_farms = positive_status_farms.head(5)
-
-         for idx, row in top_improving_farms.iterrows():
-             farm_name_ai = row.get('مزرعه', 'نامشخص')
-             status_html_ai = row.get('وضعیت_نمایش', 'نامشخص')
-             status_text_ai = status_html_ai.replace('<span class="status-badge status-positive">', '').replace('<span class="status-badge status-negative">', '').replace('<span class="status-badge status-neutral">', '').replace('<span class="status-badge status-nodata">', '').replace('</span>', '')
-
-             current_index_val_ai = row.get(f'{selected_index} (هفته جاری)', 'N/A')
-             change_val_ai = row.get('تغییر', 'N/A')
-
-             current_index_display = f"{current_index_val_ai:.3f}" if pd.notna(current_index_val_ai) else 'N/A'
-             change_display = f"{change_val_ai:.3f}" if pd.notna(change_val_ai) else 'N/A'
-
-             summary_text += f"- رتبه {idx}: مزرعه {farm_name_ai}, وضعیت {status_text_ai}, شاخص هفته جاری: {current_index_display}, تغییر: {change_display}\n"
-
-
-    prompt = f"""
-    شما یک تحلیلگر داده‌های کشاورزی هستید و وظیفه دارید خلاصه‌ای کاربردی و حرفه‌ای از وضعیت کلی مزارع بر اساس داده‌های رتبه‌بندی ماهواره‌ای ارائه دهید. این خلاصه باید به مدیران یا کارشناسان کمک کند تا به سرعت وضعیت کلی را درک کرده و مزارع نیازمند اقدام را شناسایی کنند.
-
-    خلاصه شما باید شامل موارد زیر باشد:
-    1.  **تصویر کلی:** تعداد مزارع در هر دسته وضعیت (تنش/کاهش، بهبود/رشد مثبت، ثابت، بدون داده) و معنی کلی این توزیع چیست؟
-    2.  **مزارع بحرانی:** اشاره به مزارعی که بیشترین تنش یا کاهش را نشان داده‌اند (بر اساس لیست ارائه شده). چه اقداماتی برای این مزارع توصیه می‌شود؟ (بازدید میدانی، بررسی عوامل تنش‌زا).
-    3.  **مزارع با عملکرد خوب:** اشاره به مزارعی که بهبود یا رشد مثبت نشان داده‌اند (بر اساس لیست ارائه شده). آیا می‌توان از موفقیت این مزارع در سایر نقاط الگوبرداری کرد؟
-    4.  **داده‌های ناموجود:** توضیح کوتاه در مورد مزارع بدون داده و لزوم بررسی دستی یا استفاده از داده‌های دیگر برای آن‌ها.
-    5.  **اهمیت شاخص:** یادآوری کوتاه در مورد اینکه شاخص {selected_index} چه اطلاعاتی به ما می‌دهد.
-
-    زبان تحلیل باید فارسی و حرفه‌ای باشد.
-
-    داده‌های خلاصه رتبه‌بندی:
-{summary_text}
-
-    خلاصه تحلیل جامع شما:
-    """
-    try:
-        response = _model.generate_content(prompt)
-        if response.candidates and response.candidates[0].content.parts:
-            return "".join([part.text for part in response.candidates[0].content.parts])
-        elif response.prompt_feedback and response.prompt_feedback.block_reason:
-             block_reason = response.prompt_feedback.block_reason.name
-             st.warning(f"⚠️ پاسخ Gemini به دلیل '{block_reason}' مسدود شد.")
-             return "خلاصه هوش مصنوعی مسدود شد."
-        else:
-             st.warning("⚠️ پاسخ معتبری از Gemini برای خلاصه نقشه دریافت نشد.")
-             return "خلاصه هوش مصنوعی در دسترس نیست."
-    except Exception as e:
-        st.warning(f"⚠️ خطا در ارتباط با Gemini API هنگام خلاصه‌سازی نقشه: {e}")
-        st.warning(traceback.format_exc())
-        return "خطا در دریافت خلاصه هوش مصنوعی نقشه."
-
-
-def determine_status(row, index_name):
-    """Determines the status based on change in index value using fixed thresholds."""
-    # Fixed Thresholds (Not visible to the user)
-    NDMI_IRRIGATION_THRESHOLD = 0.25
-    NDVI_DROP_PERCENT_THRESHOLD = 5.0
-    # General thresholds for change significance
-    ABSOLUTE_CHANGE_THRESHOLD = 0.02
-    PERCENT_CHANGE_THRESHOLD = 3.0
-
-
-    current_val = row.get(f'{index_name} (هفته جاری)')
-    previous_val = row.get(f'{index_name} (هفته قبل)')
-    change_val = row.get('تغییر')
-
-    if pd.notna(current_val) and pd.notna(previous_val) and pd.notna(change_val):
-        percentage_change = None
-        if pd.notna(previous_val) and previous_val != 0:
-            try:
-                 percentage_change = (change_val / previous_val) * 100
-            except:
-                 percentage_change = None
-
-        is_significant_positive = change_val > ABSOLUTE_CHANGE_THRESHOLD or (percentage_change is not None and percentage_change > PERCENT_CHANGE_THRESHOLD)
-        is_significant_negative = change_val < -ABSOLUTE_CHANGE_THRESHOLD or (percentage_change is not None and percentage_change < -PERCENT_CHANGE_THRESHOLD)
-
-
-        if index_name in ['NDVI', 'EVI', 'LAI', 'CVI', 'SAVI']:
-            if is_significant_positive:
-                return "رشد مثبت / بهبود"
-            elif is_significant_negative:
-                return "تنش / کاهش"
-            else:
-                 return "ثابت"
-        elif index_name in ['MSI']:
-             is_significant_improvement = change_val < -ABSOLUTE_CHANGE_THRESHOLD or (percentage_change is not None and percentage_change < -PERCENT_CHANGE_THRESHOLD)
-             is_significant_deterioration = change_val > ABSOLUTE_CHANGE_THRESHOLD or (percentage_change is not None and percentage_change > PERCENT_CHANGE_THRESHOLD)
-
-             if is_significant_improvement:
-                return "بهبود"
-             elif is_significant_deterioration:
-                return "تنش / بدتر شدن"
-             else:
-                return "ثابت"
-        elif index_name == 'NDMI': # Specific logic for NDMI and irrigation need
-             # Check for low NDMI AND significant decrease
-             is_low_ndmi = pd.notna(current_val) and current_val <= NDMI_IRRIGATION_THRESHOLD
-             is_significant_decrease = change_val < -ABSOLUTE_CHANGE_THRESHOLD or (percentage_change is not None and percentage_change < -PERCENT_CHANGE_THRESHOLD)
-
-             if is_low_ndmi and (is_significant_decrease or pd.isna(previous_val)): # Low NDMI AND decreased OR no previous data to compare
-                  return "تنش رطوبتی / نیاز به آبیاری"
-             elif is_significant_positive: # Significant increase
-                 return "افزایش رطوبت / بهبود"
-             elif is_significant_negative: # Significant decrease (but not below threshold, or threshold not met)
-                 return "کاهش رطوبت"
-             else:
-                  return "رطوبت ثابت" # Within thresholds
-
-
-        else:
-            return "نامشخص"
-    elif pd.notna(current_val) and pd.isna(previous_val):
-         # If current data exists but previous doesn't, check current against a fixed threshold if applicable
-         if index_name == 'NDMI' and pd.notna(current_val) and current_val <= NDMI_IRRIGATION_THRESHOLD:
-              return "احتمال تنش رطوبتی (بدون داده قبل)"
-         # Add similar checks for low values of other indices if they indicate potential issues
-         # elif index_name in ['NDVI', 'EVI', 'LAI', 'CVI', 'SAVI'] and pd.notna(current_val) and current_val <= SOME_LOW_THRESHOLD:
-         #      return "پوشش گیاهی پایین (بدون داده قبل)"
-         else:
-              return "بدون داده هفته قبل"
-
-    elif pd.isna(current_val) and pd.notna(previous_val):
-         return "بدون داده هفته جاری"
-    else:
-        return "بدون داده"
-
-
-gee_initialized = initialize_gee()
-
-farm_data_df = pd.DataFrame()
-if transformer is not None:
-    farm_data_df = load_farm_data_from_csv()
-else:
-     st.error("❌ بارگذاری داده‌های مزارع به دلیل خطای پیکربندی سیستم مختصات امکان‌پذیر نیست.")
-
-
-analysis_area_df, analysis_prod_df = load_analysis_data()
-
-
 gemini_model = None
 if gee_initialized:
-    # Use the hardcoded API key
     gemini_model = configure_gemini(GEMINI_API_KEY_HARDCODED)
     if gemini_model is None:
          st.warning("⚠️ سرویس تحلیل هوش مصنوعی به دلیل خطای پیکربندی در دسترس نیست. قابلیت‌های تحلیل هوش مصنوعی غیرفعال است.")
-    # Add a prominent warning about hardcoding the API key
     st.warning("⚠️ **هشدار امنیتی:** کلید API جمینای مستقیماً در کد قرار داده شده است. این روش **ناامن** است و به شدت توصیه می‌شود از Streamlit Secrets برای مدیریت امن کلید استفاده کنید.", icon="🔒")
 
 
@@ -1517,7 +838,7 @@ with tab1:
                      center_lon = lon
                      zoom_level = 14
                  else:
-                      st.warning(f"⚠️ مختصات WGS84 یا هندسه GEE معتبر برای مزرعه '{selected_farm_name}' یافت نشد. نمایش نقشه محدود خواهد باشد.")
+                      st.warning(f"⚠️ مختصات WGS84 یا هندسه GEE معتبر برای مزرعه '{selected_farm_name}' یافت نشد. نمایش نقشه محدود خواهد بود.")
                       selected_farm_gee_geom = None
 
 
@@ -1990,29 +1311,27 @@ with tab1:
                  status_counts = ranking_df_sorted['وضعیت'].value_counts()
 
                  positive_terms = [s for s in status_counts.index if "بهبود" in s or "رشد مثبت" in s]
-                 negative_terms = [s for s in status_counts.index if any(sub in s for sub in ["تنش", "کاهش", "بدتر", "نیاز"])] # Added 'نیاز' for NDMI status
-                 neutral_terms = [s for s in status_counts.index if any(sub in s for sub in ["ثابت", "رطوبت ثابت", "پوشش گیاهی پایین"])] # Added more neutral terms
+                 negative_terms = [s for s in status_counts.index if any(sub in s for sub in ["تنش", "کاهش", "بدتر", "نیاز"])]
+                 neutral_terms = [s for s in status_counts.index if any(sub in s for sub in ["ثابت", "رطوبت ثابت", "پوشش گیاهی پایین"])]
                  nodata_terms = [s for s in status_counts.index if "بدون داده" in s]
 
                  col1, col2, col3, col4 = st.columns(4)
 
                  with col1:
                      pos_count = sum(status_counts.get(term, 0) for term in positive_terms)
-                     pos_label = "🟢 بهبود"
-                     st.metric(pos_label, pos_count)
+                     st.metric("🟢 بهبود", pos_count)
 
                  with col2:
                      neutral_count = sum(status_counts.get(term, 0) for term in neutral_terms)
-                     st.metric(f"⚪ {neutral_term}", neutral_count)
+                     st.metric("⚪ ثابت", neutral_count) # Corrected label to use a static string
 
                  with col3:
                      neg_count = sum(status_counts.get(term, 0) for term in negative_terms)
-                     neg_label = "🔴 تنش"
-                     st.metric(neg_label, neg_count)
+                     st.metric("🔴 تنش", neg_count)
 
                  with col4:
                       nodata_count = sum(status_counts.get(term, 0) for term in nodata_terms)
-                      st.metric(f"🟡 {nodata_term}", nodata_count)
+                      st.metric("🟡 بدون داده", nodata_count) # Corrected label to use a static string
 
                  st.info(f"""
                  **توضیحات وضعیت:**
@@ -2141,7 +1460,7 @@ with tab2:
                                  st.error(f"❌ خطا در ایجاد نمودار هیستوگرام مساحت: {e}")
                                  st.dataframe(df_area_selected)
                         else:
-                            st.info(f"ℹ️ داده معتبری برای هیستوگرام مساحت در اداره {selected_edareh} یافت نشد.")
+                             st.info(f"ℹ️ داده معتبری برای هیستوگرام مساحت در اداره {selected_edareh} یافت نشد.")
 
                     except KeyError:
                         st.error(f"❌ خطای دسترسی به داده اداره '{selected_edareh}' در داده مساحت. لطفاً ستون 'اداره' را بررسی کنید.")
@@ -2290,15 +1609,12 @@ with tab3:
             st.markdown("این توصیه‌ها بر اساس مقادیر شاخص و آستانه‌های داخلی سیستم، به‌صورت خودکار تولید می‌شوند:")
             recommendations = []
 
-            # Fixed Thresholds used internally for rule-based recommendations
             NDMI_IRRIGATION_THRESHOLD = 0.25
-            NDVI_DROP_PERCENT_THRESHOLD = 5.0 # This threshold is used in determine_status, can be referenced here
+            NDVI_DROP_PERCENT_THRESHOLD = 5.0
 
-            # 1. Irrigation Check (based on current NDMI)
             if pd.notna(farm_needs_data.get('NDMI_curr')) and farm_needs_data['NDMI_curr'] <= NDMI_IRRIGATION_THRESHOLD:
                 recommendations.append(f"💧 نیاز به آبیاری (NDMI = {farm_needs_data['NDMI_curr']:.3f} <= آستانه {NDMI_IRRIGATION_THRESHOLD:.2f})")
 
-            # 2. Fertilization Check (based on NDVI drop)
             current_ndvi = farm_needs_data.get('NDVI_curr')
             previous_ndvi = farm_needs_data.get('NDVI_prev')
 
@@ -2314,6 +1630,7 @@ with tab3:
                     recommendations.append("ℹ️ NDVI هفته قبل بسیار پایین بوده است. افزایش در هفته جاری مشاهده می‌شود.")
                  elif previous_ndvi is not None and previous_ndvi <= 0.01 and current_ndvi <= previous_ndvi:
                       recommendations.append("⚠️ NDVI در هفته جاری و هفته قبل بسیار پایین است. نیاز به بررسی وضعیت عمومی مزرعه.")
+
 
             elif pd.isna(previous_ndvi) and pd.notna(current_ndvi):
                  st.caption("ℹ️ داده NDVI هفته قبل برای بررسی افت در دسترس نیست.")
