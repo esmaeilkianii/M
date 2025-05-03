@@ -1,5 +1,3 @@
-# --- START OF FILE app (70)_enhanced.py ---
-
 import streamlit as st
 import pandas as pd
 import ee
