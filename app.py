@@ -1398,3 +1398,19 @@ with tab3:
 st.markdown("---")
 st.sidebar.markdown("---")
 st.sidebar.markdown("ساخته شده با استفاده از Streamlit, Google Earth Engine, و geemap")
+
+# --- Modern Progress Bar (HTML) ---
+def modern_progress_bar(progress: float) -> str:
+    """
+    Returns a modern styled HTML progress bar for Streamlit.
+    :param progress: float between 0 and 1
+    :return: HTML string
+    """
+    percent = int(progress * 100)
+    color = '#43cea2' if percent < 100 else '#185a9d'
+    return f'''
+    <div style="width: 100%; background: #e0f7fa; border-radius: 12px; height: 22px; margin: 8px 0; box-shadow: 0 2px 8px rgba(30,60,114,0.08);">
+      <div style="width: {percent}%; background: linear-gradient(90deg, {color} 0%, #185a9d 100%); height: 100%; border-radius: 12px; transition: width 0.3s;"></div>
+      <span style="position: absolute; left: 50%; top: 0; transform: translateX(-50%); color: #185a9d; font-weight: bold; line-height: 22px;">{percent}%</span>
+    </div>
+    '''
