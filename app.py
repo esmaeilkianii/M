@@ -13,25 +13,32 @@ import requests
 import traceback
 from streamlit_folium import st_folium
 import base64
-import google.generativeai as genai # Gemini API
-from shapely.geometry import Polygon # For creating polygon from coordinates
-import pyproj # For coordinate transformation
+import google.generativeai as genai
+from shapely.geometry import Polygon
+import pyproj
 
 # Define the source CRS (likely UTM Zone 39N for Khuzestan)
-SOURCE_CRS = "EPSG:32639" # WGS 84 / UTM zone 39N (Assuming this based on typical Khuzestan data)
+# Assuming WGS 84 / UTM zone 39N based on typical data format and region
+SOURCE_CRS = "EPSG:32639"
 TARGET_CRS = "EPSG:4326" # WGS 84 geographic 2D
 
-# Create a transformer for coordinate transformation
 transformer = None
 try:
     transformer = pyproj.Transformer.from_crs(SOURCE_CRS, TARGET_CRS, always_xy=True)
     print(f"Coordinate transformer created: {SOURCE_CRS} to {TARGET_CRS}")
 except pyproj.exceptions.CRSError as e:
     st.error(f"❌ خطای پیکربندی سیستم مختصات: {e}. لطفاً کدهای EPSG {SOURCE_CRS} و {TARGET_CRS} را بررسی کنید.")
-    # transformer remains None
 except Exception as e:
      st.error(f"❌ خطای ناشناخته در ایجاد تبدیل کننده مختصات: {e}")
-     # transformer remains None
+
+
+# --- HARDCODED GEMINI API KEY (SECURITY RISK - NOT RECOMMENDED) ---
+# As requested, the API key is hardcoded here.
+# !!! WARNING: This is a security vulnerability.
+# !!! It is strongly recommended to use Streamlit Secrets for API keys.
+# !!! https://docs.streamlit.io/develop/concepts/secrets
+GEMINI_API_KEY_HARDCODED = "AIzaSyC6ntMs3XDa3JTk07-6_BRRCduiQaRmQFQ"
+# --- END OF HARDCODED API KEY ---
 
 
 # --- Custom CSS for an Amazing and User-Friendly UI ---
@@ -44,98 +51,91 @@ st.set_page_config(
 
 st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700;900&display=swap'); /* Added Black weight */
+        @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700;900&display=swap');
         @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css');
 
         html, body, .main, .stApp {
             font-family: 'Vazirmatn', sans-serif !important;
-            background: linear-gradient(180deg, #e0f7fa 0%, #f8fafc 100%); /* Subtle top-down gradient */
-            color: #333; /* Darker text for readability */
+            background: linear-gradient(180deg, #e0f7fa 0%, #f8fafc 100%);
+            color: #333;
         }
 
-        /* Dark mode support - Enhanced */
         @media (prefers-color-scheme: dark) {
             html, body, .main, .stApp {
-                background: linear-gradient(180deg, #2b2b2b 0%, #3f3f3f 100%); /* Darker gradient */
-                color: #f8f8f8; /* Light text */
+                background: linear-gradient(180deg, #2b2b2b 0%, #3f3f3f 100%);
+                color: #f8f8f8;
             }
             .stTabs [data-baseweb="tab-list"] button [data-baseweb="tab"] {
-                color: #bbb !important; /* Lighter tab text in dark mode */
+                color: #bbb !important;
             }
              .stTabs [data-baseweb="tab-list"] button:hover {
-                color: #f8f8f8 !important; /* Hover effect */
+                color: #f8f8f8 !important;
             }
             .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
-                color: #43cea2 !important; /* Active tab color */
+                color: #43cea2 !important;
                  border-bottom-color: #43cea2 !important;
             }
              .modern-card {
-                background: linear-gradient(135deg, #1a435a 0%, #2a2a2a 100%); /* Darker card background */
+                background: linear-gradient(135deg, #1a435a 0%, #2a2a2a 100%);
                 color: #f8f8f8;
                 box-shadow: 0 4px 16px rgba(0,0,0,0.3);
             }
-             /* Adjust status badge colors for dark mode if needed */
-             .status-positive { background-color: #218838; } /* Darker Green */
-             .status-negative { background-color: #c82333; } /* Darker Red */
-             .status-neutral { background-color: #5a6268; } /* Darker Grey */
-             .status-nodata { background-color: #d39e00; color: #f8f8f8;} /* Darker Yellow, Light text */
+             .status-positive { background-color: #218838; }
+             .status-negative { background-color: #c82333; }
+             .status-neutral { background-color: #5a6268; }
+             .status-nodata { background-color: #d39e00; color: #f8f8f8;}
 
         }
-
 
         h1, h2, h3, h4, h5, h6 {
-            color: #185a9d; /* Consistent heading color */
-            font-weight: 700; /* Bold headings */
+            color: #185a9d;
+            font-weight: 700;
         }
          .stMarkdown h1 {
-             color: #185a9d !important; /* Ensure markdown h1 also gets color */
+             color: #185a9d !important;
          }
 
-        /* Modern card style */
         .modern-card {
             background: linear-gradient(135deg, #43cea2 0%, #185a9d 100%);
             color: white;
             border-radius: 18px;
-            padding: 20px; /* Slightly reduced padding */
-            margin: 15px 0; /* Increased margin */
-            box-shadow: 0 6px 20px rgba(30,60,114,0.1); /* More prominent shadow */
+            padding: 20px;
+            margin: 15px 0;
+            box-shadow: 0 6px 20px rgba(30,60,114,0.1);
             text-align: center;
             transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
-             overflow: hidden; /* Ensure content stays within bounds */
+             overflow: hidden;
         }
         .modern-card:hover {
             transform: translateY(-5px) scale(1.02);
             box-shadow: 0 10px 30px rgba(30,60,114,0.15);
         }
-        .modern-card div:first-child { /* Title */
+        .modern-card div:first-child {
             font-size: 1em;
             opacity: 0.9;
              margin-bottom: 8px;
         }
-         .modern-card div:last-child { /* Value */
-             font-size: 2em; /* Larger value font */
-             font-weight: 900; /* Extra bold value */
+         .modern-card div:last-child {
+             font-size: 2em;
+             font-weight: 900;
         }
 
-
-        /* Sidebar logo */
         .sidebar-logo {
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-bottom: 2rem; /* More space */
+            margin-bottom: 2rem;
              padding-top: 1rem;
         }
         .sidebar-logo img {
-            width: 100px; /* Larger logo */
-            height: 100px; /* Larger logo */
-            border-radius: 20px; /* More rounded corners */
+            width: 100px;
+            height: 100px;
+            border-radius: 20px;
             box-shadow: 0 4px 12px rgba(30,60,114,0.15);
         }
 
-        /* Main header logo */
         .main-logo {
-            width: 55px; /* Larger main logo */
+            width: 55px;
             height: 55px;
             border-radius: 15px;
             margin-left: 15px;
@@ -143,136 +143,101 @@ st.markdown("""
              box-shadow: 0 2px 8px rgba(30,60,114,0.1);
         }
 
-        /* Tabs Styling */
         .stTabs [data-baseweb="tab-list"] {
-            gap: 20px; /* Space between tabs */
+            gap: 20px;
         }
         .stTabs [data-baseweb="tab-list"] button {
-            background-color: #f0f2f6; /* Light background for tabs */
+            background-color: #f0f2f6;
             padding: 10px 15px;
             border-radius: 8px 8px 0 0;
-            border-bottom: 2px solid transparent; /* Underline effect */
+            border-bottom: 2px solid transparent;
             transition: all 0.3s ease;
              font-weight: 700;
              color: #555;
         }
          .stTabs [data-baseweb="tab-list"] button:hover {
-            background-color: #e2e6eb; /* Hover background */
+            background-color: #e2e6eb;
             color: #185a9d;
              border-bottom-color: #185a9d;
         }
         .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
-            background-color: #ffffff; /* Active tab background */
-            border-bottom-color: #43cea2; /* Active tab underline color */
+            background-color: #ffffff;
+            border-bottom-color: #43cea2;
             color: #185a9d;
              box-shadow: 0 -2px 8px rgba(30,60,114,0.05);
         }
          .stTabs [data-baseweb="tab-panel"] {
-             padding: 20px 5px; /* Padding inside tab content */
+             padding: 20px 5px;
          }
 
-
-        /* Status badges */
         .status-badge {
             display: inline-block;
-            padding: 0.3em 0.6em; /* Slightly larger padding */
-            font-size: 0.8em; /* Slightly larger font */
+            padding: 0.3em 0.6em;
+            font-size: 0.8em;
             font-weight: bold;
-            line-height: 1.2; /* Improved line height */
+            line-height: 1.2;
             text-align: center;
             white-space: nowrap;
-            vertical-align: middle; /* Align middle in table cells */
-            border-radius: 0.35rem; /* More rounded */
-            color: #fff; /* Default text color for badges */
-             margin: 2px; /* Small margin between badges if stacked */
+            vertical-align: middle;
+            border-radius: 0.35rem;
+            color: #fff;
+             margin: 2px;
         }
-        .status-positive {
-            background-color: #28a745; /* Green */
-        }
-        .status-negative {
-            background-color: #dc3545; /* Red */
-        }
-        .status-neutral {
-            background-color: #6c757d; /* Grey */
-             color: #fff;
-        }
-        .status-nodata {
-            background-color: #ffc107; /* Yellow */
-            color: #212529; /* Dark text */
-        }
+        .status-positive { background-color: #28a745; }
+        .status-negative { background-color: #dc3545; }
+        .status-neutral { background-color: #6c757d; color: #fff; }
+        .status-nodata { background-color: #ffc107; color: #212529; }
 
-        /* Table styling */
         table {
             border-collapse: collapse;
             width: 100%;
             margin: 20px 0;
              box-shadow: 0 4px 12px rgba(0,0,0,0.05);
              border-radius: 8px;
-             overflow: hidden; /* Hide corners of border-radius */
+             overflow: hidden;
         }
         th, td {
-            text-align: center; /* Center text in table cells */
+            text-align: center;
             padding: 10px;
             border-bottom: 1px solid #ddd;
-            vertical-align: middle !important; /* Center content vertically */
+            vertical-align: middle !important;
         }
         th {
-            background-color: #185a9d; /* Dark blue header */
+            background-color: #185a9d;
             color: white;
              font-weight: 700;
         }
-        tr:nth-child(even) {
-            background-color: #f2f2f2; /* Zebra striping */
-        }
+        tr:nth-child(even) { background-color: #f2f2f2; }
          @media (prefers-color-scheme: dark) {
-             table {
-                 box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-             }
-              th {
-                 background-color: #0e3a5d; /* Darker blue header */
-                 color: #f8f8f8;
-             }
-             tr:nth-child(even) {
-                background-color: #3a3a3a; /* Darker zebra striping */
-            }
-            tr:nth-child(odd) {
-                background-color: #2b2b2b; /* Dark mode odd row background */
-            }
-             td {
-                 border-bottom-color: #555;
-             }
+             table { box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+              th { background-color: #0e3a5d; color: #f8f8f8; }
+             tr:nth-child(even) { background-color: #3a3a3a; }
+            tr:nth-child(odd) { background-color: #2b2b2b; }
+             td { border-bottom-color: #555; }
          }
 
-
-        /* Info, Warning, Error boxes */
         .stAlert {
              border-radius: 8px;
              margin: 15px 0;
              padding: 15px;
-             display: flex; /* Use flexbox for better icon alignment */
-             align-items: flex-start; /* Align items to the top */
+             display: flex;
+             align-items: flex-start;
         }
-        .stAlert > div:first-child { /* Icon container */
+        .stAlert > div:first-child {
              font-size: 1.5em;
              margin-right: 15px;
-             flex-shrink: 0; /* Prevent icon from shrinking */
+             flex-shrink: 0;
         }
-         .stAlert > div:last-child { /* Text container */
+         .stAlert > div:last-child {
              font-size: 1em;
              line-height: 1.5;
-             flex-grow: 1; /* Allow text to grow */
+             flex-grow: 1;
          }
-          .stAlert a {
-              color: #185a9d; /* Link color in alerts */
-          }
+          .stAlert a { color: #185a9d; }
            @media (prefers-color-scheme: dark) {
-               .stAlert a {
-                   color: #43cea2; /* Link color in dark mode alerts */
-               }
+               .stAlert a { color: #43cea2; }
            }
 
-
-         /* Plotly Chart Styling */
          .js-plotly-plot {
              border-radius: 8px;
              overflow: hidden;
@@ -280,27 +245,20 @@ st.markdown("""
              box-shadow: 0 4px 12px rgba(0,0,0,0.05);
          }
          @media (prefers-color-scheme: dark) {
-             .js-plotly-plot {
-                 box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-             }
+             .js-plotly-plot { box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
          }
 
-
-         /* Sidebar Styling */
          .stSidebar {
-             background: linear-gradient(180deg, #cce7ff 0%, #e0f7fa 100%); /* Light blue gradient */
+             background: linear-gradient(180deg, #cce7ff 0%, #e0f7fa 100%);
              color: #333;
              padding: 20px;
          }
          @media (prefers-color-scheme: dark) {
              .stSidebar {
-                background: linear-gradient(180deg, #1a435a 0%, #2b2b2b 100%); /* Darker sidebar gradient */
+                background: linear-gradient(180deg, #1a435a 0%, #2b2b2b 100%);
                  color: #f8f8f8;
              }
-              .stSidebar label {
-                  color: #f8f8f8; /* Label color in dark mode */
-              }
-               /* Adjust sidebar input/select colors for dark mode if needed */
+              .stSidebar label { color: #f8f8f8; }
                 .stSidebar .stTextInput > div > div > input,
                 .stSidebar .stSelectbox > div > div > div > input[type="text"],
                 .stSidebar .stNumberInput > div > div > input {
@@ -314,26 +272,14 @@ st.markdown("""
                     border-color: #43cea2;
                     box-shadow: 0 0 5px rgba(67, 206, 162, 0.5);
                 }
-                 .stSidebar .stRadio > label > div:first-child {
-                     color: #f8f8f8;
-                 }
+                 .stSidebar .stRadio > label > div:first-child { color: #f8f8f8; }
 
          }
-          .stSidebar h2 {
-              color: #185a9d;
-          }
-          .stSidebar .stRadio > label > div:first-child {
-              padding-right: 10px;
-          }
-           .stSidebar .stSelectbox > label {
-               font-weight: 700;
-           }
-           .stSidebar .stSlider > label {
-               font-weight: 700;
-           }
+          .stSidebar h2 { color: #185a9d; }
+          .stSidebar .stRadio > label > div:first-child { padding-right: 10px; }
+           .stSidebar .stSelectbox > label { font-weight: 700; }
+           .stSidebar .stSlider > label { font-weight: 700; }
 
-
-         /* Improve input elements appearance */
          .stTextInput > div > div > input,
          .stSelectbox > div > div > div > input[type="text"],
          .stNumberInput > div > div > input {
@@ -350,7 +296,6 @@ st.markdown("""
              box-shadow: 0 0 5px rgba(67, 206, 162, 0.5);
          }
 
-         /* Buttons */
          .stButton > button {
              background-color: #185a9d;
              color: white;
@@ -361,34 +306,20 @@ st.markdown("""
              border: none;
              cursor: pointer;
          }
-          .stButton > button:hover {
-              background-color: #0f3c66;
-              transform: translateY(-1px);
-          }
-           .stButton > button:active {
-               transform: translateY(0);
-               background-color: #0a2840;
-           }
+          .stButton > button:hover { background-color: #0f3c66; transform: translateY(-1px); }
+           .stButton > button:active { transform: translateY(0); background-color: #0a2840; }
 
-         /* Download button specific styling */
-          .stDownloadButton > button {
-              background-color: #43cea2;
-          }
-           .stDownloadButton > button:hover {
-              background-color: #31a380;
-           }
-            .stDownloadButton > button:active {
-               background-color: #247a60;
-           }
+          .stDownloadButton > button { background-color: #43cea2; }
+           .stDownloadButton > button:hover { background-color: #31a380; }
+            .stDownloadButton > button:active { background-color: #247a60; }
 
-         /* Expander */
-          .stExpander {
+         .stExpander {
               border-radius: 8px;
               border: 1px solid #ddd;
               box-shadow: 0 2px 8px rgba(0,0,0,0.03);
               margin: 15px 0;
           }
-           .stExpander div[data-baseweb="accordion-header"] { /* Header */
+           .stExpander div[data-baseweb="accordion-header"] {
                background-color: #f8f8f8;
                border-bottom: 1px solid #ddd;
                border-top-left-radius: 8px;
@@ -397,14 +328,9 @@ st.markdown("""
                font-weight: 700;
                color: #333;
            }
-            .stExpander div[data-baseweb="accordion-panel"] { /* Content */
-                padding: 15px;
-            }
+            .stExpander div[data-baseweb="accordion-panel"] { padding: 15px; }
            @media (prefers-color-scheme: dark) {
-               .stExpander {
-                   border-color: #555;
-                   box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-               }
+               .stExpander { border-color: #555; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
                .stExpander div[data-baseweb="accordion-header"] {
                    background-color: #3a3a3a;
                    border-bottom-color: #555;
@@ -412,18 +338,9 @@ st.markdown("""
                }
            }
 
-           /* Separator Line */
-           hr {
-               border-top: 2px dashed #ccc;
-               margin: 30px 0;
-           }
-           @media (prefers-color-scheme: dark) {
-               hr {
-                    border-top: 2px dashed #555;
-               }
-           }
+           hr { border-top: 2px dashed #ccc; margin: 30px 0; }
+           @media (prefers-color-scheme: dark) { hr { border-top: 2px dashed #555; } }
 
-           /* Center metric values using CSS if needed - might be overridden by Streamlit defaults */
             [data-testid="stMetricValue"] {
                 text-align: center;
                 width: 100%;
@@ -435,12 +352,9 @@ st.markdown("""
                  display: block;
              }
 
-
     </style>
 """, unsafe_allow_html=True)
 
-
-# --- Helper Functions for UI Components ---
 
 def status_badge(status: str) -> str:
     """Returns HTML for a status badge with color."""
@@ -456,7 +370,6 @@ def status_badge(status: str) -> str:
         badge_class = "status-neutral"
 
     return f'<span class="status-badge {badge_class}">{status}</span>'
-
 
 def modern_metric_card(title: str, value: str, icon: str, color: str) -> str:
     """
@@ -474,7 +387,6 @@ def modern_metric_card(title: str, value: str, icon: str, color: str) -> str:
     </div>
     '''
 
-# --- Modern Progress Bar (HTML) ---
 def modern_progress_bar(progress: float) -> str:
     """
     Returns a modern styled HTML progress bar for Streamlit.
@@ -512,7 +424,6 @@ def modern_progress_bar(progress: float) -> str:
     </div>
     '''
 
-# --- Sidebar Logo ---
 st.sidebar.markdown(
     """
     <div class='sidebar-logo'>
@@ -522,7 +433,6 @@ st.sidebar.markdown(
     unsafe_allow_html=True
 )
 
-# --- Main Header with Logo ---
 st.markdown(
     """
     <div style='display: flex; align-items: center; gap: 16px; margin-bottom: 0.5rem;'>
@@ -534,20 +444,17 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- Configuration ---
 APP_TITLE = "سامانه پایش هوشمند نیشکر"
 APP_SUBTITLE = "مطالعات کاربردی شرکت کشت و صنعت دهخدا"
 INITIAL_LAT = 31.534442
 INITIAL_LON = 48.724416
 INITIAL_ZOOM = 12
 
-# --- File Paths (Relative to the script location or accessible via URL) ---
 FARM_DATA_CSV_PATH = 'merged_farm_data_renamed (1).csv'
 SERVICE_ACCOUNT_FILE = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json'
 ANALYSIS_CSV_PATH = 'محاسبات 2.csv'
 
 
-# --- GEE Authentication ---
 @st.cache_resource(show_spinner="در حال اتصال به Google Earth Engine...")
 def initialize_gee():
     """Initializes Google Earth Engine using the Service Account."""
@@ -582,7 +489,6 @@ def initialize_gee():
         return None
 
 
-# --- Load Farm Data from CSV ---
 @st.cache_data(show_spinner="در حال بارگذاری و پردازش داده‌های مزارع...", persist="disk") # Corrected persist option
 def load_farm_data_from_csv(csv_path=FARM_DATA_CSV_PATH):
     """Loads farm data from the specified CSV file and processes coordinates."""
@@ -603,7 +509,7 @@ def load_farm_data_from_csv(csv_path=FARM_DATA_CSV_PATH):
                 df = pd.read_csv(BytesIO(response.content), encoding='utf-8')
                 print(f"Loaded Farm data from URL: {github_raw_url}")
             except requests.exceptions.RequestException as e:
-                 st.error(f"❌ فایل '{csv_path}' در مسیر محلی یا از URL گیت‌هاب '{github_url}' یافت نشد یا قابل دسترسی نیست: {e}") # Corrected variable name
+                 st.error(f"❌ فایل '{csv_path}' در مسیر محلی یا از URL گیت‌هاب '{github_raw_url}' یافت نشد یا قابل دسترسی نیست: {e}")
                  return pd.DataFrame()
             except Exception as e:
                  st.error(f"❌ خطای غیرمنتظره در دریافت فایل CSV از URL: {e}")
@@ -626,7 +532,7 @@ def load_farm_data_from_csv(csv_path=FARM_DATA_CSV_PATH):
         df['wgs84_centroid_lon'] = None
         df['wgs84_centroid_lat'] = None
         df['ee_geometry'] = None
-        df['wgs84_polygon_coords'] = None # Column to store WGS84 polygon coordinates
+        df['wgs84_polygon_coords'] = None
 
         processed_records = []
         skipped_farms = []
@@ -693,7 +599,7 @@ def load_farm_data_from_csv(csv_path=FARM_DATA_CSV_PATH):
                     processed_row['wgs84_centroid_lon'] = centroid_lon_wgs84
                     processed_row['wgs84_centroid_lat'] = centroid_lat_wgs84
                     processed_row['ee_geometry'] = ee_polygon
-                    processed_row['wgs84_polygon_coords'] = [list(coord) for coord in shapely_polygon.exterior.coords] # Store as list of lists
+                    processed_row['wgs84_polygon_coords'] = [list(coord) for coord in shapely_polygon.exterior.coords]
 
                     processed_records.append(processed_row)
 
@@ -749,7 +655,6 @@ def load_farm_data_from_csv(csv_path=FARM_DATA_CSV_PATH):
         return pd.DataFrame()
 
 
-# --- Load Analysis Data ---
 @st.cache_data(show_spinner="در حال بارگذاری داده‌های محاسبات...", persist="disk") # Corrected persist option
 def load_analysis_data(csv_path=ANALYSIS_CSV_PATH):
     """Loads and preprocesses data from the analysis CSV file."""
@@ -875,22 +780,18 @@ def load_analysis_data(csv_path=ANALYSIS_CSV_PATH):
         return None, None
 
 
-# Initialize GEE and Load Data
 gee_initialized = initialize_gee()
 
 farm_data_df = pd.DataFrame()
-if transformer is not None: # Only try to load farm data if transformer is available
-    farm_data_df = load_farm_data_from_csv() # Load from CSV
+if transformer is not None:
+    farm_data_df = load_farm_data_from_csv()
 else:
      st.error("❌ بارگذاری داده‌های مزارع به دلیل خطای پیکربندی سیستم مختصات امکان‌پذیر نیست.")
 
 
-analysis_area_df, analysis_prod_df = load_analysis_data() # Load from CSV
+analysis_area_df, analysis_prod_df = load_analysis_data()
 
 
-# ==============================================================================
-# Sidebar Filters
-# ==============================================================================
 st.sidebar.header("تنظیمات نمایش")
 
 selected_day = None
@@ -992,10 +893,6 @@ st.sidebar.markdown("---")
 st.sidebar.markdown("ساخته شده با ❤️ با استفاده از Streamlit, Google Earth Engine, و geemap")
 
 
-# ==============================================================================
-# Google Earth Engine Functions
-# ==============================================================================
-
 def maskS2clouds(image):
     qa = image.select('QA60')
     cloudBitMask = 1 << 10
@@ -1056,21 +953,44 @@ def add_indices(image):
 
     return image.addBands([ndvi, evi, ndmi, msi, lai, cvi, savi])
 
-@st.cache_data(show_spinner=False, persist="disk") # Corrected persist option
+@st.cache_data(show_spinner=False, persist="disk")
 def get_processed_image(_geometry, start_date, end_date, index_name):
+    """
+    Gets cloud-masked, index-calculated Sentinel-2 median composite for a given geometry and date range.
+    Includes fallback date range logic if no images are found initially.
+    """
     if not gee_initialized:
         return None, "Google Earth Engine مقداردهی اولیه نشده است."
     if _geometry is None:
         return None, "هندسه معتبر برای پردازش GEE وجود ندارد."
+
+    initial_start_date = start_date
+    initial_end_date = end_date
+
+    # Attempt with the exact date range first
     try:
         s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
                      .filterBounds(_geometry)
-                     .filterDate(start_date, end_date)
+                     .filterDate(initial_start_date, initial_end_date)
                      .map(maskS2clouds))
 
         count = s2_sr_col.size().getInfo()
+
         if count == 0:
-             return None, f"هیچ تصویر Sentinel-2 بدون ابر در بازه {start_date} تا {end_date} یافت نشد."
+            # Fallback: Try a slightly wider date range (e.g., +7 days)
+            fallback_end_date = (datetime.datetime.strptime(initial_end_date, '%Y-%m-%d') + datetime.timedelta(days=7)).strftime('%Y-%m-%d')
+            print(f"No images found for {initial_start_date} to {initial_end_date}. Trying fallback range: {initial_start_date} to {fallback_end_date}") # Log fallback attempt
+
+            s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+                         .filterBounds(_geometry)
+                         .filterDate(initial_start_date, fallback_end_date) # Use extended end date
+                         .map(maskS2clouds))
+            count = s2_sr_col.size().getInfo()
+            if count > 0:
+                print(f"Found {count} images in fallback range. Using median composite.") # Log successful fallback
+            else:
+                 return None, f"هیچ تصویر Sentinel-2 بدون ابر در بازه {initial_start_date} تا {initial_end_date} (و بازه جایگزین تا {fallback_end_date}) یافت نشد."
+
 
         indexed_col = s2_sr_col.map(add_indices)
         median_image = indexed_col.median()
@@ -1097,7 +1017,7 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
         error_message = f"خطای ناشناخته در پردازش GEE: {e}\n{traceback.format_exc()}"
         return None, error_message
 
-@st.cache_data(show_spinner="در حال دریافت سری زمانی شاخص...", persist="disk") # Corrected persist option
+@st.cache_data(show_spinner="در حال دریافت سری زمانی شاخص...", persist="disk")
 def get_index_time_series(_point_geom, index_name, start_date='2023-01-01', end_date=today.strftime('%Y-%m-%d')):
     if not gee_initialized:
         return pd.DataFrame(columns=['date', index_name]), "Google Earth Engine مقداردهی اولیه نشده است."
@@ -1165,7 +1085,7 @@ def get_index_time_series(_point_geom, index_name, start_date='2023-01-01', end_
         st.error(error_message)
         return pd.DataFrame(columns=['date', index_name]), error_message
 
-@st.cache_data(show_spinner=False, persist="disk") # Corrected persist option
+@st.cache_data(show_spinner=False, persist="disk")
 def get_farm_needs_data(_farm_geometry, start_curr, end_curr, start_prev, end_prev):
     if not gee_initialized:
         results = {'error': "Google Earth Engine مقداردهی اولیه نشده است."}
@@ -1188,14 +1108,23 @@ def get_farm_needs_data(_farm_geometry, start_curr, end_curr, start_prev, end_pr
             s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
                          .filterBounds(_farm_geometry)
                          .filterDate(start, end)
-                         .map(maskS2clouds)
-                         .map(add_indices))
+                         .map(maskS2clouds))
 
             count = s2_sr_col.size().getInfo()
             if count == 0:
-                return period_values, f"هیچ تصویری در بازه {start}-{end} یافت نشد"
+                # Fallback logic (similar to get_processed_image)
+                fallback_end_date = (datetime.datetime.strptime(end, '%Y-%m-%d') + datetime.timedelta(days=7)).strftime('%Y-%m-%d')
+                s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+                             .filterBounds(_farm_geometry)
+                             .filterDate(start, fallback_end_date)
+                             .map(maskS2clouds))
+                count = s2_sr_col.size().getInfo()
+                if count == 0:
+                    return period_values, f"هیچ تصویری در بازه {start}-{end} (و بازه جایگزین تا {fallback_end_date}) یافت نشد"
 
-            median_image = s2_sr_col.median()
+
+            indexed_col = s2_sr_col.map(add_indices)
+            median_image = indexed_col.median()
 
             available_bands = median_image.bandNames().getInfo()
             indices_to_reduce = [idx for idx in indices_to_get if idx in available_bands]
@@ -1258,19 +1187,13 @@ def get_farm_needs_data(_farm_geometry, start_curr, end_curr, start_prev, end_pr
 
     return results
 
-# ==============================================================================
-# Gemini AI Helper Functions
-# ==============================================================================
-
 @st.cache_resource(show_spinner="در حال پیکربندی سرویس هوش مصنوعی...")
-def configure_gemini():
-    """Configures the Gemini API client using Streamlit secrets."""
+def configure_gemini(api_key): # Accept API key as parameter
+    """Configures the Gemini API client."""
     try:
-        api_key = st.secrets.get("GEMINI_API_KEY")
-
         if not api_key:
-             st.error("❌ کلید API جمینای (GEMINI_API_KEY) در فایل secrets.toml یافت نشد.")
-             st.info("لطفاً فایل .streamlit/secrets.toml را ایجاد کرده و کلید خود را در آن قرار دهید: \n```toml\nGEMINI_API_KEY = \"YOUR_API_KEY\"\n```")
+             st.error("❌ کلید API جمینای در دسترس نیست.")
+             st.info("لطفاً کلید API را در کد برنامه یا در Streamlit Secrets تنظیم کنید.")
              return None
 
         genai.configure(api_key=api_key)
@@ -1290,7 +1213,7 @@ def configure_gemini():
         st.error(traceback.format_exc())
         return None
 
-@st.cache_data(show_spinner="در حال دریافت تحلیل هوش مصنوعی...", persist="disk") # Corrected persist option
+@st.cache_data(show_spinner="در حال دریافت تحلیل هوش مصنوعی...", persist="disk")
 def get_ai_needs_analysis(_model, farm_name, index_data, recommendations):
     """Generates AI analysis for the farm's condition related to needs."""
     if _model is None:
@@ -1308,7 +1231,17 @@ def get_ai_needs_analysis(_model, farm_name, index_data, recommendations):
                   line += f" (قبلی: {prev_val:.3f}"
                   if prev_val is not None and prev_val != 0 and pd.notna(prev_val):
                       change_percent = ((curr_val - prev_val) / prev_val) * 100
-                      line += f", تغییر: {change_percent:.1f}%)"
+                      # Provide context for change
+                      change_status = ""
+                      if idx in ['NDVI', 'EVI', 'LAI', 'CVI', 'SAVI']: # Higher is better
+                           change_status = "افزایش" if change_percent > 0 else ("کاهش" if change_percent < 0 else "بدون تغییر")
+                      elif idx == 'MSI': # Lower is better
+                           change_status = "بهبود (کاهش تنش)" if change_percent < 0 else ("افزایش تنش" if change_percent > 0 else "بدون تغییر")
+                      elif idx == 'NDMI': # Higher is better
+                            change_status = "افزایش رطوبت" if change_percent > 0 else ("کاهش رطوبت" if change_percent < 0 else "بدون تغییر")
+
+
+                      line += f", تغییر: {change_percent:.1f}%) - {change_status}"
                   else:
                       line += ")"
               data_str_parts.append(line)
@@ -1322,15 +1255,22 @@ def get_ai_needs_analysis(_model, farm_name, index_data, recommendations):
 
 
     prompt = f"""
-    شما یک متخصص کشاورزی نیشکر هستید. لطفاً وضعیت مزرعه '{farm_name}' را بر اساس داده‌های شاخص ماهواره‌ای و توصیه‌های اولیه زیر تحلیل کنید و یک توضیح کوتاه، کاربردی و فارسی ارائه دهید. تمرکز تحلیل بر نیاز آبیاری و کودی بر اساس تغییرات شاخص‌ها باشد. توضیح شما باید به زبان ساده و قابل فهم برای کشاورز باشد و شامل موارد کلیدی باشد: وضعیت فعلی بر اساس شاخص‌ها، مقایسه با هفته قبل، و راهنمایی برای نیازهای احتمالی (آبیاری، کوددهی) بر اساس داده‌ها.
+    شما یک متخصص کشاورزی باتجربه هستید که در زمینه پایش نیشکر با استفاده از داده‌های ماهواره‌ای تخصص دارید. لطفاً وضعیت مزرعه '{farm_name}' را با جزئیات و دقت بیشتری بر اساس داده‌های شاخص ماهواره‌ای و توصیه‌های اولیه زیر تحلیل کنید. تحلیل شما باید جامع، کاربردی و قابل ارائه به مدیران یا کارشناسان کشاورزی باشد. به ارتباط بین شاخص‌ها (مثلاً NDMI و NDVI) و نیازهای احتمالی مزرعه (آبیاری، کوددهی، یا سایر عوامل تنش‌زا) اشاره کنید. تحلیل شما باید شامل موارد زیر باشد:
+
+    1.  **ارزیابی وضعیت فعلی:** وضعیت سلامت پوشش گیاهی و رطوبت بر اساس مقادیر شاخص‌های فعلی (NDVI, NDMI, EVI, SAVI).
+    2.  **تحلیل روند:** مقایسه شاخص‌های فعلی با هفته قبل و توضیح معانی تغییرات مشاهده شده (رشد مثبت، کاهش، تنش، بهبود رطوبت، افزایش تنش و...).
+    3.  **شناسایی نیازها و عوامل تنش‌زا:** با توجه به مقادیر و روند شاخص‌ها، به نیازهای احتمالی (آبیاری اگر NDMI پایین است، کوددهی اگر NDVI/EVI کاهش یافته با وجود رطوبت کافی، بررسی آفات یا بیماری‌ها اگر شاخص‌های سلامت کاهش یافته و رطوبت مناسب است و...) اشاره کنید. توصیه‌های اولیه (سیستم قوانین ساده) را در تحلیل خود لحاظ کنید.
+    4.  **توصیه‌های کلی:** ارائه راهنمایی کلی بر اساس تحلیل برای اقدامات بعدی (بازدید میدانی، تنظیم برنامه آبیاری/کوددهی و...).
+
+    زبان تحلیل باید فارسی، تخصصی اما قابل فهم باشد.
 
     داده‌های شاخص:
 {data_str}
 
-    توصیه‌های اولیه (بر اساس قوانین ساده):
+    توصیه‌های اولیه (سیستم قوانین ساده):
 {recommendations_str}
 
-    تحلیل شما (حداکثر ۳-۴ پاراگراف کوتاه):
+    تحلیل جامع شما:
     """
 
     try:
@@ -1351,7 +1291,7 @@ def get_ai_needs_analysis(_model, farm_name, index_data, recommendations):
         return "خطا در دریافت تحلیل هوش مصنوعی."
 
 
-@st.cache_data(show_spinner="در حال دریافت خلاصه هوش مصنوعی نقشه...", persist="disk") # Corrected persist option
+@st.cache_data(show_spinner="در حال دریافت خلاصه هوش مصنوعی نقشه...", persist="disk")
 def get_ai_map_summary(_model, ranking_df_sorted, selected_index, selected_day):
     """Generates AI summary for the overall map/ranking status."""
     if _model is None:
@@ -1360,12 +1300,12 @@ def get_ai_map_summary(_model, ranking_df_sorted, selected_index, selected_day):
     if ranking_df_sorted.empty:
         return "داده‌ای برای خلاصه‌سازی وضعیت مزارع در این روز وجود ندارد."
 
-    negative_status_farms = ranking_df_sorted[ranking_df_sorted['وضعیت'].astype(str).str.contains("تنش|کاهش|بدتر", case=False, na=False)]
-    positive_status_farms = ranking_df_sorted[ranking_df_sorted['وضعیت'].astype(str).str.contains("بهبود|رشد مثبت", case=False, na=False)]
-    nodata_farms = ranking_df_sorted[ranking_df_sorted['وضعیت'].astype(str).str.contains("بدون داده", case=False, na=False)]
-    neutral_farms = ranking_df_sorted[ranking_df_sorted['وضعیت'].astype(str).str.contains("ثابت", case=False, na=False)]
+    negative_status_farms = ranking_df_sorted[ranking_df_sorted['وضعیت'].astype(str).str.contains("تنش|کاهش|بدتر", case=False, na=False)].copy()
+    positive_status_farms = ranking_df_sorted[ranking_df_sorted['وضعیت'].astype(str).str.contains("بهبود|رشد مثبت", case=False, na=False)].copy()
+    nodata_farms = ranking_df_sorted[ranking_df_sorted['وضعیت'].astype(str).str.contains("بدون داده", case=False, na=False)].copy()
+    neutral_farms = ranking_df_sorted[ranking_df_sorted['وضعیت'].astype(str).str.contains("ثابت", case=False, na=False)].copy()
 
-    summary_text = f"خلاصه وضعیت مزارع برای روز {selected_day} بر اساس شاخص {selected_index}:\n"
+    summary_text = f"خلاصه وضعیت کلی مزارع برای روز {selected_day} بر اساس شاخص {selected_index}:\n"
     summary_text += f"تعداد کل مزارع بررسی شده: {len(ranking_df_sorted)}\n"
     summary_text += f"تعداد مزارع با وضعیت 'تنش/کاهش': {len(negative_status_farms)}\n"
     summary_text += f"تعداد مزارع با وضعیت 'بهبود/رشد مثبت': {len(positive_status_farms)}\n"
@@ -1373,7 +1313,7 @@ def get_ai_map_summary(_model, ranking_df_sorted, selected_index, selected_day):
     summary_text += f"تعداد مزارع 'بدون داده': {len(nodata_farms)}\n\n"
 
     if not negative_status_farms.empty:
-        summary_text += "مزارع با بیشترین تنش/کاهش (بر اساس رتبه، تا ۵ مزرعه اول):\n"
+        summary_text += "مزارعی که بیشترین نیاز به توجه فوری دارند (بیشترین تنش یا کاهش، تا ۵ مزرعه اول بر اساس رتبه):\n"
         top_problem_farms = negative_status_farms.head(5)
         for idx, row in top_problem_farms.iterrows():
             farm_name_ai = row.get('مزرعه', 'نامشخص')
@@ -1386,12 +1326,11 @@ def get_ai_map_summary(_model, ranking_df_sorted, selected_index, selected_day):
             current_index_display = f"{current_index_val_ai:.3f}" if pd.notna(current_index_val_ai) else 'N/A'
             change_display = f"{change_val_ai:.3f}" if pd.notna(change_val_ai) else 'N/A'
 
-
             summary_text += f"- رتبه {idx}: مزرعه {farm_name_ai}, وضعیت {status_text_ai}, شاخص هفته جاری: {current_index_display}, تغییر: {change_display}\n"
 
 
     if not positive_status_farms.empty and len(positive_status_farms) > 0:
-         summary_text += "\nمزارع با بیشترین بهبود/رشد (بر اساس رتبه، تا ۵ مزرعه اول):\n"
+         summary_text += "\nمزارعی که وضعیت بهبود یافته یا رشد مثبت نشان می‌دهند (تا ۵ مزرعه اول بر اساس رتبه):\n"
          top_improving_farms = positive_status_farms.head(5)
 
          for idx, row in top_improving_farms.iterrows():
@@ -1409,12 +1348,21 @@ def get_ai_map_summary(_model, ranking_df_sorted, selected_index, selected_day):
 
 
     prompt = f"""
-    شما یک تحلیلگر کشاورزی هستید. لطفاً یک خلاصه فارسی کوتاه، کاربردی و مفید از وضعیت کلی مزارع بر اساس داده‌های رتبه‌بندی و تعداد مزارع در هر وضعیت (تنش، بهبود، ثابت، بدون داده) ارائه دهید. به مزارعی که بیشترین تنش را دارند اشاره کنید. هدف این خلاصه ارائه یک دید کلی سریع به کاربر است.
+    شما یک تحلیلگر داده‌های کشاورزی هستید و وظیفه دارید خلاصه‌ای کاربردی و حرفه‌ای از وضعیت کلی مزارع بر اساس داده‌های رتبه‌بندی ماهواره‌ای ارائه دهید. این خلاصه باید به مدیران یا کارشناسان کمک کند تا به سرعت وضعیت کلی را درک کرده و مزارع نیازمند اقدام را شناسایی کنند.
+
+    خلاصه شما باید شامل موارد زیر باشد:
+    1.  **تصویر کلی:** تعداد مزارع در هر دسته وضعیت (تنش/کاهش، بهبود/رشد مثبت، ثابت، بدون داده) و معنی کلی این توزیع چیست؟
+    2.  **مزارع بحرانی:** اشاره به مزارعی که بیشترین تنش یا کاهش را نشان داده‌اند (بر اساس لیست ارائه شده). چه اقداماتی برای این مزارع توصیه می‌شود؟ (بازدید میدانی، بررسی عوامل تنش‌زا).
+    3.  **مزارع با عملکرد خوب:** اشاره به مزارعی که بهبود یا رشد مثبت نشان داده‌اند (بر اساس لیست ارائه شده). آیا می‌توان از موفقیت این مزارع در سایر نقاط الگوبرداری کرد؟
+    4.  **داده‌های ناموجود:** توضیح کوتاه در مورد مزارع بدون داده و لزوم بررسی دستی یا استفاده از داده‌های دیگر برای آن‌ها.
+    5.  **اهمیت شاخص:** یادآوری کوتاه در مورد اینکه شاخص {selected_index} چه اطلاعاتی به ما می‌دهد.
+
+    زبان تحلیل باید فارسی و حرفه‌ای باشد.
 
     داده‌های خلاصه رتبه‌بندی:
 {summary_text}
 
-    خلاصه تحلیل شما (حداکثر ۲-۳ پاراگراف کوتاه):
+    خلاصه تحلیل جامع شما:
     """
     try:
         response = _model.generate_content(prompt)
@@ -1433,20 +1381,21 @@ def get_ai_map_summary(_model, ranking_df_sorted, selected_index, selected_day):
         return "خطا در دریافت خلاصه هوش مصنوعی نقشه."
 
 
-# ==============================================================================
-# Helper Function for Status Determination
-# ==============================================================================
-
 def determine_status(row, index_name):
-    """Determines the status based on change in index value."""
+    """Determines the status based on change in index value using fixed thresholds."""
+    # Fixed Thresholds (Not visible to the user)
+    NDMI_IRRIGATION_THRESHOLD = 0.25
+    NDVI_DROP_PERCENT_THRESHOLD = 5.0
+    # General thresholds for change significance
+    ABSOLUTE_CHANGE_THRESHOLD = 0.02
+    PERCENT_CHANGE_THRESHOLD = 3.0
+
+
     current_val = row.get(f'{index_name} (هفته جاری)')
     previous_val = row.get(f'{index_name} (هفته قبل)')
     change_val = row.get('تغییر')
 
     if pd.notna(current_val) and pd.notna(previous_val) and pd.notna(change_val):
-        absolute_threshold = 0.02
-        percentage_threshold = 3
-
         percentage_change = None
         if pd.notna(previous_val) and previous_val != 0:
             try:
@@ -1454,11 +1403,11 @@ def determine_status(row, index_name):
             except:
                  percentage_change = None
 
+        is_significant_positive = change_val > ABSOLUTE_CHANGE_THRESHOLD or (percentage_change is not None and percentage_change > PERCENT_CHANGE_THRESHOLD)
+        is_significant_negative = change_val < -ABSOLUTE_CHANGE_THRESHOLD or (percentage_change is not None and percentage_change < -PERCENT_CHANGE_THRESHOLD)
 
-        if index_name in ['NDVI', 'EVI', 'LAI', 'CVI', 'NDMI', 'SAVI']:
-            is_significant_positive = change_val > absolute_threshold or (percentage_change is not None and percentage_change > percentage_threshold)
-            is_significant_negative = change_val < -absolute_threshold or (percentage_change is not None and percentage_change < -percentage_threshold)
 
+        if index_name in ['NDVI', 'EVI', 'LAI', 'CVI', 'SAVI']:
             if is_significant_positive:
                 return "رشد مثبت / بهبود"
             elif is_significant_negative:
@@ -1466,8 +1415,8 @@ def determine_status(row, index_name):
             else:
                  return "ثابت"
         elif index_name in ['MSI']:
-             is_significant_improvement = change_val < -absolute_threshold or (percentage_change is not None and percentage_change < -percentage_threshold)
-             is_significant_deterioration = change_val > absolute_threshold or (percentage_change is not None and percentage_change > percentage_threshold)
+             is_significant_improvement = change_val < -ABSOLUTE_CHANGE_THRESHOLD or (percentage_change is not None and percentage_change < -PERCENT_CHANGE_THRESHOLD)
+             is_significant_deterioration = change_val > ABSOLUTE_CHANGE_THRESHOLD or (percentage_change is not None and percentage_change > PERCENT_CHANGE_THRESHOLD)
 
              if is_significant_improvement:
                 return "بهبود"
@@ -1475,25 +1424,59 @@ def determine_status(row, index_name):
                 return "تنش / بدتر شدن"
              else:
                 return "ثابت"
+        elif index_name == 'NDMI': # Specific logic for NDMI and irrigation need
+             # Check for low NDMI AND significant decrease
+             is_low_ndmi = pd.notna(current_val) and current_val <= NDMI_IRRIGATION_THRESHOLD
+             is_significant_decrease = change_val < -ABSOLUTE_CHANGE_THRESHOLD or (percentage_change is not None and percentage_change < -PERCENT_CHANGE_THRESHOLD)
+
+             if is_low_ndmi and (is_significant_decrease or pd.isna(previous_val)): # Low NDMI AND decreased OR no previous data to compare
+                  return "تنش رطوبتی / نیاز به آبیاری"
+             elif is_significant_positive: # Significant increase
+                 return "افزایش رطوبت / بهبود"
+             elif is_significant_negative: # Significant decrease (but not below threshold, or threshold not met)
+                 return "کاهش رطوبت"
+             else:
+                  return "رطوبت ثابت" # Within thresholds
+
+
         else:
             return "نامشخص"
     elif pd.notna(current_val) and pd.isna(previous_val):
-         return "بدون داده هفته قبل"
+         # If current data exists but previous doesn't, check current against a fixed threshold if applicable
+         if index_name == 'NDMI' and pd.notna(current_val) and current_val <= NDMI_IRRIGATION_THRESHOLD:
+              return "احتمال تنش رطوبتی (بدون داده قبل)"
+         # Add similar checks for low values of other indices if they indicate potential issues
+         # elif index_name in ['NDVI', 'EVI', 'LAI', 'CVI', 'SAVI'] and pd.notna(current_val) and current_val <= SOME_LOW_THRESHOLD:
+         #      return "پوشش گیاهی پایین (بدون داده قبل)"
+         else:
+              return "بدون داده هفته قبل"
+
     elif pd.isna(current_val) and pd.notna(previous_val):
          return "بدون داده هفته جاری"
     else:
         return "بدون داده"
 
 
-# ==============================================================================
-# Main Application Layout (Using Tabs)
-# ==============================================================================
+gee_initialized = initialize_gee()
+
+farm_data_df = pd.DataFrame()
+if transformer is not None:
+    farm_data_df = load_farm_data_from_csv()
+else:
+     st.error("❌ بارگذاری داده‌های مزارع به دلیل خطای پیکربندی سیستم مختصات امکان‌پذیر نیست.")
+
+
+analysis_area_df, analysis_prod_df = load_analysis_data()
+
 
 gemini_model = None
 if gee_initialized:
-    gemini_model = configure_gemini()
+    # Use the hardcoded API key
+    gemini_model = configure_gemini(GEMINI_API_KEY_HARDCODED)
     if gemini_model is None:
          st.warning("⚠️ سرویس تحلیل هوش مصنوعی به دلیل خطای پیکربندی در دسترس نیست. قابلیت‌های تحلیل هوش مصنوعی غیرفعال است.")
+    # Add a prominent warning about hardcoding the API key
+    st.warning("⚠️ **هشدار امنیتی:** کلید API جمینای مستقیماً در کد قرار داده شده است. این روش **ناامن** است و به شدت توصیه می‌شود از Streamlit Secrets برای مدیریت امن کلید استفاده کنید.", icon="🔒")
 
 
 tab1, tab2, tab3 = st.tabs(["📊 پایش مزارع (نقشه و رتبه‌بندی)", "📈 تحلیل داده‌های محاسبات", "💧 تحلیل نیاز آبیاری و کوددهی"])
@@ -1534,7 +1517,7 @@ with tab1:
                      center_lon = lon
                      zoom_level = 14
                  else:
-                      st.warning(f"⚠️ مختصات WGS84 یا هندسه GEE معتبر برای مزرعه '{selected_farm_name}' یافت نشد. نمایش نقشه محدود خواهد بود.")
+                      st.warning(f"⚠️ مختصات WGS84 یا هندسه GEE معتبر برای مزرعه '{selected_farm_name}' یافت نشد. نمایش نقشه محدود خواهد باشد.")
                       selected_farm_gee_geom = None
 
 
@@ -1851,7 +1834,7 @@ with tab1:
         st.subheader(f"📊 جدول رتبه‌بندی مزارع بر اساس {selected_index} (روز: {selected_day})")
         st.markdown("مقایسه مقادیر متوسط شاخص در هفته جاری با هفته قبل و تعیین وضعیت هر مزرعه.")
 
-        @st.cache_data(show_spinner=False, persist="disk") # Corrected persist option
+        @st.cache_data(show_spinner=False, persist="disk")
         def calculate_weekly_indices_for_table(
             _farms_df, index_name, start_curr, end_curr, start_prev, end_prev
         ):
@@ -2007,9 +1990,9 @@ with tab1:
                  status_counts = ranking_df_sorted['وضعیت'].value_counts()
 
                  positive_terms = [s for s in status_counts.index if "بهبود" in s or "رشد مثبت" in s]
-                 negative_terms = [s for s in status_counts.index if any(sub in s for sub in ["تنش", "کاهش", "بدتر"])]
-                 neutral_term = "ثابت"
-                 nodata_term = "بدون داده"
+                 negative_terms = [s for s in status_counts.index if any(sub in s for sub in ["تنش", "کاهش", "بدتر", "نیاز"])] # Added 'نیاز' for NDMI status
+                 neutral_terms = [s for s in status_counts.index if any(sub in s for sub in ["ثابت", "رطوبت ثابت", "پوشش گیاهی پایین"])] # Added more neutral terms
+                 nodata_terms = [s for s in status_counts.index if "بدون داده" in s]
 
                  col1, col2, col3, col4 = st.columns(4)
 
@@ -2019,7 +2002,7 @@ with tab1:
                      st.metric(pos_label, pos_count)
 
                  with col2:
-                     neutral_count = status_counts.get(neutral_term, 0)
+                     neutral_count = sum(status_counts.get(term, 0) for term in neutral_terms)
                      st.metric(f"⚪ {neutral_term}", neutral_count)
 
                  with col3:
@@ -2028,14 +2011,14 @@ with tab1:
                      st.metric(neg_label, neg_count)
 
                  with col4:
-                      nodata_count = sum(status_counts.get(term, 0) for term in status_counts.index if "بدون داده" in term)
+                      nodata_count = sum(status_counts.get(term, 0) for term in nodata_terms)
                       st.metric(f"🟡 {nodata_term}", nodata_count)
 
                  st.info(f"""
                  **توضیحات وضعیت:**
                  - **🟢 بهبود/رشد مثبت**: مزارعی که نسبت به هفته قبل بهبود قابل توجهی داشته‌اند (افزایش شاخص‌هایی مانند NDVI یا کاهش شاخص‌هایی مانند MSI).
                  - **⚪ ثابت**: مزارعی که تغییر معناداری در شاخص نداشته‌اند (درون آستانه تغییر).
-                 - **🔴 تنش/کاهش/بدتر شدن**: مزارعی که نسبت به هفته قبل وضعیت نامطلوب‌تری داشته‌اند (کاهش شاخص‌هایی مانند NDVI یا افزایش شاخص‌هایی مانند MSI).
+                 - **🔴 تنش/کاهش/بدتر شدن**: مزارعی که نسبت به هفته قبل وضعیت نامطلوب‌تری داشته‌اند (کاهش شاخص‌هایی مانند NDVI یا افزایش شاخص‌هایی مانند MSI) یا نیاز آبیاری/کودی تشخیص داده شده است.
                  - **🟡 بدون داده**: مزارعی که به دلیل عدم دسترسی به تصاویر ماهواره‌ای بدون ابر در یک یا هر دو بازه زمانی، امکان محاسبه تغییرات وجود نداشته است.
                  """)
 
@@ -2246,7 +2229,7 @@ with tab3:
     st.header("💧 تحلیل نیاز آبیاری و کوددهی")
     st.markdown("""
     <div style="text-align: justify; margin-bottom: 20px;">
-    این بخش به شما کمک می‌کند تا با استفاده از شاخص‌های ماهواره‌ای مانند NDMI (رطوبت) و NDVI (سلامت پوشش گیاهی)، نیازهای احتمالی آبیاری و کوددهی مزرعه انتخابی را ارزیابی کنید. توصیه‌های اولیه بر اساس آستانه‌های قابل تنظیم ارائه می‌شوند و سپس تحلیل هوش مصنوعی دیدگاه جامع‌تری را فراهم می‌کند.
+    این بخش به شما کمک می‌کند تا با استفاده از شاخص‌های ماهواره‌ای مانند NDMI (رطوبت) و NDVI (سلامت پوشش گیاهی)، نیازهای احتمالی آبیاری و کوددهی مزرعه انتخابی را ارزیابی کنید. توصیه‌های اولیه بر اساس آستانه‌های از پیش تعیین شده ارائه می‌شوند و سپس تحلیل هوش مصنوعی دیدگاه جامع‌تری را فراهم می‌کند.
     </div>
     """, unsafe_allow_html=True)
 
@@ -2263,32 +2246,6 @@ with tab3:
          st.warning("⚠️ بازه‌های زمانی معتبر برای تحلیل نیازها در دسترس نیست. لطفاً روز هفته را انتخاب کنید.")
     else:
         st.subheader(f"تحلیل برای مزرعه: {selected_farm_name}")
-
-        st.markdown("---")
-        st.markdown("#### تنظیم آستانه‌ها برای تحلیل")
-        st.write("این آستانه‌ها برای ارائه توصیه‌های اولیه بر اساس قوانین ساده استفاده می‌شوند. مقادیر را بر اساس تجربه و شرایط منطقه تنظیم کنید.")
-
-        ndmi_threshold = st.number_input(
-             "آستانه پایین NDMI برای هشدار نیاز آبیاری:",
-             min_value=-1.0, max_value=1.0, value=0.25, step=0.01,
-             format="%.2f",
-             help="اگر مقدار NDMI در هفته جاری کمتر یا مساوی این مقدار باشد، هشدار نیاز به آبیاری صادر می‌شود. (محدوده: [-1, 1]). مقادیر بالاتر NDMI نشان‌دهنده رطوبت بیشتر است."
-         )
-
-        ndvi_drop_threshold_percent = st.number_input(
-             "آستانه افت NDVI برای بررسی نیاز کوددهی (%):",
-             min_value=0.0, max_value=100.0, value=5.0, step=0.5,
-             format="%.1f",
-             help="اگر مقدار NDVI در هفته جاری نسبت به هفته قبل بیش از این درصد کاهش یابد، هشدار نیاز به بررسی کوددهی صادر می‌شود. (افت منفی درصد را نشان می‌دهد)."
-         )
-
-        farm_gee_geom_needs = selected_farm_details.get('ee_geometry')
-
-        farm_needs_data = get_farm_needs_data(
-            farm_gee_geom_needs,
-            start_date_current_str, end_date_current_str,
-            start_date_previous_str, end_date_previous_str
-        )
 
         st.markdown("---")
         st.markdown("#### نتایج شاخص‌ها (هفته جاری و قبل)")
@@ -2330,12 +2287,18 @@ with tab3:
 
             st.markdown("---")
             st.markdown("#### توصیه‌های اولیه (بر اساس آستانه‌ها)")
-            st.markdown("این توصیه‌ها بر اساس مقادیر شاخص و آستانه‌هایی که شما تنظیم کرده‌اید، به‌صورت خودکار تولید می‌شوند:")
+            st.markdown("این توصیه‌ها بر اساس مقادیر شاخص و آستانه‌های داخلی سیستم، به‌صورت خودکار تولید می‌شوند:")
             recommendations = []
 
-            if pd.notna(farm_needs_data.get('NDMI_curr')) and farm_needs_data['NDMI_curr'] <= ndmi_threshold:
-                recommendations.append(f"💧 نیاز به آبیاری (NDMI = {farm_needs_data['NDMI_curr']:.3f} <= آستانه {ndmi_threshold:.2f})")
+            # Fixed Thresholds used internally for rule-based recommendations
+            NDMI_IRRIGATION_THRESHOLD = 0.25
+            NDVI_DROP_PERCENT_THRESHOLD = 5.0 # This threshold is used in determine_status, can be referenced here
 
+            # 1. Irrigation Check (based on current NDMI)
+            if pd.notna(farm_needs_data.get('NDMI_curr')) and farm_needs_data['NDMI_curr'] <= NDMI_IRRIGATION_THRESHOLD:
+                recommendations.append(f"💧 نیاز به آبیاری (NDMI = {farm_needs_data['NDMI_curr']:.3f} <= آستانه {NDMI_IRRIGATION_THRESHOLD:.2f})")
+
+            # 2. Fertilization Check (based on NDVI drop)
             current_ndvi = farm_needs_data.get('NDVI_curr')
             previous_ndvi = farm_needs_data.get('NDVI_prev')
 
@@ -2344,14 +2307,13 @@ with tab3:
                       ndvi_change = current_ndvi - previous_ndvi
                       ndvi_change_percent = (ndvi_change / previous_ndvi) * 100
 
-                      if ndvi_change < 0 and abs(ndvi_change_percent) > ndvi_drop_threshold_percent:
+                      if ndvi_change < 0 and abs(ndvi_change_percent) > NDVI_DROP_PERCENT_THRESHOLD:
                           recommendations.append(f"⚠️ نیاز به بررسی کوددهی (افت NDVI: {ndvi_change:.3f}, معادل {abs(ndvi_change_percent):.1f}% افت نسبت به هفته قبل)")
 
                  elif previous_ndvi is not None and previous_ndvi <= 0.01 and current_ndvi > previous_ndvi:
                     recommendations.append("ℹ️ NDVI هفته قبل بسیار پایین بوده است. افزایش در هفته جاری مشاهده می‌شود.")
                  elif previous_ndvi is not None and previous_ndvi <= 0.01 and current_ndvi <= previous_ndvi:
                       recommendations.append("⚠️ NDVI در هفته جاری و هفته قبل بسیار پایین است. نیاز به بررسی وضعیت عمومی مزرعه.")
-
 
             elif pd.isna(previous_ndvi) and pd.notna(current_ndvi):
                  st.caption("ℹ️ داده NDVI هفته قبل برای بررسی افت در دسترس نیست.")
