@@ -1045,6 +1045,7 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
     """
     Gets cloud-masked, index-calculated Sentinel-2 median composite for a given geometry and date range.
     Includes fallback date range logic if no images are found initially.
+    Ensures a non-None error message is returned if the image is None.
     """
     if not gee_initialized:
         return None, "Google Earth Engine مقداردهی اولیه نشده است."
@@ -1054,6 +1055,7 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
     initial_start_date = start_date
     initial_end_date = end_date
     fallback_days = 30 # Increased fallback period
+
 
     def filter_and_process_collection(s_date, e_date):
         try:
@@ -1071,10 +1073,39 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
 
             available_bands = median_image.bandNames().getInfo()
             if index_name not in available_bands:
-                 return None, count, f"شاخص '{index_name}' در تصاویر پردازش شده یافت نشد. باندهای موجود: {', '.join(available_bands)}"
+                 # Attempt to select another common band to see if the image is valid otherwise
+                 test_band = 'B4' if 'B4' in available_bands else (available_bands[0] if available_bands else None)
+                 if test_band:
+                     try:
+                         # Test reducing a small region with the available band
+                          test_region = _geometry.centroid(1).buffer(10) # Small buffer around centroid
+                          median_image.select(test_band).reduceRegion(ee.Reducer.first(), test_region, 10).getInfo()
+                          # If above works, the issue is band calculation/availability
+                          return None, count, f"شاخص '{index_name}' در تصاویر پردازش شده یافت نشد (ممکن است خطایی در محاسبه شاخص رخ داده باشد). باندهای موجود: {', '.join(available_bands)}"
+                     except Exception as band_test_e:
+                          # If even testing another band fails, likely a broader issue
+                          return None, count, f"شاخص '{index_name}' یافت نشد و خطای پردازش تصویر نیز وجود دارد: {band_test_e}. باندهای موجود: {', '.join(available_bands)}"
+                 else: # No bands available at all
+                     return None, count, f"شاخص '{index_name}' یافت نشد و هیچ باند معتبری در تصویر وجود ندارد."
+
 
             # Select the band before returning
             output_image = median_image.select(index_name)
+
+            # Final validity check: Ensure the selected band has data over the geometry
+            try:
+                test_reduction = output_image.reduceRegion(
+                    reducer=ee.Reducer.firstNonNull(), # Check if there's any non-null pixel
+                    geometry=_geometry,
+                    scale=30, # Use slightly coarser scale for faster check
+                    bestEffort=True
+                ).get(index_name).getInfo()
+                if test_reduction is None:
+                     return None, count, f"تصویر برای شاخص '{index_name}' در بازه {s_date}-{e_date} ایجاد شد اما هیچ داده معتبری روی هندسه مورد نظر ندارد (احتمالاً همه پیکسل‌ها Mask شده‌اند)."
+            except ee.EEException as reduce_err:
+                 # If reduction itself fails, report it
+                 return None, count, f"خطا در تأیید داده‌های تصویر برای شاخص '{index_name}' در بازه {s_date}-{e_date}: {reduce_err}"
+
 
             return output_image, count, None
 
@@ -1082,41 +1113,78 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
             error_message = f"خطای Google Earth Engine در بازه {s_date}-{e_date}: {e}"
             try:
                 error_details = e.args[0] if e.args else str(e)
-                if isinstance(error_details, str) and 'computation timed out' in error_details.lower():
-                     error_message += "\n(احتمالاً به دلیل حجم بالای پردازش یا بازه زمانی طولانی)"
-                elif isinstance(error_details, str) and 'user memory limit exceeded' in error_details.lower():
-                     error_message += "\n(احتمالاً به دلیل پردازش منطقه بزرگ یا عملیات پیچیده)"
-                elif isinstance(error_details, str) and 'Image.projection: The bands of the specified image contains different projections' in error_details:
-                    error_message += "\n(خطای پروجکشن داخلی در GEE. ممکن است با تلاش مجدد یا بازه زمانی متفاوت برطرف شود.)"
+                if isinstance(error_details, str):
+                     if 'computation timed out' in error_details.lower():
+                         error_message += "\\n(احتمالاً به دلیل حجم بالای پردازش یا بازه زمانی طولانی)"
+                     elif 'user memory limit exceeded' in error_details.lower():
+                         error_message += "\\n(احتمالاً به دلیل پردازش منطقه بزرگ یا عملیات پیچیده)"
+                     elif 'image.projection' in error_details.lower() and 'different projections' in error_details.lower():
+                        error_message += "\\n(خطای پروجکشن داخلی در GEE. ممکن است با تلاش مجدد یا بازه زمانی متفاوت برطرف شود.)"
+                     elif 'geometryconstructors' in error_details.lower() or 'invalid polygon' in error_details.lower():
+                         error_message += "\\n(احتمالاً مشکلی در هندسه ورودی وجود دارد)"
+
             except Exception:
-                pass
+                pass # Ignore errors during error message enhancement
             return None, 0, error_message
         except Exception as e:
-            error_message = f"خطای ناشناخته در پردازش GEE در بازه {s_date}-{e_date}: {e}\n{traceback.format_exc()}"
+            error_message = f"خطای ناشناخته در پردازش GEE در بازه {s_date}-{e_date}: {e}\\n{traceback.format_exc()}"
             return None, 0, error_message
 
-    # Attempt 1: Exact date range
+
+    # --- Main Logic with Improved Error Handling ---
     image, count, error_msg = filter_and_process_collection(initial_start_date, initial_end_date)
+    initial_error_msg = error_msg # Store the initial error message
 
     if image is None:
         # Attempt 2: Fallback with extended end date
-        fallback_end_date = (datetime.datetime.strptime(initial_end_date, '%Y-%m-%d') + datetime.timedelta(days=fallback_days)).strftime('%Y-%m-%d')
-        image, count, error_msg = filter_and_process_collection(initial_start_date, fallback_end_date)
+        try:
+            # Ensure dates are valid datetime objects before manipulation
+            start_dt_obj = datetime.datetime.strptime(initial_start_date, '%Y-%m-%d')
+            end_dt_obj = datetime.datetime.strptime(initial_end_date, '%Y-%m-%d')
 
-    if image is None:
-        # Attempt 3: Fallback with extended start date (30 days before)
-        fallback_start_date = (datetime.datetime.strptime(initial_start_date, '%Y-%m-%d') - datetime.timedelta(days=fallback_days)).strftime('%Y-%m-%d')
-        image, count, error_msg = filter_and_process_collection(fallback_start_date, initial_end_date)
+            fallback_end_date = (end_dt_obj + datetime.timedelta(days=fallback_days)).strftime('%Y-%m-%d')
+            # Use original start date for fallback range
+            fallback_start_date = initial_start_date
 
-    if image is None:
-        # Attempt 4: Fallback with both extended start and end date
-        image, count, error_msg = filter_and_process_collection(fallback_start_date, fallback_end_date)
+            print(f"Attempt 1 failed for {initial_start_date}-{initial_end_date}. Error: '{initial_error_msg}'. Trying fallback range: {fallback_start_date} to {fallback_end_date}")
 
-    if image is None:
-        # حرفه‌ای: پیام کاربرپسند و پیشنهاد تلاش مجدد
-        error_msg = (f"هیچ تصویر Sentinel-2 بدون ابر برای شاخص {index_name} در بازه‌های زمانی مختلف یافت نشد.\n"
-                     f"لطفاً بازه زمانی را تغییر دهید یا روز دیگری را انتخاب کنید.\n"
-                     f"همچنین می‌توانید با کلیک روی دکمه زیر، تلاش مجدد با بازه زمانی گسترده‌تر انجام دهید.")
+            # Call fallback, store result in separate variables
+            fallback_image, fallback_count, fallback_error_msg = filter_and_process_collection(fallback_start_date, fallback_end_date)
+
+            if fallback_image is not None:
+                 image = fallback_image # Use fallback image if successful
+                 error_msg = None # Clear error message if fallback succeeded
+                 print(f"Found {fallback_count} images in fallback range {fallback_start_date}-{fallback_end_date}.")
+                 # Optionally add info message: st.info(f"ℹ️ از داده‌های تصویری تا تاریخ {fallback_end_date} برای نمایش نقشه استفاده شد.")
+            else:
+                 # Fallback also failed. Prioritize the fallback error message if it exists and is informative, otherwise use the initial error message.
+                 if fallback_error_msg and "هیچ تصویر" not in fallback_error_msg: # Prioritize specific errors from fallback
+                      error_msg = f"تلاش اول ناموفق ({initial_error_msg}). تلاش دوم ({fallback_start_date}-{fallback_end_date}) نیز ناموفق: {fallback_error_msg}"
+                 else: # Use initial error if fallback error is generic "no image" or None
+                      error_msg = initial_error_msg if initial_error_msg else fallback_error_msg # Fallback error only if initial was None
+
+                 # Ensure error_msg is never None if image is None at this stage
+                 if image is None and not error_msg:
+                     error_msg = f"پردازش تصویر برای بازه {initial_start_date}-{initial_end_date} و بازه جایگزین {fallback_start_date}-{fallback_end_date} ناموفق بود (خطای نامشخص)."
+                 print(f"Attempt 2 also failed for {fallback_start_date}-{fallback_end_date}. Final Error: {error_msg}")
+
+        except ValueError as date_err:
+            # Handle potential errors converting date strings
+            error_msg = f"خطا در تبدیل تاریخ برای بازه جایگزین: {date_err}. خطای اولیه: {initial_error_msg}"
+            image = None # Ensure image remains None
+            print(f"Error processing fallback dates: {date_err}")
+        except Exception as e:
+            # Error during the fallback *attempt* itself
+            error_msg = f"خطا در تلاش جایگزین ({fallback_start_date}-{fallback_end_date}): {e}\\n{traceback.format_exc()}. خطای اولیه: {initial_error_msg}"
+            image = None # Ensure image remains None
+            print(f"Error during fallback attempt: {e}")
+
+    # Final check: if image is None, ensure there's an error message
+    if image is None and not error_msg:
+        error_msg = f"پردازش تصویر برای بازه {initial_start_date}-{initial_end_date} ناموفق بود (دلیل نامشخص)."
+
+
+    # --- Return Value ---
     return image, error_msg
 
 
@@ -2531,11 +2599,6 @@ with tab3:
         if gemini_model:
              with st.spinner("در حال تولید تحلیل هوش مصنوعی..."):
                  ai_explanation = get_ai_needs_analysis(gemini_model, selected_farm_name, farm_needs_data, recommendations)
-             st.markdown(ai_explanation)
-        else:
-             st.info("⚠️ سرویس تحلیل هوش مصنوعی پیکربندی نشده یا در دسترس نیست.")
-
-    st.markdown("---")
              st.markdown(ai_explanation)
         else:
              st.info("⚠️ سرویس تحلیل هوش مصنوعی پیکربندی نشده یا در دسترس نیست.")
