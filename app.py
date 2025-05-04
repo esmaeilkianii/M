@@ -1673,6 +1673,111 @@ def determine_status(row, index_name):
         return "بدون داده"
 
 
+@st.cache_data(show_spinner=False, persist="disk")
+def calculate_weekly_indices_for_table(
+    _farms_df, index_name, start_curr, end_curr, start_prev, end_prev
+):
+    results = []
+    errors = []
+    total_farms = len(_farms_df)
+    progress_placeholder = st.empty()
+
+
+    for i, (idx, farm) in enumerate(_farms_df.iterrows()):
+        farm_name = farm.get('مزرعه', f'مزرعه ناشناس ردیف {i+1}')
+        farm_gee_geom = farm.get('ee_geometry')
+
+        if farm_gee_geom is None:
+            errors.append(f"هندسه GEE نامعتبر برای مزرعه '{farm_name}'. نادیده گرفته شد.")
+            results.append({
+                 'مزرعه': farm_name,
+                 'گروه': farm.get('گروه', 'نامشخص'),
+                 f'{index_name} (هفته جاری)': None,
+                 f'{index_name} (هفته قبل)': None,
+                 'تغییر': None,
+                 'سن': farm.get('سن', 'نامشخص'),
+                 'واریته': farm.get('واریته', 'نامشخص'),
+             })
+            progress = (i + 1) / total_farms
+            progress_placeholder.markdown(modern_progress_bar(progress), unsafe_allow_html=True)
+            continue
+
+        def get_mean_value_single_index(start, end, index):
+             try:
+                  # get_processed_image now returns a single-band image or None
+                  image, error = get_processed_image(farm_gee_geom, start, end, index)
+                  if image:
+                      # No need to select band again, image is already single-band
+                      mean_dict = image.reduceRegion( # Reduce the single-band image
+                          reducer=ee.Reducer.mean(),
+                          geometry=farm_gee_geom,
+                          scale=10, # Explicit scale is good practice
+                          bestEffort=True,
+                          maxPixels=1e9 # Increase maxPixels slightly
+                      ).get(index).getInfo()
+                      return mean_dict, None
+                  else:
+                      return None, error
+             except ee.EEException as e:
+                  # Check for common errors and provide more specific messages
+                  error_message = f"GEE Error for {farm_name} ({start}-{end}): {e}"
+                  try:
+                       error_details = e.args[0] if e.args else str(e)
+                       if isinstance(error_details, str):
+                           if 'computation timed out' in error_details.lower():
+                               error_message += "\\n(احتمالاً به دلیل حجم بالای پردازش یا بازه زمانی طولانی)"
+                           elif 'user memory limit exceeded' in error_details.lower():
+                               error_message += "\\n(احتمالاً به دلیل پردازش منطقه بزرگ یا عملیات پیچیده)"
+                           elif ('projection' in error_details.lower() and 'different projections' in error_details.lower()) or \
+                                ('projection' in error_details.lower() and 'unable to transform' in error_details.lower()): # Catch both projection error types
+                                 error_message += "\\n(خطای پروجکشن داخلی در GEE. ممکن است با تلاش مجدد یا بازه زمانی متفاوت برطرف شود.)"
+                           elif 'geometryconstructors' in error_details.lower() or 'invalid polygon' in error_details.lower():
+                                 error_message += "\\n(احتمالاً مشکلی در هندسه ورودی وجود دارد)"
+
+                  except Exception:
+                       pass # Ignore errors during error message enhancement
+                  return None, error_message
+             except Exception as e:
+                  # Capture specific exception type if possible
+                  return None, f"Unknown Error for {farm_name} ({start}-{end}): {type(e).__name__} - {e}"
+
+
+        current_val, err_curr = get_mean_value_single_index(start_curr, end_curr, index_name)
+        if err_curr: errors.append(f"مزرعه '{farm_name}' (هفته جاری): {err_curr}")
+
+        previous_val, err_prev = get_mean_value_single_index(start_prev, end_prev, index_name)
+        if err_prev: errors.append(f"مزرعه '{farm_name}' (هفته قبل): {err_prev}")
+
+        change = None
+        # Ensure calculation happens only if both values are valid numbers
+        if isinstance(current_val, (int, float)) and pd.notna(current_val) and \
+           isinstance(previous_val, (int, float)) and pd.notna(previous_val):
+            try:
+                change = current_val - previous_val
+            except TypeError:
+                change = None # Should not happen if checks above pass, but as safety
+        else:
+             # If either value is None or not a number, change is None
+             change = None
+
+
+        results.append({
+            'مزرعه': farm_name,
+            'گروه': farm.get('گروه', 'نامشخص'),
+            f'{index_name} (هفته جاری)': current_val, # Store raw numerical value or None
+            f'{index_name} (هفته قبل)': previous_val, # Store raw numerical value or None
+            'تغییر': change, # Store raw numerical value or None
+            'سن': farm.get('سن', 'نامشخص'),
+            'واریته': farm.get('واریته', 'نامشخص'),
+        })
+
+        progress = (i + 1) / total_farms
+        progress_placeholder.markdown(modern_progress_bar(progress), unsafe_allow_html=True)
+
+    progress_placeholder.empty()
+    return pd.DataFrame(results), errors
+
+
 # ==============================================================================
 # Main Application Layout (Using Tabs)
 # ==============================================================================
@@ -2068,104 +2173,6 @@ with tab1:
         st.markdown("---")
         st.subheader(f"📊 جدول رتبه‌بندی مزارع بر اساس {selected_index} (روز: {selected_day})")
         st.markdown("مقایسه مقادیر متوسط شاخص در هفته جاری با هفته قبل و تعیین وضعیت هر مزرعه.")
-
-        @st.cache_data(show_spinner=False, persist="disk")
-        def calculate_weekly_indices_for_table(
-            _farms_df, index_name, start_curr, end_curr, start_prev, end_prev
-        ):
-            results = []
-            errors = []
-            total_farms = len(_farms_df)
-            progress_placeholder = st.empty()
-
-
-            for i, (idx, farm) in enumerate(_farms_df.iterrows()):
-                farm_name = farm.get('مزرعه', f'مزرعه ناشناس ردیف {i+1}')
-                farm_gee_geom = farm.get('ee_geometry')
-
-                if farm_gee_geom is None:
-                    errors.append(f"هندسه GEE نامعتبر برای مزرعه '{farm_name}'. نادیده گرفته شد.")
-                    results.append({
-                         'مزرعه': farm_name,
-                         'گروه': farm.get('گروه', 'نامشخص'),
-                         f'{index_name} (هفته جاری)': None,
-                         f'{index_name} (هفته قبل)': None,
-                         'تغییر': None,
-                         'سن': farm.get('سن', 'نامشخص'),
-                         'واریته': farm.get('واریته', 'نامشخص'),
-                     })
-                    progress = (i + 1) / total_farms
-                    progress_placeholder.markdown(modern_progress_bar(progress), unsafe_allow_html=True)
-                    continue
-
-                def get_mean_value_single_index(start, end, index):
-                     try:
-                          # get_processed_image now returns a single-band image or None
-                          image, error = get_processed_image(farm_gee_geom, start, end, index)
-                          if image:
-                              # No need to select band again, image is already single-band
-                              mean_dict = image.reduceRegion( # Reduce the single-band image
-                                  reducer=ee.Reducer.mean(),
-                                  geometry=farm_gee_geom,
-                                  scale=10, # Explicit scale is good practice
-                                  bestEffort=True,
-                                  maxPixels=1e9 # Increase maxPixels slightly
-                              ).get(index).getInfo()
-                              return mean_dict, None
-                          else:
-                              return None, error
-                     except ee.EEException as e:
-                          # Check for common errors and provide more specific messages
-                          error_message = f"GEE Error for {farm_name} ({start}-{end}): {e}"
-                          try:
-                               error_details = e.args[0] if e.args else str(e)
-                               if isinstance(error_details, str):
-                                   if 'computation timed out' in error_details.lower():
-                                       error_message += "\\n(احتمالاً به دلیل حجم بالای پردازش یا بازه زمانی طولانی)"
-                                   elif 'user memory limit exceeded' in error_details.lower():
-                                       error_message += "\\n(احتمالاً به دلیل پردازش منطقه بزرگ یا عملیات پیچیده)"
-                                   elif ('projection' in error_details.lower() and 'different projections' in error_details.lower()) or \
-                                        ('projection' in error_details.lower() and 'unable to transform' in error_details.lower()): # Catch both projection error types
-                                         error_message += "\\n(خطای پروجکشن داخلی در GEE. ممکن است با تلاش مجدد یا بازه زمانی متفاوت برطرف شود.)"
-                                   elif 'geometryconstructors' in error_details.lower() or 'invalid polygon' in error_details.lower():
-                                         error_message += "\\n(احتمالاً مشکلی در هندسه ورودی وجود دارد)"
-
-                          except Exception:
-                               pass # Ignore errors during error message enhancement
-                          return None, error_message
-                     except Exception as e:
-                          return None, f"Unknown Error for {farm_name} ({start}-{end}): {e}"
-
-
-                current_val, err_curr = get_mean_value_single_index(start_curr, end_curr, index_name)
-                if err_curr: errors.append(f"مزرعه '{farm_name}' (هفته جاری): {err_curr}")
-
-                previous_val, err_prev = get_mean_value_single_index(start_prev, end_prev, index_name)
-                if err_prev: errors.append(f"مزرعه '{farm_name}' (هفته قبل): {err_prev}")
-
-                change = None
-                if pd.notna(current_val) and pd.notna(previous_val):
-                    try:
-                        change = current_val - previous_val
-                    except TypeError:
-                        change = None
-
-
-                results.append({
-                    'مزرعه': farm_name,
-                    'گروه': farm.get('گروه', 'نامشخص'),
-                    f'{index_name} (هفته جاری)': current_val, # Store raw numerical value here
-                    f'{index_name} (هفته قبل)': previous_val, # Store raw numerical value here
-                    'تغییر': change, # Store raw numerical value here
-                    'سن': farm.get('سن', 'نامشخص'),
-                    'واریته': farm.get('واریته', 'نامشخص'),
-                })
-
-                progress = (i + 1) / total_farms
-                progress_placeholder.markdown(modern_progress_bar(progress), unsafe_allow_html=True)
-
-            progress_placeholder.empty()
-            return pd.DataFrame(results), errors
 
         ranking_df = pd.DataFrame()
         calculation_errors = []
