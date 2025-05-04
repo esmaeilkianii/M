@@ -359,11 +359,11 @@ st.markdown("""
 
 def status_badge(status: str) -> str:
     """Returns HTML for a status badge with color."""
-    if "بهبود" in status or "رشد مثبت" in status:
+    if "بهبود" in status or "رشد مثبت" in status or "افزایش رطوبت" in status: # Added NDMI positive
         badge_class = "status-positive"
-    elif "تنش" in status or "کاهش" in status or "بدتر شدن" in status:
+    elif "تنش" in status or "کاهش" in status or "بدتر شدن" in status or "نیاز" in status: # Added NDMI negative
         badge_class = "status-negative"
-    elif "ثابت" in status or "رطوبت ثابت" in status or "پوشش گیاهی پایین" in status:
+    elif "ثابت" in status or "رطوبت ثابت" in status or "پوشش گیاهی پایین" in status or "قابل توجه" in status: # Added NDMI neutral/warning
         badge_class = "status-neutral"
     elif "بدون داده" in status or "N/A" in status:
          badge_class = "status-nodata"
@@ -939,6 +939,13 @@ if selected_day:
         end_date_previous = start_date_current - datetime.timedelta(days=1)
         start_date_previous = end_date_previous - datetime.timedelta(days=6)
 
+        # Ensure previous start date is not too far back if needed
+        one_year_ago = today - datetime.timedelta(days=365)
+        if start_date_previous < one_year_ago:
+             start_date_previous = one_year_ago
+             st.sidebar.info(f"⚠️ بازه زمانی قبلی به یک سال قبل محدود شد: {start_date_previous.strftime('%Y-%m-%d')}")
+
+
         start_date_current_str = start_date_current.strftime('%Y-%m-%d')
         end_date_current_str = end_date_current.strftime('%Y-%m-%d')
         start_date_previous_str = start_date_previous.strftime('%Y-%m-%d')
@@ -965,8 +972,23 @@ def maskS2clouds(image):
              qa.bitwiseAnd(cirrusBitMask).eq(0))
 
     scl = image.select('SCL')
-    masked_classes = [0, 1, 2, 3, 7, 8, 9, 10, 11]
-    mask_scl = scl.remap(masked_classes, [0] * len(masked_classes), 1)
+    # Sentinel-2 SCL band values:
+    # 0: No Data (Mask)
+    # 1: Saturated or defective pixel
+    # 2: Dark Area Pixels
+    # 3: Cloud Shadows
+    # 4: Vegetation
+    # 5: Not Vegetated
+    # 6: Water
+    # 7: Unclassified
+    # 8: Cloud Medium Probability
+    # 9: Cloud High Probability
+    # 10: Thin Cirrus
+    # 11: Snow/Ice
+    # Masking out: No Data, Saturated, Dark Area, Cloud Shadows, Cloud High Probability, Thin Cirrus, Snow/Ice
+    masked_classes_scl = [0, 1, 2, 3, 9, 10, 11]
+    mask_scl = scl.remap(masked_classes_scl, [0] * len(masked_classes_scl), 1).eq(1)
+
 
     final_mask = mask_qa.And(mask_scl)
     opticalBands = image.select('B.*').multiply(0.0001)
@@ -1030,7 +1052,7 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
 
     initial_start_date = start_date
     initial_end_date = end_date
-    fallback_days = 7 # Number of days to extend the end date for fallback
+    fallback_days = 30 # Increased fallback period
 
 
     def filter_and_process_collection(s_date, e_date):
@@ -1039,9 +1061,13 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
                          .filterBounds(_geometry)
                          .filterDate(s_date, e_date)
                          .map(maskS2clouds))
+
             count = s2_sr_col.size().getInfo()
             if count == 0:
                 return None, 0, f"هیچ تصویر Sentinel-2 بدون ابر در بازه {s_date} تا {e_date} یافت نشد."
+
+            # Calculate median composite BEFORE adding indices, to avoid potential projection issues? (Test this)
+            # Let's stick to median after indices for now, and fix projection issue in reduceRegion/getInfo
 
             indexed_col = s2_sr_col.map(add_indices)
             median_image = indexed_col.median()
@@ -1050,7 +1076,9 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
             if index_name not in available_bands:
                  return None, count, f"شاخص '{index_name}' در تصاویر پردازش شده یافت نشد. باندهای موجود: {', '.join(available_bands)}"
 
+            # Select the band before returning
             output_image = median_image.select(index_name)
+
             return output_image, count, None
 
         except ee.EEException as e:
@@ -1061,6 +1089,8 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
                      error_message += "\n(احتمالاً به دلیل حجم بالای پردازش یا بازه زمانی طولانی)"
                 elif isinstance(error_details, str) and 'user memory limit exceeded' in error_details.lower():
                      error_message += "\n(احتمالاً به دلیل پردازش منطقه بزرگ یا عملیات پیچیده)"
+                elif isinstance(error_details, str) and 'Image.projection: The bands of the specified image contains different projections' in error_details:
+                    error_message += "\n(خطای پروجکشن داخلی در GEE. ممکن است با تلاش مجدد یا بازه زمانی متفاوت برطرف شود.)"
             except Exception:
                 pass
             return None, 0, error_message
@@ -1107,11 +1137,13 @@ def get_index_time_series(_point_geom, index_name, start_date='2023-01-01', end_
                      .map(maskS2clouds)
                      .map(add_indices))
 
+        # Select the band explicitly before proceeding
         s2_sr_col = s2_sr_col.select([index_name])
 
         def extract_value(image):
             try:
-                value = image.reduceRegion(
+                # Select the band again before reducing to be extra safe with projections
+                value = image.select(index_name).reduceRegion(
                     reducer=ee.Reducer.first(),
                     geometry=_point_geom,
                     scale=10,
@@ -1122,6 +1154,8 @@ def get_index_time_series(_point_geom, index_name, start_date='2023-01-01', end_
                     index_name: value
                 })
             except Exception as e:
+                 # Log the error internally or print for debugging
+                 print(f"Error extracting value for date {image.date().format('YYYY-MM-dd')} and index {index_name}: {e}")
                  return ee.Feature(None, {
                     'date': image.date().format('YYYY-MM-dd'),
                     index_name: None
@@ -1130,22 +1164,25 @@ def get_index_time_series(_point_geom, index_name, start_date='2023-01-01', end_
         ts_features = s2_sr_col.map(extract_value).filter(ee.Filter.notNull([index_name]))
 
         try:
-            ts_info = ts_features.getInfo()['features']
+            # Using aggregate_array might be more robust than getInfo() on features for large collections
+            dates_list = ts_features.aggregate_array('date').getInfo()
+            values_list = ts_features.aggregate_array(index_name).getInfo()
+
+            if not dates_list or not values_list:
+                 return pd.DataFrame(columns=['date', index_name]), "داده‌ای برای سری زمانی در بازه مشخص شده یافت نشد (ممکن است به دلیل پوشش ابری یا خطای پردازش باشد)."
+
+
+            ts_df = pd.DataFrame({
+                'date': dates_list,
+                index_name: values_list
+            })
+
         except ee.EEException as e:
             return pd.DataFrame(columns=['date', index_name]), f"خطای GEE در دریافت اطلاعات سری زمانی: {e}"
         except Exception as e:
             return pd.DataFrame(columns=['date', index_name]), f"خطای ناشناخته در دریافت اطلاعات سری زمانی: {e}"
 
-        if not ts_info:
-            return pd.DataFrame(columns=['date', index_name]), "داده‌ای برای سری زمانی در بازه مشخص شده یافت نشد (ممکن است به دلیل پوشش ابری یا خطای پردازش باشد)."
 
-        ts_data = []
-        for f in ts_info:
-            properties = f['properties']
-            if index_name in properties:
-                 ts_data.append({'date': properties['date'], index_name: properties[index_name]})
-
-        ts_df = pd.DataFrame(ts_data)
         if ts_df.empty:
              return pd.DataFrame(columns=['date', index_name]), "داده معتبری برای سری زمانی یافت نشد (پس از حذف مقادیر خالی)."
 
@@ -1190,7 +1227,8 @@ def get_farm_needs_data(_farm_geometry, start_curr, end_curr, start_prev, end_pr
             count = s2_sr_col.size().getInfo()
             if count == 0:
                 # Fallback logic (similar to get_processed_image)
-                fallback_end_date = (datetime.datetime.strptime(end, '%Y-%m-%d') + datetime.timedelta(days=7)).strftime('%Y-%m-%d')
+                fallback_days_needs = 30 # Fallback for needs data as well
+                fallback_end_date = (datetime.datetime.strptime(end, '%Y-%m-%d') + datetime.timedelta(days=fallback_days_needs)).strftime('%Y-%m-%d')
                 s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
                              .filterBounds(_farm_geometry)
                              .filterDate(start, fallback_end_date)
@@ -1209,18 +1247,24 @@ def get_farm_needs_data(_farm_geometry, start_curr, end_curr, start_prev, end_pr
             if not indices_to_reduce:
                  return period_values, f"هیچ یک از شاخص‌های مورد نیاز ({', '.join(indices_to_get)}) در تصاویر پردازش شده برای بازه {start}-{end} یافت نشد."
 
+            # Calculate mean for each index separately to avoid projection issues with multi-band image reduction
+            mean_dict = {}
+            for idx in indices_to_reduce:
+                try:
+                    mean_value = median_image.select(idx).reduceRegion( # Select band before reduceRegion
+                        reducer=ee.Reducer.mean(),
+                        geometry=_farm_geometry,
+                        scale=10,
+                        bestEffort=True,
+                        maxPixels=1e8
+                    ).get(idx).getInfo()
+                    mean_dict[idx] = mean_value
+                except Exception as e:
+                     print(f"Error calculating mean for index {idx} in period {start}-{end}: {e}") # Log error per index
 
-            selected_bands = median_image.select(indices_to_reduce)
-            mean_dict = selected_bands.reduceRegion(
-                reducer=ee.Reducer.mean(),
-                geometry=_farm_geometry,
-                scale=10,
-                bestEffort=True,
-                maxPixels=1e8
-            ).getInfo()
 
             if mean_dict:
-                for index in indices_to_reduce:
+                for index in indices_to_get:
                     if index in mean_dict and mean_dict[index] is not None:
                          period_values[index] = mean_dict[index]
 
@@ -1248,10 +1292,11 @@ def get_farm_needs_data(_farm_geometry, start_curr, end_curr, start_prev, end_pr
         else:
              results['error'] = f"خطا در بازه قبلی: {err_prev}"
 
+    # Consolidate error message if both periods failed
     if results.get('error') and 'خطا در بازه جاری:' in results['error'] and 'خطا در بازه قبلی:' in results['error']:
          results['error'] = "خطا در هر دو بازه زمانی هنگام محاسبه شاخص‌های نیازسنجی."
     elif results.get('error'):
-         pass
+         pass # Keep the specific error if only one period failed
     elif pd.isna(results['NDVI_curr']) and pd.isna(results['NDMI_curr']) and pd.isna(results['EVI_curr']) and pd.isna(results['SAVI_curr']) and \
          pd.isna(results['NDVI_prev']) and pd.isna(results['NDMI_prev']) and pd.isna(results['EVI_prev']) and pd.isna(results['SAVI_prev']):
          results['error'] = "هیچ داده شاخصی برای بازه‌های زمانی مشخص شده یافت نشد."
@@ -1281,21 +1326,40 @@ def get_ai_needs_analysis(_model, farm_name, index_data, recommendations):
               line = f"- {idx} فعلی: {curr_val:.3f}"
               if pd.notna(prev_val):
                   line += f" (قبلی: {prev_val:.3f}"
-                  if prev_val is not None and prev_val != 0 and pd.notna(prev_val):
-                      change_percent = ((curr_val - prev_val) / prev_val) * 100
-                      # Provide context for change
-                      change_status = ""
+                  change_percent = None
+                  if pd.notna(prev_val) and prev_val != 0:
+                      try:
+                         change_percent = ((curr_val - prev_val) / prev_val) * 100
+                      except Exception:
+                         change_percent = None # Handle division by zero
+
+                  if change_percent is not None:
+                      line += f", تغییر: {change_percent:.1f}%)"
+                      # Provide context for change based on index type
+                      change_status_desc = ""
                       if idx in ['NDVI', 'EVI', 'LAI', 'CVI', 'SAVI']: # Higher is better
-                           change_status = "افزایش" if change_percent > 0 else ("کاهش" if change_percent < 0 else "بدون تغییر")
+                           if change_percent > 3: change_status_desc = "رشد مثبت قابل توجه"
+                           elif change_percent > 0: change_status_desc = "رشد مثبت"
+                           elif change_percent < -5: change_status_desc = "افت قابل توجه"
+                           elif change_percent < 0: change_status_desc = "کاهش"
+                           else: change_status_desc = "بدون تغییر معنادار" # Added "معنادار"
                       elif idx == 'MSI': # Lower is better
-                           change_status = "بهبود (کاهش تنش)" if change_percent < 0 else ("افزایش تنش" if change_percent > 0 else "بدون تغییر")
+                           if change_percent < -3: change_status_desc = "بهبود (کاهش تنش قابل توجه)"
+                           elif change_percent < 0: change_status_desc = "بهبود (کاهش تنش)"
+                           elif change_percent > 5: change_status_desc = "افزایش تنش قابل توجه"
+                           elif change_percent > 0: change_status_desc = "افزایش تنش"
+                           else: change_status_desc = "بدون تغییر معنادار"
                       elif idx == 'NDMI': # Higher is better
-                            change_status = "افزایش رطوبت" if change_percent > 0 else ("کاهش رطوبت" if change_percent < 0 else "بدون تغییر")
+                           if change_percent > 3: change_status_desc = "افزایش رطوبت قابل توجه"
+                           elif change_percent > 0: change_status_desc = "افزایش رطوبت"
+                           elif change_percent < -5: change_status_desc = "کاهش رطوبت قابل توجه"
+                           elif change_percent < 0: change_status_desc = "کاهش رطوبت"
+                           else: change_status_desc = "رطوبت ثابت"
 
-
-                      line += f", تغییر: {change_percent:.1f}%) - {change_status}"
+                      if change_status_desc:
+                           line += f" - {change_status_desc}"
                   else:
-                      line += ")"
+                      line += ")" # Close parenthesis if percentage change couldn't be calculated
               data_str_parts.append(line)
          elif pd.notna(prev_val):
               data_str_parts.append(f"- {idx} قبلی: {prev_val:.3f} (داده فعلی موجود نیست)")
@@ -1309,10 +1373,11 @@ def get_ai_needs_analysis(_model, farm_name, index_data, recommendations):
     prompt = f"""
     شما یک متخصص کشاورزی باتجربه هستید که در زمینه پایش نیشکر با استفاده از داده‌های ماهواره‌ای تخصص دارید. لطفاً وضعیت مزرعه '{farm_name}' را با جزئیات و دقت بیشتری بر اساس داده‌های شاخص ماهواره‌ای و توصیه‌های اولیه زیر تحلیل کنید. تحلیل شما باید جامع، کاربردی و قابل ارائه به مدیران یا کارشناسان کشاورزی باشد. به ارتباط بین شاخص‌ها (مثلاً NDMI و NDVI) و نیازهای احتمالی مزرعه (آبیاری، کوددهی، یا سایر عوامل تنش‌زا) اشاره کنید. تحلیل شما باید شامل موارد زیر باشد:
 
-    1.  **ارزیابی وضعیت فعلی:** وضعیت سلامت پوشش گیاهی و رطوبت بر اساس مقادیر شاخص‌های فعلی (NDVI, NDMI, EVI, SAVI).
-    2.  **تحلیل روند:** مقایسه شاخص‌های فعلی با هفته قبل و توضیح معانی تغییرات مشاهده شده (رشد مثبت، کاهش، تنش، بهبود رطوبت، افزایش تنش و...).
-    3.  **شناسایی نیازها و عوامل تنش‌زا:** با توجه به مقادیر و روند شاخص‌ها، به نیازهای احتمالی (آبیاری اگر NDMI پایین است، کوددهی اگر NDVI/EVI کاهش یافته با وجود رطوبت کافی، بررسی آفات یا بیماری‌ها اگر شاخص‌های سلامت کاهش یافته و رطوبت مناسب است و...) اشاره کنید. توصیه‌های اولیه (سیستم قوانین ساده) را در تحلیل خود لحاظ کنید.
-    4.  **توصیه‌های کلی:** ارائه راهنمایی کلی بر اساس تحلیل برای اقدامات بعدی (بازدید میدانی، تنظیم برنامه آبیاری/کوددهی و...).
+    1.  **ارزیابی وضعیت فعلی:** وضعیت سلامت پوشش گیاهی و رطوبت بر اساس مقادیر شاخص‌های فعلی (NDVI, NDMI, EVI, SAVI). مقایسه مقادیر با آستانه‌های معمول برای نیشکر (اگر اطلاعات دارید) می‌تواند مفید باشد.
+    2.  **تحلیل روند:** مقایسه شاخص‌های فعلی با هفته قبل و توضیح معانی تغییرات مشاهده شده (رشد مثبت، کاهش، تنش، بهبود رطوبت، افزایش تنش و...). به بزرگی تغییرات (قابل توجه یا جزئی) اشاره کنید.
+    3.  **شناسایی نیازها و عوامل تنش‌زا:** با توجه به مقادیر و روند شاخص‌ها، به نیازهای احتمالی (آبیاری اگر NDMI پایین است یا کاهش قابل توجهی داشته، کوددهی اگر NDVI/EVI کاهش یافته با وجود رطوبت کافی، بررسی آفات یا بیماری‌ها اگر شاخص‌های سلامت کاهش یافته و رطوبت مناسب است و...) اشاره کنید. توصیه‌های اولیه (سیستم قوانین ساده) را در تحلیل خود لحاظ کنید و آن‌ها را بسط دهید.
+    4.  **توصیه‌های کلی:** ارائه راهنمایی کلی بر اساس تحلیل برای اقدامات بعدی (بازدید میدانی با تمرکز بر نقاط مشکل‌دار، تنظیم برنامه آبیاری/کوددهی، بررسی عوامل محیطی).
+    5.  **یادداشت مهم:** اگر داده‌های کافی (مثلاً داده هفته قبل یا جاری) موجود نبود، به این موضوع اشاره کنید و ذکر کنید که تحلیل روند دقیق امکان‌پذیر نیست.
 
     زبان تحلیل باید فارسی، تخصصی اما قابل فهم باشد.
 
@@ -1356,7 +1421,8 @@ def get_ai_map_summary(_model, ranking_df_sorted, selected_index, selected_day):
     negative_status_farms = ranking_df_sorted[ranking_df_sorted['وضعیت'].astype(str).str.contains("تنش|کاهش|بدتر|نیاز", case=False, na=False)]
     positive_status_farms = ranking_df_sorted[ranking_df_sorted['وضعیت'].astype(str).str.contains("بهبود|رشد مثبت", case=False, na=False)]
     nodata_farms = ranking_df_sorted[ranking_df_sorted['وضعیت'].astype(str).str.contains("بدون داده", case=False, na=False)]
-    neutral_farms = ranking_df_sorted[ranking_df_sorted['وضعیت'].astype(str).str.contains("ثابت|رطوبت ثابت|پوشش گیاهی پایین", case=False, na=False)]
+    neutral_terms_list = ["ثابت", "رطوبت ثابت", "پوشش گیاهی پایین", "قابل توجه"] # Define list for neutral terms
+    neutral_farms = ranking_df_sorted[ranking_df_sorted['وضعیت'].astype(str).str.contains("|".join(neutral_terms_list), case=False, na=False)] # Use list here
 
 
     summary_text = f"خلاصه وضعیت کلی مزارع برای روز {selected_day} بر اساس شاخص {selected_index}:\n"
@@ -1410,7 +1476,7 @@ def get_ai_map_summary(_model, ranking_df_sorted, selected_index, selected_day):
 
     خلاصه شما باید شامل موارد زیر باشد:
     1.  **تصویر کلی:** تعداد مزارع در هر دسته وضعیت (تنش/کاهش، بهبود/رشد مثبت، ثابت، بدون داده) و معنی کلی این توزیع چیست؟
-    2.  **مزارع بحرانی:** اشاره به مزارعی که بیشترین تنش یا کاهش را نشان داده‌اند (بر اساس لیست ارائه شده). با توجه به شاخص {selected_index}، چه نوع تنشی (مثلاً رطوبتی، پوشش گیاهی) محتمل است و چه اقداماتی برای این مزارع توصیه می‌شود؟ (بازدید میدانی، بررسی عوامل تنش‌زا، آزمایش خاک، تنظیم برنامه آبیاری/کوددهی).
+    2.  **مزارع بحرانی:** اشاره به مزارعی که بیشترین تنش یا کاهش را نشان داده‌اند (بر اساس لیست ارائه شده). با توجه به شاخص {selected_index}، چه نوع تنشی (مثلاً رطوبتی، پوشش گیاهی) محتمل است و چه اقداماتی برای این مزارع توصیه می‌شود؟ (بازدید میدانی با تمرکز بر نقاط مشکل‌دار، بررسی عوامل تنش‌زا، آزمایش خاک، تنظیم برنامه آبیاری/کوددهی).
     3.  **مزارع با عملکرد خوب:** اشاره به مزارعی که بهبود یا رشد مثبت نشان داده‌اند (بر اساس لیست ارائه شده). آیا می‌توان از دلایل موفقیت این مزارع در سایر نقاط الگوبرداری کرد؟ (بررسی تاریخچه اقدامات زراعی در این مزارع).
     4.  **داده‌های ناموجود:** توضیح کوتاه در مورد مزارع بدون داده و لزوم بررسی دستی یا استفاده از داده‌های دیگر برای آن‌ها.
     5.  **اهمیت شاخص:** یادآوری کوتاه در مورد اینکه شاخص {selected_index} چه اطلاعاتی به ما می‌دهد و چرا برای پایش مهم است.
@@ -1442,11 +1508,12 @@ def get_ai_map_summary(_model, ranking_df_sorted, selected_index, selected_day):
 def determine_status(row, index_name):
     """Determines the status based on change in index value using fixed thresholds."""
     # Fixed Thresholds (Not visible to the user)
-    NDMI_IRRIGATION_THRESHOLD = 0.25 # Example threshold
-    NDVI_DROP_PERCENT_THRESHOLD = 5.0 # Example threshold
+    NDMI_IRRIGATION_THRESHOLD = 0.25 # Example threshold for low NDMI
+    NDVI_DROP_PERCENT_THRESHOLD = 5.0 # Example threshold for significant NDVI drop
     # General thresholds for change significance
     ABSOLUTE_CHANGE_THRESHOLD = 0.02 # Example absolute change for significance
-    PERCENT_CHANGE_THRESHOLD = 3.0 # Example percentage change for significance
+    PERCENT_CHANGE_THRESHOLD = 3.0 # Example percentage change for positive significance
+    NEGATIVE_PERCENT_CHANGE_THRESHOLD = 5.0 # Example percentage change for negative significance (can be different)
 
 
     current_val = row.get(f'{index_name} (هفته جاری)')
@@ -1463,8 +1530,7 @@ def determine_status(row, index_name):
 
 
         is_significant_positive = change_val > ABSOLUTE_CHANGE_THRESHOLD or (percentage_change is not None and percentage_change > PERCENT_CHANGE_THRESHOLD)
-        is_significant_negative = change_val < -ABSOLUTE_CHANGE_THRESHOLD or (percentage_change is not None and percentage_change < -PERCENT_CHANGE_THRESHOLD)
-
+        is_significant_negative = change_val < -ABSOLUTE_CHANGE_THRESHOLD or (percentage_change is not None and percentage_change < -NEGATIVE_PERCENT_CHANGE_THRESHOLD) # Use negative threshold
 
         if index_name in ['NDVI', 'EVI', 'LAI', 'CVI', 'SAVI']:
             if is_significant_positive:
@@ -1473,33 +1539,28 @@ def determine_status(row, index_name):
                 return "تنش / کاهش"
             else:
                  return "ثابت"
-        elif index_name in ['MSI']:
-             is_significant_improvement = change_val < -ABSOLUTE_CHANGE_THRESHOLD or (percentage_change is not None and percentage_change < -PERCENT_CHANGE_THRESHOLD)
-             is_significant_deterioration = change_val > ABSOLUTE_CHANGE_THRESHOLD or (percentage_change is not None and percentage_change > PERCENT_CHANGE_THRESHOLD)
+        elif index_name in ['MSI']: # Lower MSI is better
+             is_significant_improvement = change_val < -ABSOLUTE_CHANGE_THRESHOLD or (percentage_change is not None and percentage_change < -NEGATIVE_PERCENT_CHANGE_THRESHOLD) # Negative change in MSI is improvement
+             is_significant_deterioration = change_val > ABSOLUTE_CHANGE_THRESHOLD or (percentage_change is not None and percentage_change > PERCENT_CHANGE_THRESHOLD) # Positive change in MSI is deterioration
 
              if is_significant_improvement:
-                return "بهبود"
+                return "بهبود (کاهش تنش)"
              elif is_significant_deterioration:
-                return "تنش / بدتر شدن"
+                return "تنش (افزایش MSI)"
              else:
                 return "ثابت"
-        elif index_name == 'NDMI': # Specific logic for NDMI and irrigation need
+        elif index_name == 'NDMI': # Higher NDMI is better (more moisture)
              is_low_ndmi = pd.notna(current_val) and current_val <= NDMI_IRRIGATION_THRESHOLD
-             # A significant decrease in NDMI also indicates potential issue
-             is_significant_decrease = change_val < -ABSOLUTE_CHANGE_THRESHOLD or (percentage_change is not None and percentage_change < -PERCENT_CHANGE_THRESHOLD)
+             is_significant_decrease = change_val < -ABSOLUTE_CHANGE_THRESHOLD or (percentage_change is not None and percentage_change < -NEGATIVE_PERCENT_CHANGE_THRESHOLD)
 
 
-             if is_low_ndmi or is_significant_decrease:
-                  # Prioritize tension/need if criteria met
-                  if is_low_ndmi and is_significant_decrease:
-                      return "تنش رطوبتی شدید / نیاز به آبیاری"
-                  elif is_low_ndmi:
-                      return "تنش رطوبتی / نیاز به آبیاری"
-                  elif is_significant_decrease:
-                      return "کاهش رطوبت قابل توجه"
-                  else:
-                      return "رطوبت پایین" # Should be caught by is_low_ndmi, but for completeness
-             elif is_significant_positive: # Significant increase
+             if is_low_ndmi and is_significant_decrease:
+                  return "تنش رطوبتی شدید / نیاز به آبیاری"
+             elif is_low_ndmi:
+                  return "تنش رطوبتی / نیاز به آبیاری"
+             elif is_significant_decrease:
+                  return "کاهش رطوبت قابل توجه"
+             elif is_significant_positive: # Significant increase in NDMI
                  return "افزایش رطوبت / بهبود"
              else:
                   return "رطوبت ثابت" # Within thresholds or slight non-significant change
@@ -1512,8 +1573,8 @@ def determine_status(row, index_name):
          if index_name == 'NDMI' and pd.notna(current_val) and current_val <= NDMI_IRRIGATION_THRESHOLD:
               return "احتمال تنش رطوبتی (بدون داده قبل)"
          # Add similar checks for low values of other indices if they indicate potential issues
-         # elif index_name in ['NDVI', 'EVI', 'LAI', 'CVI', 'SAVI'] and pd.notna(current_val) and current_val <= SOME_LOW_THRESHOLD:
-         #      return "پوشش گیاهی پایین (بدون داده قبل)"
+         elif index_name in ['NDVI', 'EVI', 'LAI', 'CVI', 'SAVI'] and pd.notna(current_val) and current_val <= 0.3: # Example low threshold for these indices
+              return "پوشش گیاهی پایین (بدون داده قبل)"
          else:
               return "بدون داده هفته قبل"
 
@@ -1739,6 +1800,7 @@ with tab1:
                 ranking_df_map_popups = pd.DataFrame()
                 if not is_single_farm and start_date_current_str and end_date_current_str and start_date_previous_str and end_date_previous_str:
                      with st.spinner("در حال آماده‌سازی اطلاعات مزارع برای نمایش در پاپ‌آپ‌های نقشه..."):
+                         # Re-calculate indices for popups only if not single farm, to save computation
                          ranking_df_map_popups, popup_calculation_errors = calculate_weekly_indices_for_table(
                               filtered_farms_df,
                               selected_index,
@@ -1768,32 +1830,47 @@ with tab1:
                                change_val_display = 'N/A'
                                status_text = "بدون داده"
 
-                               if is_single_farm and selected_farm_details is not None:
-                                   farm_data_for_popup = None
-                                   # Try to get data from the already calculated ranking_df if it exists
-                                   if 'ranking_df' in locals() and not ranking_df.empty:
-                                        farm_data_for_popup_list = ranking_df[ranking_df['مزرعه'] == farm_name]
-                                        if not farm_data_for_popup_list.empty:
-                                             farm_data_for_popup = farm_data_for_popup_list.iloc[0]
-
-                                   if farm_data_for_popup is not None:
-                                        current_index_val = f"{farm_data_for_popup.get(f'{selected_index} (هفته جاری)', 'N/A'):.3f}" if pd.notna(farm_data_for_popup.get(f'{selected_index} (هفته جاری)')) else 'N/A'
-                                        previous_index_val = f"{farm_data_for_popup.get(f'{selected_index} (هفته قبل)', 'N/A'):.3f}" if pd.notna(farm_data_for_popup.get(f'{selected_index} (هفته قبل)')) else 'N/A'
-                                        change_val = farm_data_for_popup.get('تغییر')
-                                        change_val_display = f"{change_val:.3f}" if pd.notna(change_val) else 'N/A'
-                                        status_text = determine_status(farm_data_for_popup, selected_index)
-
-
+                               # Get data for popup: use ranking_df if single farm, or ranking_df_map_popups if all farms
+                               farm_data_for_popup = None
+                               if is_single_farm and 'ranking_df' in locals() and not ranking_df.empty:
+                                    farm_data_for_popup_list = ranking_df[ranking_df['مزرعه'] == farm_name]
+                                    if not farm_data_for_popup_list.empty:
+                                         farm_data_for_popup = farm_data_for_popup_list.iloc[0]
                                elif not is_single_farm and not ranking_df_map_popups.empty:
-                                    # If displaying all farms, use the pre-calculated popup data frame
                                     farm_data_for_popup_list = ranking_df_map_popups[ranking_df_map_popups['مزرعه'] == farm_name]
                                     if not farm_data_for_popup_list.empty:
                                         farm_data_for_popup = farm_data_for_popup_list.iloc[0]
-                                        current_index_val = f"{farm_data_for_popup.get(f'{selected_index} (هفته جاری)', 'N/A'):.3f}" if pd.notna(farm_data_for_popup.get(f'{selected_index} (هفته جاری)')) else 'N/A'
-                                        previous_index_val = f"{farm_data_for_popup.get(f'{selected_index} (هفته قبل)', 'N/A'):.3f}" if pd.notna(farm_data_for_popup.get(f'{selected_index} (هفته قبل)')) else 'N/A'
-                                        change_val = farm_data_for_popup.get('تغییر')
-                                        change_val_display = f"{change_val:.3f}" if pd.notna(change_val) else 'N/A'
-                                        status_text = determine_status(farm_data_for_popup, selected_index)
+
+
+                               if farm_data_for_popup is not None:
+                                    current_index_val_raw = farm_data_for_popup.get(f'{selected_index} (هفته جاری)')
+                                    previous_index_val_raw = farm_data_for_popup.get(f'{selected_index} (هفته قبل)')
+                                    change_val_raw = farm_data_for_popup.get('تغییر')
+
+                                    current_index_val = f"{current_index_val_raw:.3f}" if pd.notna(current_index_val_raw) else 'N/A'
+                                    previous_index_val = f"{previous_index_val_raw:.3f}" if pd.notna(previous_index_val_raw) else 'N/A'
+                                    change_val_display = f"{change_val_raw:.3f}" if pd.notna(change_val_raw) else 'N/A'
+                                    status_text = determine_status(farm_data_for_popup, selected_index)
+                               else:
+                                   # If no data found for this farm in the ranking/popup df, try getting just the current value
+                                   try:
+                                       point_geom_single = ee.Geometry.Point([lon, lat])
+                                       current_img_single, err_single = get_processed_image(point_geom_single, start_date_current_str, end_date_current_str, selected_index)
+                                       if current_img_single:
+                                           current_val_single = current_img_single.reduceRegion(
+                                               reducer=ee.Reducer.first(),
+                                               geometry=point_geom_single,
+                                               scale=10,
+                                               bestEffort=True
+                                           ).get(selected_index).getInfo()
+                                           current_index_val = f"{current_val_single:.3f}" if pd.notna(current_val_single) else 'N/A'
+                                           status_text = "بدون داده هفته قبل" if pd.notna(current_val_single) else "بدون داده"
+                                       else:
+                                            status_text = "بدون داده"
+                                            if err_single: print(f"Error getting single farm current index for popup ({farm_name}): {err_single}")
+                                   except Exception as e:
+                                       print(f"Error getting single farm current index for popup ({farm_name}): {e}")
+                                       status_text = "خطا در داده"
 
 
                                popup_html = f"""
@@ -1917,6 +1994,7 @@ with tab1:
                      try:
                           image, error = get_processed_image(farm_gee_geom, start, end, index)
                           if image:
+                              # Select the band explicitly before reducing to avoid projection issues
                               mean_dict = image.select(index).reduceRegion(
                                   reducer=ee.Reducer.mean(),
                                   geometry=farm_gee_geom,
@@ -1998,10 +2076,12 @@ with tab1:
             temp_sort_col = f'{sort_col_name}_sortable'
 
             if sort_col_name in ranking_df.columns:
+                # Use a numerical column for sorting, handle NaN by putting them at the end
                 if ascending_sort:
-                     ranking_df[temp_sort_col] = pd.to_numeric(ranking_df[sort_col_name], errors='coerce').fillna(float('inf'))
-                else:
-                     ranking_df[temp_sort_col] = pd.to_numeric(ranking_df[sort_col_name], errors='coerce').fillna(float('-inf'))
+                     ranking_df[temp_sort_col] = pd.to_numeric(ranking_df[sort_col_name].str.replace('N/A', '').replace('', pd.NA), errors='coerce').fillna(float('inf'))
+                else: # Descending sort
+                     ranking_df[temp_sort_col] = pd.to_numeric(ranking_df[sort_col_name].str.replace('N/A', '').replace('', pd.NA), errors='coerce').fillna(float('-inf'))
+
 
                 ranking_df_sorted = ranking_df.sort_values(
                     by=temp_sort_col,
@@ -2016,6 +2096,7 @@ with tab1:
                  ranking_df_sorted.index = ranking_df_sorted.index + 1
                  ranking_df_sorted.index.name = 'رتبه'
 
+                 # Recalculate status AFTER sorting, based on the sorted data
                  ranking_df_sorted['وضعیت'] = ranking_df_sorted.apply(
                      lambda row: determine_status(row, selected_index), axis=1
                  )
@@ -2024,8 +2105,23 @@ with tab1:
 
                  cols_to_format = [f'{selected_index} (هفته جاری)', f'{selected_index} (هفته قبل)', 'تغییر']
                  for col in cols_to_format:
-                     if col in ranking_df_sorted.columns:
-                          ranking_df_sorted[col] = ranking_df_sorted[col].map(lambda x: f"{x:.3f}" if pd.notna(x) else "N/A")
+                     # Reapply formatting after sorting, based on raw numerical values if available
+                     raw_col_name = col # Assuming the original column name is sufficient to find the raw data before formatting
+                     # Need to map the original numerical values to the formatted string for display
+                     # This requires accessing the original numerical values before they were formatted to strings in the dataframe
+                     # A simpler approach is to format the columns *after* sorting and calculating status
+
+                     # Let's re-calculate the change value if the raw numbers are still available
+                     current_raw = ranking_df_sorted[f'{selected_index} (هفته جاری)'].apply(lambda x: float(str(x).replace('N/A', 'nan')))
+                     previous_raw = ranking_df_sorted[f'{selected_index} (هفته قبل)'].apply(lambda x: float(str(x).replace('N/A', 'nan')))
+                     ranking_df_sorted['تغییر_raw'] = current_raw - previous_raw
+
+                     # Now format the display columns
+                     ranking_df_sorted[f'{selected_index} (هفته جاری)'] = ranking_df_sorted[f'{selected_index} (هفته جاری)'].map(lambda x: f"{float(str(x).replace('N/A', 'nan')):.3f}" if pd.notna(x) and str(x) != 'N/A' else "N/A")
+                     ranking_df_sorted[f'{selected_index} (هفته قبل)'] = ranking_df_sorted[f'{selected_index} (هفته قبل)'].map(lambda x: f"{float(str(x).replace('N/A', 'nan')):.3f}" if pd.notna(x) and str(x) != 'N/A' else "N/A")
+                     ranking_df_sorted['تغییر'] = ranking_df_sorted['تغییر_raw'].map(lambda x: f"{x:.3f}" if pd.notna(x) else "N/A")
+                     ranking_df_sorted = ranking_df_sorted.drop(columns=['تغییر_raw'], errors='ignore')
+
 
                  display_columns = ['مزرعه', 'گروه', 'سن', 'واریته'] + cols_to_format + ['وضعیت_نمایش']
                  final_display_columns = [col for col in display_columns if col in ranking_df_sorted.columns]
@@ -2039,10 +2135,11 @@ with tab1:
 
                  status_counts = ranking_df_sorted['وضعیت'].value_counts()
 
-                 positive_terms = [s for s in status_counts.index if "بهبود" in s or "رشد مثبت" in s]
+                 # Define groups based on keywords
+                 positive_terms = [s for s in status_counts.index if "بهبود" in s or "رشد مثبت" in s or "افزایش رطوبت" in s]
                  negative_terms = [s for s in status_counts.index if any(sub in s for sub in ["تنش", "کاهش", "بدتر", "نیاز"])]
                  neutral_terms = [s for s in status_counts.index if any(sub in s for sub in ["ثابت", "رطوبت ثابت", "پوشش گیاهی پایین", "قابل توجه"])] # Added 'قابل توجه' for NDMI decrease
-                 nodata_terms = [s for s in status_counts.index if "بدون داده" in s]
+                 nodata_terms = [s for s in status_counts.index if "بدون داده" in s or "N/A" in s] # Added N/A for completeness
 
                  col1, col2, col3, col4 = st.columns(4)
 
@@ -2064,9 +2161,9 @@ with tab1:
 
                  st.info(f"""
                  **توضیحات وضعیت:**
-                 - **🟢 بهبود/رشد مثبت**: مزارعی که نسبت به هفته قبل بهبود قابل توجهی داشته‌اند (افزایش شاخص‌هایی مانند NDVI یا کاهش شاخص‌هایی مانند MSI).
-                 - **⚪ ثابت**: مزارعی که تغییر معناداری در شاخص نداشته‌اند (درون آستانه تغییر) یا وضعیت پایداری دارند (مثل رطوبت ثابت).
-                 - **🔴 تنش/کاهش/بدتر شدن**: مزارعی که نسبت به هفته قبل وضعیت نامطلوب‌تری داشته‌اند (کاهش شاخص‌هایی مانند NDVI یا افزایش شاخص‌هایی مانند MSI) یا نیاز آبیاری/کودی تشخیص داده شده است.
+                 - **🟢 بهبود/رشد مثبت**: مزارعی که نسبت به هفته قبل بهبود قابل توجهی داشته‌اند (افزایش شاخص‌هایی مانند NDVI یا کاهش شاخص‌هایی مانند MSI) یا افزایش رطوبت نشان می‌دهند.
+                 - **⚪ ثابت**: مزارعی که تغییر معناداری در شاخص نداشته‌اند (درون آستانه تغییر) یا وضعیت پایداری دارند (مثل رطوبت ثابت یا پوشش گیاهی پایین بدون تغییر). شامل کاهش‌های رطوبت که به حد تنش نرسیده‌اند.
+                 - **🔴 تنش/کاهش/بدتر شدن**: مزارعی که نسبت به هفته قبل وضعیت نامطلوب‌تری داشته‌اند (کاهش شاخص‌هایی مانند NDVI یا افزایش شاخص‌هایی مانند MSI) یا نیاز آبیاری/کودی تشخیص داده شده است. شامل تنش رطوبتی یا کاهش رطوبت قابل توجه.
                  - **🟡 بدون داده**: مزارعی که به دلیل عدم دسترسی به تصاویر ماهواره‌ای بدون ابر در یک یا هر دو بازه زمانی، امکان محاسبه تغییرات وجود نداشته است.
                  """)
 
@@ -2284,104 +2381,143 @@ with tab3:
 
     is_single_farm = (selected_farm_name != "همه مزارع")
 
+    # Need to get farm needs data only if a single farm is selected and GEE is initialized
+    farm_needs_data = {'error': "لطفاً یک مزرعه خاص را از پنل کناری انتخاب کنید."}
+    if is_single_farm and gee_initialized and selected_farm_details is not None and selected_farm_details.get('ee_geometry') is not None and start_date_current_str and end_date_current_str and start_date_previous_str and end_date_previous_str:
+         with st.spinner("در حال دریافت داده‌های شاخص برای تحلیل نیازها..."):
+             farm_needs_data = get_farm_needs_data(selected_farm_details.get('ee_geometry'), start_date_current_str, end_date_current_str, start_date_previous_str, end_date_previous_str)
+    elif is_single_farm and gee_initialized and (selected_farm_details is None or selected_farm_details.get('ee_geometry') is None):
+         farm_needs_data = {'error': f"هندسه GEE معتبر برای مزرعه '{selected_farm_name}' یافت نشد."}
+    elif is_single_farm and not gee_initialized:
+         farm_needs_data = {'error': "Google Earth Engine مقداردهی اولیه نشده است."}
+    elif is_single_farm and (not start_date_current_str or not end_date_current_str or not start_date_previous_str or not end_date_previous_str):
+         farm_needs_data = {'error': "بازه‌های زمانی معتبر برای تحلیل نیازها در دسترس نیست."}
+
+
     if not is_single_farm:
         st.info("⚠️ لطفاً یک مزرعه خاص را از پنل کناری (سمت چپ) انتخاب کنید تا تحلیل نیازهای آن نمایش داده شود.")
-    elif not gee_initialized:
-         st.warning("⚠️ اتصال به Google Earth Engine برقرار نیست. تحلیل نیازهای آبیاری و کوددهی در دسترس نمی‌باشد.")
-    elif selected_farm_details is None or selected_farm_details.get('ee_geometry') is None:
-         st.warning(f"⚠️ هندسه GEE معتبر برای مزرعه '{selected_farm_name}' یافت نشد. تحلیل نیازها امکان‌پذیر نیست.")
-    elif not start_date_current_str or not end_date_current_str or not start_date_previous_str or not end_date_previous_str:
-         st.warning("⚠️ بازه‌های زمانی معتبر برای تحلیل نیازها در دسترس نیست. لطفاً روز هفته را انتخاب کنید.")
+    elif farm_needs_data.get('error'):
+         st.error(f"❌ خطا در دریافت داده‌های شاخص برای تحلیل نیازها: {farm_needs_data['error']}")
+    elif pd.isna(farm_needs_data.get('NDMI_curr')) and pd.isna(farm_needs_data.get('NDVI_curr')):
+        st.warning("⚠️ داده‌های شاخص لازم (NDMI و NDVI) برای تحلیل در دوره فعلی یافت نشد. (ممکن است به دلیل پوشش ابری یا خطای پردازش باشد).")
+        st.markdown("---")
+        st.markdown("#### تحلیل هوش مصنوعی")
+        st.info("⚠️ به دلیل عدم دسترسی به داده‌های شاخص، تحلیل هوش مصنوعی امکان‌پذیر نیست.")
+
     else:
         st.subheader(f"تحلیل برای مزرعه: {selected_farm_name}")
 
         st.markdown("---")
         st.markdown("#### نتایج شاخص‌ها (هفته جاری و قبل)")
-        if farm_needs_data.get('error'):
-            st.error(f"❌ خطا در دریافت داده‌های شاخص برای تحلیل نیازها: {farm_needs_data['error']}")
-        elif pd.isna(farm_needs_data.get('NDMI_curr')) and pd.isna(farm_needs_data.get('NDVI_curr')):
-            st.warning("⚠️ داده‌های شاخص لازم (NDMI و NDVI) برای تحلیل در دوره فعلی یافت نشد. (ممکن است به دلیل پوشش ابری باشد).")
+
+        st.markdown("**مقادیر شاخص‌ها:**")
+        idx_cols = st.columns(4)
+        with idx_cols[0]:
+            display_val = f"{farm_needs_data['NDVI_curr']:.3f}" if pd.notna(farm_needs_data.get('NDVI_curr')) else "N/A"
+            st.metric("NDVI (جاری)", display_val)
+        with idx_cols[1]:
+            display_val = f"{farm_needs_data['NDMI_curr']:.3f}" if pd.notna(farm_needs_data.get('NDMI_curr')) else "N/A"
+            st.metric("NDMI (جاری)", display_val)
+        with idx_cols[2]:
+            display_val = f"{farm_needs_data.get('EVI_curr', 'N/A'):.3f}" if pd.notna(farm_needs_data.get('EVI_curr')) else "N/A"
+            st.metric("EVI (جاری)", display_val)
+        with idx_cols[3]:
+            display_val = f"{farm_needs_data.get('SAVI_curr', 'N/A'):.3f}" if pd.notna(farm_needs_data.get('SAVI_curr')) else "N/A"
+            st.metric("SAVI (جاری)", display_val)
+
+
+        idx_prev_cols = st.columns(4)
+        with idx_prev_cols[0]:
+             display_val_prev = f"{farm_needs_data['NDVI_prev']:.3f}" if pd.notna(farm_needs_data.get('NDVI_prev')) else "N/A"
+             st.metric("NDVI (قبلی)", display_val_prev)
+        with idx_prev_cols[1]:
+             display_val_prev = f"{farm_needs_data['NDMI_prev']:.3f}" if pd.notna(farm_needs_data.get('NDMI_prev')) else "N/A"
+             st.metric("NDMI (قبلی)", display_val_prev)
+        with idx_prev_cols[2]:
+             display_val_prev = f"{farm_needs_data.get('EVI_prev', 'N/A'):.3f}" if pd.notna(farm_needs_data.get('EVI_prev')) else "N/A"
+             st.metric("EVI (قبلی)", display_val_prev)
+        with idx_prev_cols[3]:
+             display_val_prev = f"{farm_needs_data.get('SAVI_prev', 'N/A'):.3f}" if pd.notna(farm_needs_data.get('SAVI_prev')) else "N/A"
+             st.metric("SAVI (قبلی)", display_val_prev)
+
+
+        st.markdown("---")
+        st.markdown("#### توصیه‌های اولیه (بر اساس آستانه‌ها)")
+        st.markdown("این توصیه‌ها بر اساس مقادیر شاخص و آستانه‌های داخلی سیستم، به‌صورت خودکار تولید می‌شوند:")
+        recommendations = []
+
+        NDMI_IRRIGATION_THRESHOLD = 0.25
+        NDVI_DROP_PERCENT_THRESHOLD = 5.0
+
+        # Get status using the determine_status logic for consistency
+        farm_current_data_for_status = {
+             f'{idx}_curr': farm_needs_data.get(f'{idx}_curr') for idx in ['NDVI', 'NDMI', 'EVI', 'SAVI']
+        }
+        farm_previous_data_for_status = {
+             f'{idx}_prev': farm_needs_data.get(f'{idx}_prev') for idx in ['NDVI', 'NDMI', 'EVI', 'SAVI']
+        }
+        # Simulate a row structure for determine_status
+        farm_row_for_status = {
+            f'{idx} (هفته جاری)': farm_needs_data.get(f'{idx}_curr') for idx in ['NDVI', 'NDMI', 'EVI', 'SAVI']
+        }
+        farm_row_for_status.update({
+             f'{idx} (هفته قبل)': farm_needs_data.get(f'{idx}_prev') for idx in ['NDVI', 'NDMI', 'EVI', 'SAVI']
+        })
+
+        # Calculate change for status determination
+        current_ndvi_raw = farm_needs_data.get('NDVI_curr')
+        previous_ndvi_raw = farm_needs_data.get('NDVI_prev')
+        ndvi_change_raw = current_ndvi_raw - previous_ndvi_raw if pd.notna(current_ndvi_raw) and pd.notna(previous_ndvi_raw) else None
+        farm_row_for_status['تغییر'] = ndvi_change_raw # Add change for NDVI status check
+
+
+        # Use determine_status for specific recommendations
+        ndmi_status = determine_status(farm_row_for_status, 'NDMI')
+        ndvi_status = determine_status(farm_row_for_status, 'NDVI')
+
+
+        if "نیاز به آبیاری" in ndmi_status or "تنش رطوبتی شدید" in ndmi_status:
+             recommendations.append(f"💧 نیاز به آبیاری فوری ({ndmi_status})")
+        elif "کاهش رطوبت قابل توجه" in ndmi_status:
+             recommendations.append(f"❗ کاهش رطوبت مشاهده شده است. بررسی نیاز به آبیاری ({ndmi_status})")
+        elif "احتمال تنش رطوبتی (بدون داده قبل)" in ndmi_status:
+             recommendations.append(f"⚠️ احتمال تنش رطوبتی بر اساس شاخص جاری. (بدون داده هفته قبل برای مقایسه)")
+
+
+        if "تنش / کاهش" in ndvi_status:
+             recommendations.append(f"⚠️ کاهش در پوشش گیاهی/سلامت مشاهده شده است. بررسی نیاز به کوددهی یا سایر عوامل تنش‌زا ({ndvi_status})")
+        elif "پوشش گیاهی پایین (بدون داده قبل)" in ndmi_status: # This might be better based on NDVI, let's adjust
+             # Check if NDVI is low when previous data is missing
+             if pd.notna(farm_needs_data.get('NDVI_curr')) and pd.isna(farm_needs_data.get('NDVI_prev')):
+                  # Use a direct low NDVI threshold if previous data is missing
+                  LOW_NDVI_THRESHOLD = 0.3
+                  if farm_needs_data['NDVI_curr'] <= LOW_NDVI_THRESHOLD:
+                      recommendations.append(f"⚠️ پوشش گیاهی پایین بر اساس شاخص جاری ({farm_needs_data['NDVI_curr']:.3f}). (بدون داده هفته قبل برای مقایسه). بررسی عمومی مزرعه.")
+
+        elif "بدون داده هفته جاری" in ndvi_status or "بدون داده هفته قبل" in ndvi_status:
+             # Handle cases where NDVI data is missing
+             if "بدون داده هفته جاری" in ndvi_status:
+                  recommendations.append("ℹ️ داده NDVI هفته جاری برای ارزیابی پوشش گیاهی در دسترس نیست.")
+             if "بدون داده هفته قبل" in ndmi_status: # Check if NDMI previous is missing specifically
+                  recommendations.append("ℹ️ داده رطوبت (NDMI) هفته قبل برای ارزیابی تغییرات در دسترس نیست.")
+
+
+        if not recommendations:
+             recommendations.append("✅ بر اساس شاخص‌های فعلی و تغییرات نسبت به هفته قبل، وضعیت مزرعه مطلوب به نظر می‌رسد یا داده کافی برای تشخیص مشکل واضح وجود ندارد.")
+
+
+        for rec in recommendations:
+            if "نیاز به آبیاری فوری" in rec or "تنش رطوبتی شدید" in rec: st.error(rec)
+            elif "کاهش رطوبت مشاهده شده" in rec or "احتمال تنش رطوبتی" in rec or "نیاز به بررسی کوددهی" in rec or "پوشش گیاهی پایین" in rec or "کاهش رطوبت قابل توجه" in rec: st.warning(rec)
+            else: st.success(rec)
+
+        st.markdown("---")
+        st.markdown("#### تحلیل هوش مصنوعی")
+        if gemini_model:
+             with st.spinner("در حال تولید تحلیل هوش مصنوعی..."):
+                 ai_explanation = get_ai_needs_analysis(gemini_model, selected_farm_name, farm_needs_data, recommendations)
+             st.markdown(ai_explanation)
         else:
-            st.markdown("**مقادیر شاخص‌ها:**")
-            idx_cols = st.columns(4)
-            with idx_cols[0]:
-                display_val = f"{farm_needs_data['NDVI_curr']:.3f}" if pd.notna(farm_needs_data.get('NDVI_curr')) else "N/A"
-                st.metric("NDVI (جاری)", display_val)
-            with idx_cols[1]:
-                display_val = f"{farm_needs_data['NDMI_curr']:.3f}" if pd.notna(farm_needs_data.get('NDMI_curr')) else "N/A"
-                st.metric("NDMI (جاری)", display_val)
-            with idx_cols[2]:
-                display_val = f"{farm_needs_data.get('EVI_curr', 'N/A'):.3f}" if pd.notna(farm_needs_data.get('EVI_curr')) else "N/A"
-                st.metric("EVI (جاری)", display_val)
-            with idx_cols[3]:
-                display_val = f"{farm_needs_data.get('SAVI_curr', 'N/A'):.3f}" if pd.notna(farm_needs_data.get('SAVI_curr')) else "N/A"
-                st.metric("SAVI (جاری)", display_val)
-
-
-            idx_prev_cols = st.columns(4)
-            with idx_prev_cols[0]:
-                 display_val_prev = f"{farm_needs_data['NDVI_prev']:.3f}" if pd.notna(farm_needs_data.get('NDVI_prev')) else "N/A"
-                 st.metric("NDVI (قبلی)", display_val_prev)
-            with idx_prev_cols[1]:
-                 display_val_prev = f"{farm_needs_data['NDMI_prev']:.3f}" if pd.notna(farm_needs_data.get('NDMI_prev')) else "N/A"
-                 st.metric("NDMI (قبلی)", display_val_prev)
-            with idx_prev_cols[2]:
-                 display_val_prev = f"{farm_needs_data.get('EVI_prev', 'N/A'):.3f}" if pd.notna(farm_needs_data.get('EVI_prev')) else "N/A"
-                 st.metric("EVI (قبلی)", display_val_prev)
-            with idx_prev_cols[3]:
-                 display_val_prev = f"{farm_needs_data.get('SAVI_prev', 'N/A'):.3f}" if pd.notna(farm_needs_data.get('SAVI_prev')) else "N/A"
-                 st.metric("SAVI (قبلی)", display_val_prev)
-
-
-            st.markdown("---")
-            st.markdown("#### توصیه‌های اولیه (بر اساس آستانه‌ها)")
-            st.markdown("این توصیه‌ها بر اساس مقادیر شاخص و آستانه‌های داخلی سیستم، به‌صورت خودکار تولید می‌شوند:")
-            recommendations = []
-
-            NDMI_IRRIGATION_THRESHOLD = 0.25
-            NDVI_DROP_PERCENT_THRESHOLD = 5.0
-
-            if pd.notna(farm_needs_data.get('NDMI_curr')) and farm_needs_data['NDMI_curr'] <= NDMI_IRRIGATION_THRESHOLD:
-                recommendations.append(f"💧 نیاز به آبیاری (NDMI = {farm_needs_data['NDMI_curr']:.3f} <= آستانه {NDMI_IRRIGATION_THRESHOLD:.2f})")
-
-            current_ndvi = farm_needs_data.get('NDVI_curr')
-            previous_ndvi = farm_needs_data.get('NDVI_prev')
-
-            if pd.notna(current_ndvi) and pd.notna(previous_ndvi):
-                 if previous_ndvi is not None and previous_ndvi > 0.01:
-                      ndvi_change = current_ndvi - previous_ndvi
-                      ndvi_change_percent = (ndvi_change / previous_ndvi) * 100
-
-                      if ndvi_change < 0 and abs(ndvi_change_percent) > NDVI_DROP_PERCENT_THRESHOLD:
-                          recommendations.append(f"⚠️ نیاز به بررسی کوددهی (افت NDVI: {ndvi_change:.3f}, معادل {abs(ndvi_change_percent):.1f}% افت نسبت به هفته قبل)")
-
-                 elif previous_ndvi is not None and previous_ndvi <= 0.01 and current_ndvi > previous_ndvi:
-                    recommendations.append("ℹ️ NDVI هفته قبل بسیار پایین بوده است. افزایش در هفته جاری مشاهده می‌شود.")
-                 elif previous_ndvi is not None and previous_ndvi <= 0.01 and current_ndvi <= previous_ndvi:
-                      recommendations.append("⚠️ NDVI در هفته جاری و هفته قبل بسیار پایین است. نیاز به بررسی وضعیت عمومی مزرعه.")
-
-
-            elif pd.isna(previous_ndvi) and pd.notna(current_ndvi):
-                 st.caption("ℹ️ داده NDVI هفته قبل برای بررسی افت در دسترس نیست.")
-            elif pd.notna(previous_ndvi) and pd.isna(current_ndvi):
-                 st.warning("⚠️ داده NDVI هفته جاری برای بررسی وضعیت پوشش گیاهی در دسترس نیست.")
-
-
-            if not recommendations:
-                 recommendations.append("✅ بر اساس شاخص‌های فعلی و آستانه‌ها، وضعیت مزرعه مطلوب به نظر می‌رسد. (یا داده کافی برای تشخیص مشکل وجود ندارد).")
-
-            for rec in recommendations:
-                if "نیاز به آبیاری" in rec: st.error(rec)
-                elif "نیاز به بررسی کوددهی" in rec or "بسیار پایین" in rec: st.warning(rec)
-                else: st.success(rec)
-
-            st.markdown("---")
-            st.markdown("#### تحلیل هوش مصنوعی")
-            if gemini_model:
-                 with st.spinner("در حال تولید تحلیل هوش مصنوعی..."):
-                     ai_explanation = get_ai_needs_analysis(gemini_model, selected_farm_name, farm_needs_data, recommendations)
-                 st.markdown(ai_explanation)
-            else:
-                 st.info("⚠️ سرویس تحلیل هوش مصنوعی پیکربندی نشده یا در دسترس نیست.")
+             st.info("⚠️ سرویس تحلیل هوش مصنوعی پیکربندی نشده یا در دسترس نیست.")
 
     st.markdown("---")
