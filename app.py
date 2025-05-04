@@ -941,7 +941,7 @@ if selected_day:
         start_date_previous = end_date_previous - datetime.timedelta(days=6)
 
         # Ensure previous start date is not too far back if needed
-        one_year_ago = today - datetime.timedelta(days=365))
+        one_year_ago = today - datetime.timedelta(days=365)
         if start_date_previous < one_year_ago:
              start_date_previous = one_year_ago
              st.sidebar.info(f"⚠️ بازه زمانی قبلی به یک سال قبل محدود شد: {start_date_previous.strftime('%Y-%m-%d')}")
