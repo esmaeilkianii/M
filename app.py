@@ -1044,7 +1044,7 @@ def add_indices(image):
 def get_processed_image(_geometry, start_date, end_date, index_name):
     """
     Gets cloud-masked, index-calculated Sentinel-2 median composite for a given geometry and date range.
-    Includes fallback date range logic if no images are found initially.
+    Includes advanced fallback date range logic if no images are found initially.
     """
     if not gee_initialized:
         return None, "Google Earth Engine مقداردهی اولیه نشده است."
@@ -1054,7 +1054,6 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
     initial_start_date = start_date
     initial_end_date = end_date
     fallback_days = 30 # Increased fallback period
-
 
     def filter_and_process_collection(s_date, e_date):
         try:
@@ -1096,29 +1095,30 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
             error_message = f"خطای ناشناخته در پردازش GEE در بازه {s_date}-{e_date}: {e}\n{traceback.format_exc()}"
             return None, 0, error_message
 
-
     # Attempt 1: Exact date range
     image, count, error_msg = filter_and_process_collection(initial_start_date, initial_end_date)
 
     if image is None:
-        # Attempt 2: Fallback with extended end date
-        try:
-            fallback_end_date = (datetime.datetime.strptime(initial_end_date, '%Y-%m-%d') + datetime.timedelta(days=fallback_days)).strftime('%Y-%m-%d')
-            print(f"Attempt 1 failed for {initial_start_date}-{initial_end_date}. Trying fallback range: {initial_start_date} to {fallback_end_date}")
-            image, count, error_msg = filter_and_process_collection(initial_start_date, fallback_end_date)
+        # Attempt 2: Fallback with extended end date (30 days after end)
+        fallback_end_date = (datetime.datetime.strptime(initial_end_date, '%Y-%m-%d') + datetime.timedelta(days=fallback_days)).strftime('%Y-%m-%d')
+        image, count, error_msg = filter_and_process_collection(initial_start_date, fallback_end_date)
 
-            if image is not None:
-                 print(f"Found {count} images in fallback range.")
-                 # You could optionally add a subtle message to the user here about using a fallback range
-                 # st.info(f"ℹ️ از داده‌های تصویری تا تاریخ {fallback_end_date} برای نمایش نقشه استفاده شد.")
-            else:
-                 print(f"Attempt 2 failed for {initial_start_date}-{fallback_end_date}. No images found after fallback.")
+    if image is None:
+        # Attempt 3: Fallback with extended start date (30 days before start)
+        fallback_start_date = (datetime.datetime.strptime(initial_start_date, '%Y-%m-%d') - datetime.timedelta(days=fallback_days)).strftime('%Y-%m-%d')
+        image, count, error_msg = filter_and_process_collection(fallback_start_date, initial_end_date)
 
-        except Exception as e:
-            error_msg = f"خطا در تلاش جایگزین برای دریافت تصویر: {e}\n{traceback.format_exc()}"
-            image = None
+    if image is None:
+        # Attempt 4: Fallback with both extended start and end date
+        fallback_start_date = (datetime.datetime.strptime(initial_start_date, '%Y-%m-%d') - datetime.timedelta(days=fallback_days)).strftime('%Y-%m-%d')
+        fallback_end_date = (datetime.datetime.strptime(initial_end_date, '%Y-%m-%d') + datetime.timedelta(days=fallback_days)).strftime('%Y-%m-%d')
+        image, count, error_msg = filter_and_process_collection(fallback_start_date, fallback_end_date)
 
-
+    if image is None:
+        # حرفه‌ای: پیام کاربرپسند و پیشنهاد تلاش مجدد
+        error_msg = (f"هیچ تصویر Sentinel-2 بدون ابر برای شاخص {index_name} در بازه‌های زمانی مختلف یافت نشد.\n"
+                     f"لطفاً بازه زمانی را تغییر دهید یا روز دیگری را انتخاب کنید.\n"
+                     f"همچنین می‌توانید با کلیک روی دکمه زیر، تلاش مجدد با بازه زمانی گسترده‌تر انجام دهید.")
     return image, error_msg
 
 
