@@ -1044,7 +1044,7 @@ def add_indices(image):
 def get_processed_image(_geometry, start_date, end_date, index_name):
     """
     Gets cloud-masked, index-calculated Sentinel-2 median composite for a given geometry and date range.
-    Includes advanced fallback date range logic if no images are found initially.
+    Includes fallback date range logic if no images are found initially.
     """
     if not gee_initialized:
         return None, "Google Earth Engine مقداردهی اولیه نشده است."
@@ -1099,19 +1099,17 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
     image, count, error_msg = filter_and_process_collection(initial_start_date, initial_end_date)
 
     if image is None:
-        # Attempt 2: Fallback with extended end date (30 days after end)
+        # Attempt 2: Fallback with extended end date
         fallback_end_date = (datetime.datetime.strptime(initial_end_date, '%Y-%m-%d') + datetime.timedelta(days=fallback_days)).strftime('%Y-%m-%d')
         image, count, error_msg = filter_and_process_collection(initial_start_date, fallback_end_date)
 
     if image is None:
-        # Attempt 3: Fallback with extended start date (30 days before start)
+        # Attempt 3: Fallback with extended start date (30 days before)
         fallback_start_date = (datetime.datetime.strptime(initial_start_date, '%Y-%m-%d') - datetime.timedelta(days=fallback_days)).strftime('%Y-%m-%d')
         image, count, error_msg = filter_and_process_collection(fallback_start_date, initial_end_date)
 
     if image is None:
         # Attempt 4: Fallback with both extended start and end date
-        fallback_start_date = (datetime.datetime.strptime(initial_start_date, '%Y-%m-%d') - datetime.timedelta(days=fallback_days)).strftime('%Y-%m-%d')
-        fallback_end_date = (datetime.datetime.strptime(initial_end_date, '%Y-%m-%d') + datetime.timedelta(days=fallback_days)).strftime('%Y-%m-%d')
         image, count, error_msg = filter_and_process_collection(fallback_start_date, fallback_end_date)
 
     if image is None:
@@ -2533,6 +2531,11 @@ with tab3:
         if gemini_model:
              with st.spinner("در حال تولید تحلیل هوش مصنوعی..."):
                  ai_explanation = get_ai_needs_analysis(gemini_model, selected_farm_name, farm_needs_data, recommendations)
+             st.markdown(ai_explanation)
+        else:
+             st.info("⚠️ سرویس تحلیل هوش مصنوعی پیکربندی نشده یا در دسترس نیست.")
+
+    st.markdown("---")
              st.markdown(ai_explanation)
         else:
              st.info("⚠️ سرویس تحلیل هوش مصنوعی پیکربندی نشده یا در دسترس نیست.")
