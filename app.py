@@ -55,73 +55,48 @@ st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700;900&display=swap');
         @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css');
-        @import url('https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css');
 
         html, body, .main, .stApp {
             font-family: 'Vazirmatn', sans-serif !important;
-            background: linear-gradient(135deg, #e0f7fa 0%, #f8fafc 100%);
+            background: linear-gradient(180deg, #e0f7fa 0%, #f8fafc 100%);
             color: #333;
         }
 
-        /* Header styling with animations */
-        header {
-            position: sticky;
-            top: 0;
-            z-index: 999;
-            animation: fadeIn 0.8s ease-in-out;
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            background: rgba(255, 255, 255, 0.8);
-            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-            padding: 0.5rem 0;
-            transition: all 0.3s ease;
-        }
-        
-        header:hover {
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-        }
-
-        /* Dark Mode Enhancements */
         @media (prefers-color-scheme: dark) {
             html, body, .main, .stApp {
-                background: linear-gradient(135deg, #1a1f36 0%, #2d3748 100%);
+                background: linear-gradient(180deg, #2b2b2b 0%, #3f3f3f 100%);
                 color: #f8f8f8;
-            }
-            header {
-                background: rgba(30, 41, 59, 0.8);
-                border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             }
             .stTabs [data-baseweb="tab-list"] button [data-baseweb="tab"] {
                 color: #bbb !important;
             }
-            .stTabs [data-baseweb="tab-list"] button:hover {
+             .stTabs [data-baseweb="tab-list"] button:hover {
                 color: #f8f8f8 !important;
             }
             .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
                 color: #43cea2 !important;
-                border-bottom-color: #43cea2 !important;
+                 border-bottom-color: #43cea2 !important;
             }
-            .modern-card {
+             .modern-card {
                 background: linear-gradient(135deg, #1a435a 0%, #2a2a2a 100%);
                 color: #f8f8f8;
                 box-shadow: 0 4px 16px rgba(0,0,0,0.3);
             }
-            .status-positive { background-color: #218838; }
-            .status-negative { background-color: #c82333; }
-            .status-neutral { background-color: #5a6268; color: #fff; }
-            .status-nodata { background-color: #d39e00; color: #f8f8f8;}
+             .status-positive { background-color: #218838; }
+             .status-negative { background-color: #c82333; }
+             .status-neutral { background-color: #5a6268; color: #fff; }
+             .status-nodata { background-color: #d39e00; color: #f8f8f8;}
+
         }
 
         h1, h2, h3, h4, h5, h6 {
             color: #185a9d;
             font-weight: 700;
         }
-        .stMarkdown h1 {
-            color: #185a9d !important;
-            animation: fadeInDown 0.5s ease-in-out;
-        }
+         .stMarkdown h1 {
+             color: #185a9d !important;
+         }
 
-        /* Modern animated cards */
         .modern-card {
             background: linear-gradient(135deg, #43cea2 0%, #185a9d 100%);
             color: white;
@@ -130,336 +105,255 @@ st.markdown("""
             margin: 15px 0;
             box-shadow: 0 6px 20px rgba(30,60,114,0.1);
             text-align: center;
-            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            overflow: hidden;
-            position: relative;
-            animation: fadeIn 0.6s ease-in-out;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+             overflow: hidden;
         }
         .modern-card:hover {
-            transform: translateY(-8px) scale(1.02);
-            box-shadow: 0 15px 30px rgba(30,60,114,0.2);
-        }
-        .modern-card::before {
-            content: '';
-            position: absolute;
-            top: -50%;
-            left: -50%;
-            width: 200%;
-            height: 200%;
-            background: linear-gradient(45deg, transparent, rgba(255,255,255,0.1), transparent);
-            transform: rotate(45deg);
-            transition: all 1s ease;
-            opacity: 0;
-        }
-        .modern-card:hover::before {
-            opacity: 1;
-            animation: shine 1.5s ease-in-out;
+            transform: translateY(-5px) scale(1.02);
+            box-shadow: 0 10px 30px rgba(30,60,114,0.15);
         }
         .modern-card div:first-child {
             font-size: 1em;
             opacity: 0.9;
-            margin-bottom: 8px;
+             margin-bottom: 8px;
         }
-        .modern-card div:last-child {
-            font-size: 2em;
-            font-weight: 900;
+         .modern-card div:last-child {
+             font-size: 2em;
+             font-weight: 900;
         }
 
-        /* Sidebar enhancements */
         .sidebar-logo {
             display: flex;
             align-items: center;
             justify-content: center;
             margin-bottom: 2rem;
-            padding-top: 1rem;
-            animation: pulse 2s infinite;
+             padding-top: 1rem;
         }
         .sidebar-logo img {
             width: 100px;
             height: 100px;
             border-radius: 20px;
             box-shadow: 0 4px 12px rgba(30,60,114,0.15);
-            transition: all 0.3s ease;
-        }
-        .sidebar-logo img:hover {
-            transform: rotate(5deg) scale(1.05);
-        }
-        
-        [data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #f8f9fa 0%, #e9ecef 100%);
-            border-right: 1px solid rgba(0,0,0,0.1);
-            box-shadow: 5px 0 10px rgba(0,0,0,0.05);
-        }
-        
-        @media (prefers-color-scheme: dark) {
-            [data-testid="stSidebar"] {
-                background: linear-gradient(180deg, #1e2937 0%, #111827 100%);
-                border-right: 1px solid rgba(255,255,255,0.1);
-            }
         }
 
-        /* Main logo animation */
         .main-logo {
             width: 55px;
             height: 55px;
             border-radius: 15px;
             margin-left: 15px;
             vertical-align: middle;
-            box-shadow: 0 2px 8px rgba(30,60,114,0.1);
-            transition: all 0.3s ease;
-            animation: bounceIn 1s;
-        }
-        .main-logo:hover {
-            transform: rotate(10deg) scale(1.1);
+             box-shadow: 0 2px 8px rgba(30,60,114,0.1);
         }
 
-        /* Tab styling enhancements */
         .stTabs [data-baseweb="tab-list"] {
             gap: 20px;
-            border-bottom: 1px solid rgba(0,0,0,0.1);
-            padding-bottom: 0;
-            margin-bottom: 20px;
         }
         .stTabs [data-baseweb="tab-list"] button {
-            background-color: transparent;
-            padding: 12px 20px;
+            background-color: #f0f2f6;
+            padding: 10px 15px;
             border-radius: 8px 8px 0 0;
-            border-bottom: 3px solid transparent;
+            border-bottom: 2px solid transparent;
             transition: all 0.3s ease;
-            font-weight: 700;
-            color: #555;
-            position: relative;
-            overflow: hidden;
+             font-weight: 700;
+             color: #555;
         }
-        .stTabs [data-baseweb="tab-list"] button:hover {
-            background-color: rgba(67, 206, 162, 0.1);
+         .stTabs [data-baseweb="tab-list"] button:hover {
+            background-color: #e2e6eb;
             color: #185a9d;
-            border-bottom-color: rgba(67, 206, 162, 0.5);
+             border-bottom-color: #185a9d;
         }
         .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
-            background-color: rgba(67, 206, 162, 0.15);
+            background-color: #ffffff;
             border-bottom-color: #43cea2;
             color: #185a9d;
-            box-shadow: 0 -2px 8px rgba(30,60,114,0.05);
+             box-shadow: 0 -2px 8px rgba(30,60,114,0.05);
         }
-        .stTabs [data-baseweb="tab-list"] button[aria-selected="true"]::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            height: 3px;
-            background: linear-gradient(90deg, #43cea2, #185a9d);
-            animation: slideInRight 0.3s ease-out;
-        }
-        .stTabs [data-baseweb="tab-panel"] {
-            padding: 25px 5px;
-            animation: fadeIn 0.5s ease-in-out;
-        }
+         .stTabs [data-baseweb="tab-panel"] {
+             padding: 20px 5px;
+         }
 
-        /* Status badges enhancements */
         .status-badge {
             display: inline-block;
-            padding: 0.4em 0.8em;
-            font-size: 0.85em;
+            padding: 0.3em 0.6em;
+            font-size: 0.8em;
             font-weight: bold;
             line-height: 1.2;
             text-align: center;
             white-space: nowrap;
             vertical-align: middle;
-            border-radius: 0.5rem;
+            border-radius: 0.35rem;
             color: #fff;
-            margin: 3px;
-            transition: all 0.3s ease;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            animation: fadeIn 0.5s ease-in-out;
+             margin: 2px;
         }
-        .status-badge:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-        }
-        .status-positive { 
-            background: linear-gradient(90deg, #28a745, #1e7e34);
-        }
-        .status-negative { 
-            background: linear-gradient(90deg, #dc3545, #bd2130);
-        }
-        .status-neutral { 
-            background: linear-gradient(90deg, #6c757d, #5a6268);
-            color: #fff;
-        }
-        .status-nodata { 
-            background: linear-gradient(90deg, #ffc107, #d39e00);
-            color: #212529;
-        }
+        .status-positive { background-color: #28a745; }
+        .status-negative { background-color: #dc3545; }
+        .status-neutral { background-color: #6c757d; color: #fff; }
+        .status-nodata { background-color: #ffc107; color: #212529; }
 
-        /* Table enhancements */
         table {
-            border-collapse: separate;
-            border-spacing: 0;
+            border-collapse: collapse;
             width: 100%;
             margin: 20px 0;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-            border-radius: 10px;
-            overflow: hidden;
-            animation: fadeIn 0.5s ease-in-out;
+             box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+             border-radius: 8px;
+             overflow: hidden;
         }
-        
-        table thead tr {
-            background: linear-gradient(90deg, #43cea2, #185a9d);
+        th, td {
+            text-align: center;
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            vertical-align: middle !important;
+        }
+        th {
+            background-color: #185a9d;
             color: white;
+             font-weight: 700;
         }
-        
-        table th {
-            padding: 12px 15px;
-            text-align: right;
-            font-weight: bold;
+        tr:nth-child(even) { background-color: #f2f2f2; }
+         @media (prefers-color-scheme: dark) {
+             table { box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+              th { background-color: #0e3a5d; color: #f8f8f8; }
+             tr:nth-child(even) { background-color: #3a3a3a; }
+            tr:nth-child(odd) { background-color: #2b2b2b; }
+             td { border-bottom-color: #555; }
+         }
+
+        .stAlert {
+             border-radius: 8px;
+             margin: 15px 0;
+             padding: 15px;
+             display: flex;
+             align-items: flex-start;
         }
-        
-        table td {
-            padding: 10px 15px;
-            border-bottom: 1px solid rgba(0,0,0,0.05);
+        .stAlert > div:first-child {
+             font-size: 1.5em;
+             margin-right: 15px;
+             flex-shrink: 0;
         }
-        
-        table tbody tr {
-            transition: all 0.3s ease;
-        }
-        
-        table tbody tr:hover {
-            background-color: rgba(67, 206, 162, 0.05);
-            transform: scale(1.005);
-        }
-        
-        table tbody tr:last-child td {
-            border-bottom: none;
-        }
-        
-        /* Button enhancements */
-        .stButton > button {
-            border-radius: 8px;
-            padding: 0.5rem 1rem;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 6px rgba(50, 50, 93, 0.11), 0 1px 3px rgba(0, 0, 0, 0.08);
-            border: none;
-            background: linear-gradient(135deg, #43cea2 0%, #185a9d 100%);
-            color: white;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .stButton > button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 7px 14px rgba(50, 50, 93, 0.1), 0 3px 6px rgba(0, 0, 0, 0.08);
-        }
-        
-        .stButton > button:active {
-            transform: translateY(1px);
-        }
-        
-        .stButton > button::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 5px;
-            height: 5px;
-            background: rgba(255, 255, 255, 0.5);
-            opacity: 0;
-            border-radius: 100%;
-            transform: scale(1, 1) translate(-50%, -50%);
-            transform-origin: 50% 50%;
-        }
-        
-        .stButton > button:hover::after {
-            animation: ripple 1s ease-out;
-            opacity: 0;
-        }
-        
-        /* Select box enhancements */
-        .stSelectbox {
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        
-        .stSelectbox > div > div[data-baseweb="select"] {
-            transition: all 0.3s ease;
-            border-radius: 8px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-        }
-        
-        .stSelectbox > div > div[data-baseweb="select"]:hover {
-            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-            transform: translateY(-1px);
-        }
-        
-        /* Animation keyframes */
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        
-        @keyframes fadeInDown {
-            from {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        
-        @keyframes slideInRight {
-            from { 
-                width: 0;
-            }
-            to {
+         .stAlert > div:last-child {
+             font-size: 1em;
+             line-height: 1.5;
+             flex-grow: 1;
+         }
+          .stAlert a { color: #185a9d; }
+           @media (prefers-color-scheme: dark) {
+               .stAlert a { color: #43cea2; }
+           }
+
+         .js-plotly-plot {
+             border-radius: 8px;
+             overflow: hidden;
+             margin: 20px 0;
+             box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+         }
+         @media (prefers-color-scheme: dark) {
+             .js-plotly-plot { box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+         }
+
+         .stSidebar {
+             background: linear-gradient(180deg, #cce7ff 0%, #e0f7fa 100%);
+             color: #333;
+             padding: 20px;
+         }
+         @media (prefers-color-scheme: dark) {
+             .stSidebar {
+                background: linear-gradient(180deg, #1a435a 0%, #2b2b2b 100%);
+                 color: #f8f8f8;
+             }
+              .stSidebar label { color: #f8f8f8; }
+                .stSidebar .stTextInput > div > div > input,
+                .stSidebar .stSelectbox > div > div > div > input[type="text"],
+                .stSidebar .stNumberInput > div > div > input {
+                    background-color: #3a3a3a;
+                    color: #f8f8f8;
+                    border-color: #555;
+                }
+                 .stSidebar .stTextInput > div > div > input:focus,
+                 .stSidebar .stSelectbox > div > div > div > input[type="text"]:focus,
+                 .stSidebar .stNumberInput > div > div > input:focus {
+                    border-color: #43cea2;
+                    box-shadow: 0 0 5px rgba(67, 206, 162, 0.5);
+                }
+                 .stSidebar .stRadio > label > div:first-child { color: #f8f8f8; }
+
+         }
+          .stSidebar h2 { color: #185a9d; }
+          .stSidebar .stRadio > label > div:first-child { padding-right: 10px; }
+           .stSidebar .stSelectbox > label { font-weight: 700; }
+           .stSidebar .stSlider > label { font-weight: 700; }
+
+         .stTextInput > div > div > input,
+         .stSelectbox > div > div > div > input[type="text"],
+         .stNumberInput > div > div > input {
+             border-radius: 8px;
+             border: 1px solid #ccc;
+             padding: 8px 12px;
+             transition: border-color 0.3s;
+         }
+          .stTextInput > div > div > input:focus,
+          .stSelectbox > div > div > div > input[type="text"]:focus,
+          .stNumberInput > div > div > input:focus {
+             border-color: #43cea2;
+             outline: none;
+             box-shadow: 0 0 5px rgba(67, 206, 162, 0.5);
+         }
+
+         .stButton > button {
+             background-color: #185a9d;
+             color: white;
+             border-radius: 8px;
+             padding: 10px 20px;
+             font-size: 1em;
+             transition: background-color 0.3s, transform 0.1s;
+             border: none;
+             cursor: pointer;
+         }
+          .stButton > button:hover { background-color: #0f3c66; transform: translateY(-1px); }
+           .stButton > button:active { transform: translateY(0); background-color: #0a2840; }
+
+          .stDownloadButton > button { background-color: #43cea2; }
+           .stDownloadButton > button:hover { background-color: #31a380; }
+            .stDownloadButton > button:active { background-color: #247a60; }
+
+         .stExpander {
+              border-radius: 8px;
+              border: 1px solid #ddd;
+              box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+              margin: 15px 0;
+          }
+           .stExpander div[data-baseweb="accordion-header"] {
+               background-color: #f8f8f8;
+               border-bottom: 1px solid #ddd;
+               border-top-left-radius: 8px;
+               border-top-right-radius: 8px;
+               padding: 10px 15px;
+               font-weight: 700;
+               color: #333;
+           }
+            .stExpander div[data-baseweb="accordion-panel"] { padding: 15px; }
+           @media (prefers-color-scheme: dark) {
+               .stExpander { border-color: #555; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+               .stExpander div[data-baseweb="accordion-header"] {
+                   background-color: #3a3a3a;
+                   border-bottom-color: #555;
+                   color: #f8f8f8;
+               }
+           }
+
+           hr { border-top: 2px dashed #ccc; margin: 30px 0; }
+           @media (prefers-color-scheme: dark) { hr { border-top: 2px dashed #555; } }
+
+            [data-testid="stMetricValue"] {
+                text-align: center;
                 width: 100%;
+                display: block;
             }
-        }
-        
-        @keyframes bounceIn {
-            0% {
-                opacity: 0;
-                transform: scale(0.3);
-            }
-            50% {
-                opacity: 1;
-                transform: scale(1.05);
-            }
-            70% { transform: scale(0.9); }
-            100% { transform: scale(1); }
-        }
-        
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-            100% { transform: scale(1); }
-        }
-        
-        @keyframes ripple {
-            0% {
-                transform: scale(0, 0);
-                opacity: 0.5;
-            }
-            100% {
-                transform: scale(100, 100);
-                opacity: 0;
-            }
-        }
-        
-        @keyframes shine {
-            0% {
-                left: -100%;
-                opacity: 0;
-            }
-            100% {
-                left: 100%;
-                opacity: 0.3;
-            }
-        }
+             [data-testid="stMetricLabel"] {
+                 text-align: center;
+                 width: 100%;
+                 display: block;
+             }
+
     </style>
 """, unsafe_allow_html=True)
 
@@ -752,7 +646,7 @@ def load_farm_data_from_csv(csv_path=FARM_DATA_CSV_PATH):
             processed_df['مساحت'] = 0
 
 
-        st.success(f"✅ داده‌های {len(processed_df)} مزرعه با موفقیت از CSV بارگذاری و پردازش شد.")
+        # st.success(f"✅ داده‌های {len(processed_df)} مزرعه با موفقیت از CSV بارگذاری و پردازش شد.") # Commented out
         return processed_df
     except FileNotFoundError:
         st.error(f"❌ فایل '{csv_path}' یافت نشد. لطفاً فایل CSV داده‌های مزارع را در مسیر صحیح قرار دهید.")
@@ -873,7 +767,8 @@ def load_analysis_data(csv_path=ANALYSIS_CSV_PATH):
         df_prod_processed = preprocess_df(df_prod, "تولید")
 
         if df_area_processed is not None or df_prod_processed is not None:
-             st.success(f"✅ داده‌های محاسبات با موفقیت بارگذاری و پردازش شد.")
+             # st.success(f"✅ داده‌های محاسبات با موفقیت بارگذاری و پردازش شد.") # Commented out
+             pass # Replaced commented-out line with pass to avoid syntax error if it was the last line in the block
         else:
              st.warning("⚠️ هیچ داده معتبری از فایل محاسبات بارگذاری یا پردازش نشد. لطفاً ساختار فایل 'محاسبات 2.csv' را بررسی کنید.")
 
@@ -935,7 +830,7 @@ if gee_initialized:
     if gemini_model is None:
          st.warning("⚠️ سرویس تحلیل هوش مصنوعی به دلیل خطای پیکربندی در دسترس نیست. قابلیت‌های تحلیل هوش مصنوعی غیرفعال است.")
     # Add a prominent warning about hardcoding the API key
-    st.warning("⚠️ **هشدار امنیتی:** کلید API جمینای مستقیماً در کد قرار داده شده است. این روش **ناامن** است و به شدت توصیه می‌شود از Streamlit Secrets برای مدیریت امن کلید استفاده کنید.", icon="🔒")
+    # st.warning("⚠️ **هشدار امنیتی:** کلید API جمینای مستقیماً در کد قرار داده شده است. این روش **ناامن** است و به شدت توصیه می‌شود از Streamlit Secrets برای مدیریت امن کلید استفاده کنید.", icon="🔒") # Commented out
 
 
 # --- Sidebar Logo ---
@@ -1104,52 +999,48 @@ def maskS2clouds(image):
                 .updateMask(final_mask)
 
 def add_indices(image):
-    # First, ensure all bands have consistent projection by reprojecting optical bands
-    # Get a reference projection from B4 (typically red band)
-    red_proj = image.select('B4').projection()
-    
-    # Select all necessary bands and reproject to ensure consistent projection
-    red = image.select('B4').reproject(crs=red_proj)
-    nir = image.select('B8').reproject(crs=red_proj)
-    blue = image.select('B2').reproject(crs=red_proj)
-    green = image.select('B3').reproject(crs=red_proj)
-    swir1 = image.select('B11').reproject(crs=red_proj)
+    red = image.select('B4')
+    nir = image.select('B8')
+    blue = image.select('B2')
+    green = image.select('B3')
+    swir1 = image.select('B11')
 
     epsilon = 1e-9
 
     ndvi_denominator = nir.add(red)
-    ndvi = ee.Image.expression(
+    ndvi = image.expression(
         '(NIR - RED) / (NIR + RED)',
         {'NIR': nir, 'RED': red}
     ).rename('NDVI').updateMask(ndvi_denominator.gt(epsilon))
 
     evi_denominator = nir.add(red.multiply(6)).subtract(blue.multiply(7.5)).add(1)
-    evi = ee.Image.expression(
+    evi = image.expression(
         '2.5 * (NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1)',
         {'NIR': nir, 'RED': red, 'BLUE': blue}
     ).rename('EVI').updateMask(evi_denominator.abs().gt(epsilon))
 
     ndmi_denominator = nir.add(swir1)
-    ndmi = ee.Image.normalizedDifference(['B8', 'B11']).reproject(crs=red_proj).rename('NDMI').updateMask(ndmi_denominator.gt(epsilon))
+    ndmi = image.normalizedDifference(['B8', 'B11']).rename('NDMI').updateMask(ndmi_denominator.gt(epsilon))
 
     savi_denominator = nir.add(red).add(0.5)
-    savi = ee.Image.expression(
+    savi = image.expression(
         '((NIR - RED) / (NIR + RED + L)) * (1 + L)',
         {'NIR': nir, 'RED': red, 'L': 0.5}
     ).rename('SAVI').updateMask(savi_denominator.gt(epsilon))
 
     nir_safe = nir.max(ee.Image(epsilon))
-    msi = ee.Image.expression('SWIR1 / NIR', {'SWIR1': swir1, 'NIR': nir_safe}).rename('MSI')
+    msi = image.expression('SWIR1 / NIR', {'SWIR1': swir1, 'NIR': nir_safe}).rename('MSI')
 
-    lai = evi.multiply(3.618).subtract(0.118).rename('LAI').reproject(crs=red_proj)
+    # Remove explicit reprojection
+    lai = evi.multiply(3.618).subtract(0.118).rename('LAI') #.reproject(crs=image.projection().crs(), scale=10)
     lai = lai.updateMask(lai.gt(0))
 
     green_safe = green.max(ee.Image(epsilon))
-    cvi = ee.Image.expression('(NIR / GREEN) * (RED / GREEN)',
+    # Remove explicit reprojection
+    cvi = image.expression('(NIR / GREEN) * (RED / GREEN)',
                          {'NIR': nir, 'GREEN': green_safe, 'RED': red}
-    ).rename('CVI').reproject(crs=red_proj)
+    ).rename('CVI') #.reproject(crs=image.projection().crs(), scale=10)
 
-    # Return with all bands in the same projection
     return image.addBands([ndvi, evi, ndmi, msi, lai, cvi, savi])
 
 @st.cache_data(show_spinner=False, persist="disk")
@@ -1180,31 +1071,8 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
             if count == 0:
                 return None, 0, f"هیچ تصویر Sentinel-2 بدون ابر در بازه {s_date} تا {e_date} یافت نشد."
 
-            # First apply indices to each image
             indexed_col = s2_sr_col.map(add_indices)
-            
-            # Select just the requested index band before calculating median 
-            # to avoid projection mismatches between bands
-            filtered_col = indexed_col.select([index_name])
-            
-            # Calculate median only on the selected index band
-            try:
-                median_image = filtered_col.median()
-            except ee.EEException as median_err:
-                # If median fails, try an alternative approach
-                if "different projections" in str(median_err):
-                    # Try to reproject each image before calculating median
-                    first_image = indexed_col.first()
-                    first_proj = first_image.select(index_name).projection()
-                    
-                    # Reproject each image's index band to match the first one
-                    reprojected_col = indexed_col.map(
-                        lambda img: img.select(index_name).reproject(crs=first_proj)
-                    )
-                    median_image = reprojected_col.median()
-                else:
-                    # Re-raise if it's not a projection error
-                    raise
+            median_image = indexed_col.median()
 
             available_bands = median_image.bandNames().getInfo()
             if index_name not in available_bands:
@@ -1224,33 +1092,25 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
                      return None, count, f"شاخص '{index_name}' یافت نشد و هیچ باند معتبری در تصویر وجود ندارد."
 
 
-            # Select the band before returning
-            output_image = median_image
+            # Select the band BEFORE the final validity check
+            output_image = median_image.select(index_name)
 
             # Final validity check: Ensure the selected band has data over the geometry
             try:
-                test_reduction = output_image.reduceRegion(
+                test_reduction = output_image.reduceRegion( # Use the single-band image here
                     reducer=ee.Reducer.firstNonNull(), # Check if there's any non-null pixel
                     geometry=_geometry,
                     scale=30, # Use slightly coarser scale for faster check
                     bestEffort=True
-                ).getInfo()
-                
-                # Check if any values were returned
-                has_data = False
-                for key, value in test_reduction.items():
-                    if value is not None:
-                        has_data = True
-                        break
-                
-                if not has_data:
+                ).get(index_name).getInfo()
+                if test_reduction is None:
                      return None, count, f"تصویر برای شاخص '{index_name}' در بازه {s_date}-{e_date} ایجاد شد اما هیچ داده معتبری روی هندسه مورد نظر ندارد (احتمالاً همه پیکسل‌ها Mask شده‌اند)."
             except ee.EEException as reduce_err:
                  # If reduction itself fails, report it
                  return None, count, f"خطا در تأیید داده‌های تصویر برای شاخص '{index_name}' در بازه {s_date}-{e_date}: {reduce_err}"
 
 
-            return output_image, count, None
+            return output_image, count, None # Return the single-band image
 
         except ee.EEException as e:
             error_message = f"خطای Google Earth Engine در بازه {s_date}-{e_date}: {e}"
@@ -1261,7 +1121,8 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
                          error_message += "\\n(احتمالاً به دلیل حجم بالای پردازش یا بازه زمانی طولانی)"
                      elif 'user memory limit exceeded' in error_details.lower():
                          error_message += "\\n(احتمالاً به دلیل پردازش منطقه بزرگ یا عملیات پیچیده)"
-                     elif 'image.projection' in error_details.lower() and 'different projections' in error_details.lower():
+                     elif ('projection' in error_details.lower() and 'different projections' in error_details.lower()) or \
+                          ('projection' in error_details.lower() and 'unable to transform' in error_details.lower()): # Catch both projection error types
                         error_message += "\\n(خطای پروجکشن داخلی در GEE. ممکن است با تلاش مجدد یا بازه زمانی متفاوت برطرف شود.)"
                      elif 'geometryconstructors' in error_details.lower() or 'invalid polygon' in error_details.lower():
                          error_message += "\\n(احتمالاً مشکلی در هندسه ورودی وجود دارد)"
@@ -1318,6 +1179,8 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
             print(f"Error processing fallback dates: {date_err}")
         except Exception as e:
             # Error during the fallback *attempt* itself
+            fallback_start_date = initial_start_date # Ensure it's defined for error message
+            fallback_end_date = (datetime.datetime.strptime(initial_end_date, '%Y-%m-%d') + datetime.timedelta(days=fallback_days)).strftime('%Y-%m-%d') if 'fallback_end_date' not in locals() else fallback_end_date
             error_msg = f"خطا در تلاش جایگزین ({fallback_start_date}-{fallback_end_date}): {e}\\n{traceback.format_exc()}. خطای اولیه: {initial_error_msg}"
             image = None # Ensure image remains None
             print(f"Error during fallback attempt: {e}")
@@ -1811,6 +1674,243 @@ def determine_status(row, index_name):
         return "بدون داده"
 
 
+@st.cache_data(show_spinner=False, persist="disk")
+def calculate_weekly_indices_for_table(
+    _farms_df, index_name, start_curr, end_curr, start_prev, end_prev
+):
+    """
+    Calculates mean index values for the current and previous periods for all farms
+    efficiently using GEE reduceRegions.
+    """
+    results_list = []
+    errors = []
+    farm_names_ordered = [] # Keep track of original order if needed
+
+    if not gee_initialized:
+        return pd.DataFrame(), ["Google Earth Engine مقداردهی اولیه نشده است."]
+    if _farms_df.empty:
+        return pd.DataFrame(), ["DataFrame مزارع ورودی خالی است."]
+
+    try:
+        # 1. Create FeatureCollection from DataFrame
+        features = []
+        for idx, farm in _farms_df.iterrows():
+            farm_name = farm.get('مزرعه', f'مزرعه ناشناس ردیف {idx+1}')
+            farm_gee_geom = farm.get('ee_geometry')
+            # Keep track of original properties needed later
+            original_props = {
+                'مزرعه': farm_name,
+                'گروه': farm.get('گروه', 'نامشخص'),
+                'سن': farm.get('سن', 'نامشخص'),
+                'واریته': farm.get('واریته', 'نامشخص')
+            }
+            farm_names_ordered.append(farm_name)
+
+            if farm_gee_geom is not None:
+                 # Ensure geometry is valid before creating feature
+                 try:
+                      # A quick check like buffering by 0 can help fix minor issues
+                      valid_geom = farm_gee_geom.buffer(0, 1) # Max error 1 meter
+                      features.append(ee.Feature(valid_geom, original_props))
+                 except ee.EEException as geom_err:
+                     errors.append(f"خطای هندسه برای مزرعه '{farm_name}': {geom_err}. نادیده گرفته شد.")
+                     # Add placeholder to results_list to maintain row count if needed? Or filter out later.
+                     # For simplicity, we'll filter out farms with invalid geometry errors.
+            else:
+                errors.append(f"هندسه GEE نامعتبر برای مزرعه '{farm_name}'. نادیده گرفته شد.")
+                # Add placeholder?
+
+        if not features:
+            errors.append("هیچ هندسه معتبری برای پردازش در GEE یافت نشد.")
+            return pd.DataFrame(), errors
+
+        farm_fc = ee.FeatureCollection(features)
+
+        # 2. Get Processed Images for Both Periods (median composite)
+        def get_median_image(start, end):
+            try:
+                # Using get_processed_image ensures masking and index calculation
+                # It returns a single-band image for the specified index_name
+                image, error_msg = get_processed_image(farm_fc.geometry(), start, end, index_name)
+                if error_msg:
+                    # Collect errors from image processing
+                    errors.append(f"خطا در پردازش تصویر ({start}-{end}): {error_msg}")
+                return image # Return the image (or None if error)
+            except Exception as e:
+                errors.append(f"خطای ناشناخته در get_median_image ({start}-{end}): {e}")
+                return None
+
+        image_curr = get_median_image(start_curr, end_curr)
+        image_prev = get_median_image(start_prev, end_prev)
+
+        # Proceed only if we have images to reduce
+        if image_curr is None and image_prev is None:
+             errors.append(f"هیچ تصویر معتبری برای شاخص {index_name} در هر دو بازه زمانی یافت نشد.")
+             # Return empty DataFrame with original farm names/props but None values?
+             empty_results = []
+             for idx, farm in _farms_df.iterrows():
+                 empty_results.append({
+                    'مزرعه': farm.get('مزرعه', f'مزرعه ناشناس ردیف {idx+1}'),
+                    'گروه': farm.get('گروه', 'نامشخص'),
+                    f'{index_name} (هفته جاری)': None,
+                    f'{index_name} (هفته قبل)': None,
+                    'تغییر': None,
+                    'سن': farm.get('سن', 'نامشخص'),
+                    'واریته': farm.get('واریته', 'نامشخص'),
+                 })
+             return pd.DataFrame(empty_results), errors
+
+
+        # 3. Combine images (handle cases where one image might be None)
+        bands_to_reduce = []
+        image_to_reduce = None
+        if image_curr is not None:
+             image_curr = image_curr.rename(f'{index_name}_curr')
+             bands_to_reduce.append(f'{index_name}_curr')
+             image_to_reduce = image_curr
+        if image_prev is not None:
+             image_prev = image_prev.rename(f'{index_name}_prev')
+             bands_to_reduce.append(f'{index_name}_prev')
+             if image_to_reduce is None:
+                  image_to_reduce = image_prev
+             else:
+                  image_to_reduce = image_to_reduce.addBands(image_prev)
+
+
+        # 4. ReduceRegions - Run only if there's something to reduce
+        reduced_fc = None
+        if image_to_reduce is not None:
+             try:
+                 # Use reduceRegions to calculate mean for all features at once
+                 reduced_fc = image_to_reduce.reduceRegions(
+                     collection=farm_fc,
+                     reducer=ee.Reducer.mean(), # Calculate mean
+                     scale=10, # Keep original scale for accuracy
+                     # tileScale=4 # Consider adjusting tileScale if timeouts occur
+                 )
+             except ee.EEException as reduce_err:
+                 errors.append(f"خطای GEE در reduceRegions: {reduce_err}")
+                 reduced_fc = None # Ensure it's None on error
+             except Exception as e:
+                  errors.append(f"خطای ناشناخته در reduceRegions: {e}")
+                  reduced_fc = None
+
+
+        # 5. Process Results
+        if reduced_fc is not None:
+             try:
+                 # Efficiently get properties from FeatureCollection
+                 reduced_list = reduced_fc.toList(reduced_fc.size())
+                 # Check if getInfo() is needed or if aggregate_dictionary works better
+                 # Using getInfo() on the list is often necessary for complex properties
+                 properties_list = reduced_list.getInfo()
+
+                 # Create a dictionary for quick lookup by farm name
+                 results_dict = {}
+                 for item in properties_list:
+                      props = item.get('properties', {})
+                      farm_name = props.get('مزرعه')
+                      if farm_name:
+                           results_dict[farm_name] = props # Store all retrieved properties
+
+
+                 # Iterate through the original farms df to ensure all farms are included
+                 # and to maintain original order/properties
+                 for idx, farm in _farms_df.iterrows():
+                    farm_name = farm.get('مزرعه', f'مزرعه ناشناس ردیف {idx+1}')
+                    farm_result = results_dict.get(farm_name, {}) # Get results from GEE if available
+
+                    current_val = farm_result.get(f'{index_name}_curr')
+                    previous_val = farm_result.get(f'{index_name}_prev')
+                    change = None
+
+                    # Calculate change only if both values are valid numbers
+                    if isinstance(current_val, (int, float)) and pd.notna(current_val) and \
+                       isinstance(previous_val, (int, float)) and pd.notna(previous_val):
+                        try:
+                            change = current_val - previous_val
+                        except TypeError:
+                            change = None
+                    else:
+                        change = None
+
+                    results_list.append({
+                        'مزرعه': farm_name,
+                        'گروه': farm.get('گروه', 'نامشخص'), # Get from original df
+                        f'{index_name} (هفته جاری)': current_val, # Value from GEE or None
+                        f'{index_name} (هفته قبل)': previous_val, # Value from GEE or None
+                        'تغییر': change,
+                        'سن': farm.get('سن', 'نامشخص'), # Get from original df
+                        'واریته': farm.get('واریته', 'نامشخص'), # Get from original df
+                    })
+
+             except ee.EEException as getinfo_err:
+                 errors.append(f"خطای GEE در دریافت نتایج reduceRegions: {getinfo_err}")
+                 # Fallback: return empty df with original farms?
+                 results_list = [] # Clear potentially partial list
+                 for idx, farm in _farms_df.iterrows():
+                      results_list.append({
+                         'مزرعه': farm.get('مزرعه', f'مزرعه ناشناس ردیف {idx+1}'),
+                         'گروه': farm.get('گروه', 'نامشخص'),
+                         f'{index_name} (هفته جاری)': None,
+                         f'{index_name} (هفته قبل)': None,
+                         'تغییر': None,
+                         'سن': farm.get('سن', 'نامشخص'),
+                         'واریته': farm.get('واریته', 'نامشخص'),
+                      })
+
+             except Exception as e:
+                  errors.append(f"خطای ناشناخته در پردازش نتایج GEE: {e}")
+                  results_list = [] # Clear potentially partial list
+                  # Fallback...
+                  for idx, farm in _farms_df.iterrows():
+                       results_list.append({
+                          'مزرعه': farm.get('مزرعه', f'مزرعه ناشناس ردیف {idx+1}'),
+                          'گروه': farm.get('گروه', 'نامشخص'),
+                          f'{index_name} (هفته جاری)': None,
+                          f'{index_name} (هفته قبل)': None,
+                          'تغییر': None,
+                          'سن': farm.get('سن', 'نامشخص'),
+                          'واریته': farm.get('واریته', 'نامشخص'),
+                       })
+        else:
+            # Handle case where reduceRegions failed or didn't run
+            errors.append("پردازش reduceRegions انجام نشد یا ناموفق بود.")
+            # results_list remains empty or should be populated with Nones
+            results_list = [] # Ensure it's empty if reduceRegions failed
+            for idx, farm in _farms_df.iterrows():
+                 results_list.append({
+                    'مزرعه': farm.get('مزرعه', f'مزرعه ناشناس ردیف {idx+1}'),
+                    'گروه': farm.get('گروه', 'نامشخص'),
+                    f'{index_name} (هفته جاری)': None,
+                    f'{index_name} (هفته قبل)': None,
+                    'تغییر': None,
+                    'سن': farm.get('سن', 'نامشخص'),
+                    'واریته': farm.get('واریته', 'نامشخص'),
+                 })
+
+
+        # 6. Convert to DataFrame
+        final_df = pd.DataFrame(results_list)
+
+        # Ensure correct column order if needed
+        cols_order = [
+             'مزرعه', 'گروه', f'{index_name} (هفته جاری)', f'{index_name} (هفته قبل)',
+             'تغییر', 'سن', 'واریته'
+         ]
+        final_df = final_df[[col for col in cols_order if col in final_df.columns]]
+
+
+        return final_df, errors
+
+    except ee.EEException as gee_err:
+        errors.append(f"خطای عمومی GEE در calculate_weekly_indices: {gee_err}")
+        return pd.DataFrame(), errors
+    except Exception as e:
+        errors.append(f"خطای عمومی ناشناخته در calculate_weekly_indices: {e}\n{traceback.format_exc()}")
+        return pd.DataFrame(), errors
+
+
 # ==============================================================================
 # Main Application Layout (Using Tabs)
 # ==============================================================================
@@ -1879,50 +1979,35 @@ with tab1:
                     selected_farm_gee_geom = ee.Geometry.MultiPolygon(all_farm_geometries)
                     center = selected_farm_gee_geom.centroid(maxError=1).getInfo()['coordinates']
                     center_lon, center_lat = center[0], center[1]
-                    bounds = selected_farm_gee_geom.bounds().getInfo()
-                    
-                    # Fix for bounds coordinates access
-                    if 'coordinates' in bounds:
-                        # New GEE API format uses 'coordinates'
-                        coordinates = bounds['coordinates'][0]  # First polygon's coordinates
-                        # Find min/max coordinates
-                        lon_vals = [coord[0] for coord in coordinates]
-                        lat_vals = [coord[1] for coord in coordinates]
-                        lon_min, lon_max = min(lon_vals), max(lon_vals)
-                        lat_min, lat_max = min(lat_vals), max(lat_vals)
-                        lon_diff = lon_max - lon_min
-                        lat_diff = lat_max - lat_min
-                    elif 'even' in bounds:
-                        # Old format
-                        lon_diff = bounds['even'][2] - bounds['even'][0]
-                        lat_diff = bounds['even'][3] - bounds['even'][1]
-                    else:
-                        # If both formats fail, extract coordinates differently
-                        bbox = selected_farm_gee_geom.bounds().getInfo()
-                        if isinstance(bbox, dict) and 'type' in bbox and bbox['type'] == 'Polygon':
-                            coordinates = bbox['coordinates'][0]  # First polygon's coordinates
-                            lon_vals = [coord[0] for coord in coordinates]
-                            lat_vals = [coord[1] for coord in coordinates]
-                            lon_min, lon_max = min(lon_vals), max(lon_vals)
-                            lat_min, lat_max = min(lat_vals), max(lat_vals)
-                            lon_diff = lon_max - lon_min
-                            lat_diff = lat_max - lat_min
-                        else:
-                            # If we can't determine bounds, use default values
-                            lon_diff = 1.0
-                            lat_diff = 1.0
-                            st.info("ℹ️ استفاده از مقادیر پیش‌فرض برای محاسبه زوم نقشه.")
-                    
-                    # Set zoom level based on the geographic extent
-                    if max(lon_diff, lat_diff) > 10: zoom_level = 6
-                    elif max(lon_diff, lat_diff) > 5: zoom_level = 8
-                    elif max(lon_diff, lat_diff) > 2: zoom_level = 10
-                    elif max(lon_diff, lat_diff) > 0.5: zoom_level = 12
-                    else: zoom_level = 13
 
+                    # Correctly extract bounds
+                    bounds_info = selected_farm_gee_geom.bounds(maxError=1).getInfo()
+                    coords = bounds_info['coordinates'][0] # This is a list of [lon, lat] pairs
+                    lon_coords = [c[0] for c in coords]
+                    lat_coords = [c[1] for c in coords]
+                    lon_min, lon_max = min(lon_coords), max(lon_coords)
+                    lat_min, lat_max = min(lat_coords), max(lat_coords)
+
+                    lon_diff = lon_max - lon_min
+                    lat_diff = lat_max - lat_min
+
+                    # Adjust zoom based on the larger dimension
+                    if max(lon_diff, lat_diff) > 1.0: zoom_level = 10 # Wider view for larger areas
+                    elif max(lon_diff, lat_diff) > 0.5: zoom_level = 11
+                    elif max(lon_diff, lat_diff) > 0.1: zoom_level = 12
+                    else: zoom_level = 13 # Default zoom for smaller areas
+
+                except ee.EEException as e:
+                     st.warning(f"⚠️ خطای Google Earth Engine در پردازش هندسه کلی مزارع: {e}. نقشه با مرکز پیش‌فرض نمایش داده می‌شود.")
+                     selected_farm_gee_geom = None # Reset geometry if error occurs
+                except (KeyError, IndexError, TypeError) as e:
+                     st.warning(f"⚠️ خطا در پردازش اطلاعات مرزهای هندسی مزارع: {e}. نقشه با مرکز پیش‌فرض نمایش داده می‌شود.")
+                     # Log the actual bounds_info for debugging if needed
+                     # print("Error processing bounds_info:", bounds_info)
+                     selected_farm_gee_geom = None # Reset geometry if error occurs
                 except Exception as e:
-                     st.warning(f"⚠️ خطا در ایجاد هندسه GEE برای همه مزارع: {e}. نقشه با مرکز پیش‌فرض نمایش داده می‌شود.")
-                     selected_farm_gee_geom = None
+                     st.warning(f"⚠️ خطای ناشناخته در ایجاد هندسه GEE برای همه مزارع: {e}. نقشه با مرکز پیش‌فرض نمایش داده می‌شود.")
+                     selected_farm_gee_geom = None # Reset geometry if error occurs
             else:
                 st.warning("⚠️ هیچ هندسه GEE معتبری برای مزارع انتخابی یافت نشد. نمایش نقشه محدود خواهد بود.")
                 selected_farm_gee_geom = None
@@ -1930,7 +2015,6 @@ with tab1:
 
             st.subheader(f"نمایش کلی مزارع برای روز: {selected_day}")
             st.markdown(modern_metric_card("تعداد مزارع در این روز", f"{len(filtered_farms_df):,}", icon="fa-leaf", color="#185a9d"), unsafe_allow_html=True)
-            st.caption("تعداد کل مزارع ثبت شده برای روز انتخاب شده.")
 
             if 'واریته' in filtered_farms_df.columns and not filtered_farms_df['واریته'].isna().all():
                 variety_counts = filtered_farms_df[filtered_farms_df['واریته'].astype(str).str.lower() != 'نامشخص']['واریته'].value_counts().sort_values(ascending=False)
@@ -2055,6 +2139,96 @@ with tab1:
                 </div>
                 '''
                 m.get_root().html.add_child(folium.Element(legend_html))
+
+                # --- MODIFICATION START ---
+                # Prepare data for popups using the ALREADY calculated ranking table dataframe
+                # The ranking_df needs to be calculated *before* this point if not single farm
+                ranking_df_for_popups = pd.DataFrame() # Initialize empty
+                popup_calculation_errors_map = [] # Use a different var name for errors specific to this stage if needed
+
+                # Calculate the ranking table data IF 'all farms' is selected and it hasn't been calculated yet
+                # Note: This call will now use the optimized function.
+                # We call it here to ensure data is ready for popups *before* the map is displayed.
+                # The results will be cached if the inputs haven't changed.
+                if not is_single_farm and gee_initialized and start_date_current_str and end_date_current_str and start_date_previous_str and end_date_previous_str and not filtered_farms_df.empty:
+                     with st.spinner("در حال آماده‌سازی داده‌های رتبه‌بندی برای پاپ‌آپ‌های نقشه..."):
+                          ranking_df_for_popups, popup_calculation_errors_map = calculate_weekly_indices_for_table(
+                               filtered_farms_df,
+                               selected_index,
+                               start_date_current_str,
+                               end_date_current_str,
+                               start_date_previous_str,
+                               end_date_previous_str
+                          )
+                          if popup_calculation_errors_map:
+                               st.warning("⚠️ برخی خطاها در حین محاسبه اولیه شاخص‌ها برای پاپ‌آپ‌ها رخ داد (تا ۵ خطا):")
+                               for error in popup_calculation_errors_map[:5]: st.warning(f"- {error}")
+
+
+                # Convert the dataframe to a dictionary for faster lookup inside the loop
+                popup_data_dict = {}
+                if not ranking_df_for_popups.empty:
+                    # Use 'مزرعه' as index for quick lookup
+                    popup_data_dict = ranking_df_for_popups.set_index('مزرعه').to_dict('index')
+
+
+                if not filtered_farms_df.empty:
+                     for idx, farm in filtered_farms_df.iterrows():
+                          lat = farm.get('wgs84_centroid_lat')
+                          lon = farm.get('wgs84_centroid_lon')
+
+                          if pd.notna(lat) and pd.notna(lon):
+                               farm_name = farm.get('مزرعه', 'نامشخص')
+                               group = farm.get('گروه', 'نامشخص')
+                               age = farm.get('سن', 'نامشخص')
+                               variety = farm.get('واریته', 'نامشخص')
+
+                               current_index_val = 'N/A'
+                               previous_index_val = 'N/A'
+                               change_val_display = 'N/A'
+                               status_text = "بدون داده"
+
+                               # Get data for popup ONLY from the pre-calculated dictionary
+                               farm_data_for_popup = popup_data_dict.get(farm_name)
+
+                               if farm_data_for_popup is not None:
+                                    current_index_val_raw = farm_data_for_popup.get(f'{selected_index} (هفته جاری)')
+                                    previous_index_val_raw = farm_data_for_popup.get(f'{selected_index} (هفته قبل)')
+                                    change_val_raw = farm_data_for_popup.get('تغییر')
+
+                                    # Format for display, handling None/N/A/nan
+                                    current_index_val = f"{float(str(current_index_val_raw).replace('N/A', 'nan').replace('None', 'nan')):.3f}" if pd.notna(current_index_val_raw) and str(current_index_val_raw) != 'N/A' and str(current_index_val_raw) != 'None' else 'N/A'
+                                    previous_index_val = f"{float(str(previous_index_val_raw).replace('N/A', 'nan').replace('None', 'nan')):.3f}" if pd.notna(previous_index_val_raw) and str(previous_index_val_raw) != 'N/A' and str(previous_index_val_raw) != 'None' else 'N/A'
+                                    change_val_display = f"{float(str(change_val_raw).replace('N/A', 'nan').replace('None', 'nan')):.3f}" if pd.notna(change_val_raw) and str(change_val_raw) != 'N/A' and str(change_val_raw) != 'None' else 'N/A'
+
+                                    # Create a temporary Series/dict-like object for determine_status
+                                    status_row_data = {
+                                        f'{selected_index} (هفته جاری)': current_index_val_raw,
+                                        f'{selected_index} (هفته قبل)': previous_index_val_raw,
+                                        'تغییر': change_val_raw
+                                    }
+                                    status_text = determine_status(status_row_data, selected_index)
+                               else:
+                                   # If no data found for this farm in the pre-calculated dict, display N/A
+                                   # DO NOT make individual GEE calls here anymore
+                                   status_text = "داده در دسترس نیست"
+
+
+                               popup_html = f"""
+                               <strong>مزرعه:</strong> {farm_name}<br>
+                               <strong>گروه:</strong> {group}<br>
+                               <strong>سن:</strong> {age}<br>
+                               <strong>واریته:</strong> {variety}<br>
+                               ---<br>
+                               <strong>{selected_index} (جاری):</strong> {current_index_val} <br>
+                               <strong>{selected_index} (قبلی):</strong> {previous_index_val} <br>
+                               <strong>تغییر:</strong> {change_val_display} <br>
+                               <strong>وضعیت:</strong> {status_text}
+                               """
+                               # ... (rest of marker creation code) ...
+
+                # --- MODIFICATION END ---
+
 
                 ranking_df_map_popups = pd.DataFrame()
                 if not is_single_farm and start_date_current_str and end_date_current_str and start_date_previous_str and end_date_previous_str:
@@ -2223,102 +2397,23 @@ with tab1:
         st.subheader(f"📊 جدول رتبه‌بندی مزارع بر اساس {selected_index} (روز: {selected_day})")
         st.markdown("مقایسه مقادیر متوسط شاخص در هفته جاری با هفته قبل و تعیین وضعیت هر مزرعه.")
 
-        @st.cache_data(show_spinner=False, persist="disk")
-        def calculate_weekly_indices_for_table(
-            _farms_df, index_name, start_curr, end_curr, start_prev, end_prev
-        ):
-            results = []
-            errors = []
-            total_farms = len(_farms_df)
-            progress_placeholder = st.empty()
-
-
-            for i, (idx, farm) in enumerate(_farms_df.iterrows()):
-                farm_name = farm.get('مزرعه', f'مزرعه ناشناس ردیف {i+1}')
-                farm_gee_geom = farm.get('ee_geometry')
-
-                if farm_gee_geom is None:
-                    errors.append(f"هندسه GEE نامعتبر برای مزرعه '{farm_name}'. نادیده گرفته شد.")
-                    results.append({
-                         'مزرعه': farm_name,
-                         'گروه': farm.get('گروه', 'نامشخص'),
-                         f'{index_name} (هفته جاری)': None,
-                         f'{index_name} (هفته قبل)': None,
-                         'تغییر': None,
-                         'سن': farm.get('سن', 'نامشخص'),
-                         'واریته': farm.get('واریته', 'نامشخص'),
-                     })
-                    progress = (i + 1) / total_farms
-                    progress_placeholder.markdown(modern_progress_bar(progress), unsafe_allow_html=True)
-                    continue
-
-                def get_mean_value_single_index(start, end, index):
-                     try:
-                          image, error = get_processed_image(farm_gee_geom, start, end, index)
-                          if image:
-                              # Select the band explicitly before reducing to avoid projection issues
-                              mean_dict = image.select(index).reduceRegion(
-                                  reducer=ee.Reducer.mean(),
-                                  geometry=farm_gee_geom,
-                                  scale=10,
-                                  bestEffort=True,
-                                  maxPixels=1e8
-                              ).get(index).getInfo()
-                              return mean_dict, None
-                          else:
-                              return None, error
-                     except ee.EEException as e:
-                          # Check for common errors and provide more specific messages
-                          error_message = f"GEE Error for {farm_name} ({start}-{end}): {e}"
-                          try:
-                               error_details = e.args[0] if e.args else str(e)
-                               if isinstance(error_details, str) and 'computation timed out' in error_details.lower():
-                                   error_message += "\n(احتمالاً به دلیل حجم بالای پردازش یا بازه زمانی طولانی)"
-                               elif isinstance(error_details, str) and 'user memory limit exceeded' in error_details.lower():
-                                   error_message += "\n(احتمالاً به دلیل پردازش منطقه بزرگ یا عملیات پیچیده)"
-                               elif isinstance(error_details, str) and 'Image.projection: The bands of the specified image contains different projections' in error_details:
-                                    error_message += "\n(خطای پروجکشن داخلی در GEE. ممکن است با تلاش مجدد یا بازه زمانی متفاوت برطرف شود.)"
-                          except Exception:
-                               pass
-                          return None, error_message
-                     except Exception as e:
-                          return None, f"Unknown Error for {farm_name} ({start}-{end}): {e}"
-
-
-                current_val, err_curr = get_mean_value_single_index(start_curr, end_curr, index_name)
-                if err_curr: errors.append(f"مزرعه '{farm_name}' (هفته جاری): {err_curr}")
-
-                previous_val, err_prev = get_mean_value_single_index(start_prev, end_prev, index_name)
-                if err_prev: errors.append(f"مزرعه '{farm_name}' (هفته قبل): {err_prev}")
-
-                change = None
-                if pd.notna(current_val) and pd.notna(previous_val):
-                    try:
-                        change = current_val - previous_val
-                    except TypeError:
-                        change = None
-
-
-                results.append({
-                    'مزرعه': farm_name,
-                    'گروه': farm.get('گروه', 'نامشخص'),
-                    f'{index_name} (هفته جاری)': current_val, # Store raw numerical value here
-                    f'{index_name} (هفته قبل)': previous_val, # Store raw numerical value here
-                    'تغییر': change, # Store raw numerical value here
-                    'سن': farm.get('سن', 'نامشخص'),
-                    'واریته': farm.get('واریته', 'نامشخص'),
-                })
-
-                progress = (i + 1) / total_farms
-                progress_placeholder.markdown(modern_progress_bar(progress), unsafe_allow_html=True)
-
-            progress_placeholder.empty()
-            return pd.DataFrame(results), errors
-
         ranking_df = pd.DataFrame()
         calculation_errors = []
 
-        if gee_initialized and start_date_current_str and end_date_current_str and start_date_previous_str and end_date_previous_str and not filtered_farms_df.empty:
+        # --- MODIFICATION START ---
+        # Check if the data was already calculated for the popups (if 'all farms' selected)
+        if not is_single_farm and not ranking_df_for_popups.empty:
+            ranking_df = ranking_df_for_popups # Reuse the already calculated data
+            calculation_errors = popup_calculation_errors_map # Reuse the errors
+            st.success("✅ داده‌های رتبه‌بندی از محاسبات نقشه بارگذاری شد.") # Optional info message
+        # Otherwise, calculate it now (e.g., for single farm view or if map data wasn't generated)
+        elif gee_initialized and start_date_current_str and end_date_current_str and start_date_previous_str and end_date_previous_str and not filtered_farms_df.empty:
+             # Display progress bar here before calling the potentially long function
+             progress_placeholder_table = st.empty()
+             progress_placeholder_table.markdown(modern_progress_bar(0), unsafe_allow_html=True) # Show 0% initially
+             st.write("در حال محاسبه شاخص‌ها برای جدول رتبه‌بندی...") # Spinner might be better here
+
+             # Call the optimized function (will use cache if inputs are the same as map call)
              ranking_df, calculation_errors = calculate_weekly_indices_for_table(
                  filtered_farms_df,
                  selected_index,
@@ -2327,6 +2422,8 @@ with tab1:
                  start_date_previous_str,
                  end_date_previous_str
              )
+             progress_placeholder_table.empty() # Remove progress bar after calculation
+        # --- MODIFICATION END ---
         elif not gee_initialized:
              st.warning("⚠️ اتصال به Google Earth Engine برقرار نیست. جدول رتبه‌بندی در دسترس نمی‌باشد.")
         elif filtered_farms_df.empty:
@@ -2336,11 +2433,13 @@ with tab1:
 
 
         if calculation_errors:
+            # Display errors (limit displayed errors)
             st.warning("⚠️ برخی خطاها در حین محاسبه شاخص‌ها برای رتبه‌بندی رخ داد (تا ۱۰ خطا):")
-            for error in calculation_errors[:10]:
+            unique_errors = list(set(calculation_errors)) # Show unique errors
+            for error in unique_errors[:10]:
                 st.warning(f"- {error}")
-            if len(calculation_errors) > 10:
-                st.warning(f"... و {len(calculation_errors) - 10} خطای دیگر.")
+            if len(unique_errors) > 10:
+                st.warning(f"... و {len(unique_errors) - 10} خطای منحصربفرد دیگر.")
 
 
         if not ranking_df.empty:
