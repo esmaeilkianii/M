@@ -1843,8 +1843,40 @@ with tab1:
                     center = selected_farm_gee_geom.centroid(maxError=1).getInfo()['coordinates']
                     center_lon, center_lat = center[0], center[1]
                     bounds = selected_farm_gee_geom.bounds().getInfo()
-                    lon_diff = bounds['even'][2] - bounds['even'][0]
-                    lat_diff = bounds['even'][3] - bounds['even'][1]
+                    
+                    # Fix for bounds coordinates access
+                    if 'coordinates' in bounds:
+                        # New GEE API format uses 'coordinates'
+                        coordinates = bounds['coordinates'][0]  # First polygon's coordinates
+                        # Find min/max coordinates
+                        lon_vals = [coord[0] for coord in coordinates]
+                        lat_vals = [coord[1] for coord in coordinates]
+                        lon_min, lon_max = min(lon_vals), max(lon_vals)
+                        lat_min, lat_max = min(lat_vals), max(lat_vals)
+                        lon_diff = lon_max - lon_min
+                        lat_diff = lat_max - lat_min
+                    elif 'even' in bounds:
+                        # Old format
+                        lon_diff = bounds['even'][2] - bounds['even'][0]
+                        lat_diff = bounds['even'][3] - bounds['even'][1]
+                    else:
+                        # If both formats fail, extract coordinates differently
+                        bbox = selected_farm_gee_geom.bounds().getInfo()
+                        if isinstance(bbox, dict) and 'type' in bbox and bbox['type'] == 'Polygon':
+                            coordinates = bbox['coordinates'][0]  # First polygon's coordinates
+                            lon_vals = [coord[0] for coord in coordinates]
+                            lat_vals = [coord[1] for coord in coordinates]
+                            lon_min, lon_max = min(lon_vals), max(lon_vals)
+                            lat_min, lat_max = min(lat_vals), max(lat_vals)
+                            lon_diff = lon_max - lon_min
+                            lat_diff = lat_max - lat_min
+                        else:
+                            # If we can't determine bounds, use default values
+                            lon_diff = 1.0
+                            lat_diff = 1.0
+                            st.info("ℹ️ استفاده از مقادیر پیش‌فرض برای محاسبه زوم نقشه.")
+                    
+                    # Set zoom level based on the geographic extent
                     if max(lon_diff, lat_diff) > 10: zoom_level = 6
                     elif max(lon_diff, lat_diff) > 5: zoom_level = 8
                     elif max(lon_diff, lat_diff) > 2: zoom_level = 10
