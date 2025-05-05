@@ -1030,15 +1030,13 @@ def add_indices(image):
     nir_safe = nir.max(ee.Image(epsilon))
     msi = image.expression('SWIR1 / NIR', {'SWIR1': swir1, 'NIR': nir_safe}).rename('MSI')
 
-    # Remove explicit reprojection
-    lai = evi.multiply(3.618).subtract(0.118).rename('LAI') #.reproject(crs=image.projection().crs(), scale=10)
+    lai = evi.multiply(3.618).subtract(0.118).rename('LAI').reproject(crs=image.projection().crs(), scale=10)
     lai = lai.updateMask(lai.gt(0))
 
     green_safe = green.max(ee.Image(epsilon))
-    # Remove explicit reprojection
     cvi = image.expression('(NIR / GREEN) * (RED / GREEN)',
                          {'NIR': nir, 'GREEN': green_safe, 'RED': red}
-    ).rename('CVI') #.reproject(crs=image.projection().crs(), scale=10)
+    ).rename('CVI').reproject(crs=image.projection().crs(), scale=10)
 
     return image.addBands([ndvi, evi, ndmi, msi, lai, cvi, savi])
 
@@ -1091,12 +1089,12 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
                      return None, count, f"شاخص '{index_name}' یافت نشد و هیچ باند معتبری در تصویر وجود ندارد."
 
 
-            # Select the band BEFORE the final validity check
+            # Select the band before returning
             output_image = median_image.select(index_name)
 
             # Final validity check: Ensure the selected band has data over the geometry
             try:
-                test_reduction = output_image.reduceRegion( # Use the single-band image here
+                test_reduction = output_image.reduceRegion(
                     reducer=ee.Reducer.firstNonNull(), # Check if there's any non-null pixel
                     geometry=_geometry,
                     scale=30, # Use slightly coarser scale for faster check
@@ -1109,7 +1107,7 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
                  return None, count, f"خطا در تأیید داده‌های تصویر برای شاخص '{index_name}' در بازه {s_date}-{e_date}: {reduce_err}"
 
 
-            return output_image, count, None # Return the single-band image
+            return output_image, count, None
 
         except ee.EEException as e:
             error_message = f"خطای Google Earth Engine در بازه {s_date}-{e_date}: {e}"
@@ -1120,8 +1118,7 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
                          error_message += "\\n(احتمالاً به دلیل حجم بالای پردازش یا بازه زمانی طولانی)"
                      elif 'user memory limit exceeded' in error_details.lower():
                          error_message += "\\n(احتمالاً به دلیل پردازش منطقه بزرگ یا عملیات پیچیده)"
-                     elif ('projection' in error_details.lower() and 'different projections' in error_details.lower()) or \
-                          ('projection' in error_details.lower() and 'unable to transform' in error_details.lower()): # Catch both projection error types
+                     elif 'image.projection' in error_details.lower() and 'different projections' in error_details.lower():
                         error_message += "\\n(خطای پروجکشن داخلی در GEE. ممکن است با تلاش مجدد یا بازه زمانی متفاوت برطرف شود.)"
                      elif 'geometryconstructors' in error_details.lower() or 'invalid polygon' in error_details.lower():
                          error_message += "\\n(احتمالاً مشکلی در هندسه ورودی وجود دارد)"
@@ -1178,8 +1175,6 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
             print(f"Error processing fallback dates: {date_err}")
         except Exception as e:
             # Error during the fallback *attempt* itself
-            fallback_start_date = initial_start_date # Ensure it's defined for error message
-            fallback_end_date = (datetime.datetime.strptime(initial_end_date, '%Y-%m-%d') + datetime.timedelta(days=fallback_days)).strftime('%Y-%m-%d') if 'fallback_end_date' not in locals() else fallback_end_date
             error_msg = f"خطا در تلاش جایگزین ({fallback_start_date}-{fallback_end_date}): {e}\\n{traceback.format_exc()}. خطای اولیه: {initial_error_msg}"
             image = None # Ensure image remains None
             print(f"Error during fallback attempt: {e}")
@@ -1673,243 +1668,6 @@ def determine_status(row, index_name):
         return "بدون داده"
 
 
-@st.cache_data(show_spinner=False, persist="disk")
-def calculate_weekly_indices_for_table(
-    _farms_df, index_name, start_curr, end_curr, start_prev, end_prev
-):
-    """
-    Calculates mean index values for the current and previous periods for all farms
-    efficiently using GEE reduceRegions.
-    """
-    results_list = []
-    errors = []
-    farm_names_ordered = [] # Keep track of original order if needed
-
-    if not gee_initialized:
-        return pd.DataFrame(), ["Google Earth Engine مقداردهی اولیه نشده است."]
-    if _farms_df.empty:
-        return pd.DataFrame(), ["DataFrame مزارع ورودی خالی است."]
-
-    try:
-        # 1. Create FeatureCollection from DataFrame
-        features = []
-        for idx, farm in _farms_df.iterrows():
-            farm_name = farm.get('مزرعه', f'مزرعه ناشناس ردیف {idx+1}')
-            farm_gee_geom = farm.get('ee_geometry')
-            # Keep track of original properties needed later
-            original_props = {
-                'مزرعه': farm_name,
-                'گروه': farm.get('گروه', 'نامشخص'),
-                'سن': farm.get('سن', 'نامشخص'),
-                'واریته': farm.get('واریته', 'نامشخص')
-            }
-            farm_names_ordered.append(farm_name)
-
-            if farm_gee_geom is not None:
-                 # Ensure geometry is valid before creating feature
-                 try:
-                      # A quick check like buffering by 0 can help fix minor issues
-                      valid_geom = farm_gee_geom.buffer(0, 1) # Max error 1 meter
-                      features.append(ee.Feature(valid_geom, original_props))
-                 except ee.EEException as geom_err:
-                     errors.append(f"خطای هندسه برای مزرعه '{farm_name}': {geom_err}. نادیده گرفته شد.")
-                     # Add placeholder to results_list to maintain row count if needed? Or filter out later.
-                     # For simplicity, we'll filter out farms with invalid geometry errors.
-            else:
-                errors.append(f"هندسه GEE نامعتبر برای مزرعه '{farm_name}'. نادیده گرفته شد.")
-                # Add placeholder?
-
-        if not features:
-            errors.append("هیچ هندسه معتبری برای پردازش در GEE یافت نشد.")
-            return pd.DataFrame(), errors
-
-        farm_fc = ee.FeatureCollection(features)
-
-        # 2. Get Processed Images for Both Periods (median composite)
-        def get_median_image(start, end):
-            try:
-                # Using get_processed_image ensures masking and index calculation
-                # It returns a single-band image for the specified index_name
-                image, error_msg = get_processed_image(farm_fc.geometry(), start, end, index_name)
-                if error_msg:
-                    # Collect errors from image processing
-                    errors.append(f"خطا در پردازش تصویر ({start}-{end}): {error_msg}")
-                return image # Return the image (or None if error)
-            except Exception as e:
-                errors.append(f"خطای ناشناخته در get_median_image ({start}-{end}): {e}")
-                return None
-
-        image_curr = get_median_image(start_curr, end_curr)
-        image_prev = get_median_image(start_prev, end_prev)
-
-        # Proceed only if we have images to reduce
-        if image_curr is None and image_prev is None:
-             errors.append(f"هیچ تصویر معتبری برای شاخص {index_name} در هر دو بازه زمانی یافت نشد.")
-             # Return empty DataFrame with original farm names/props but None values?
-             empty_results = []
-             for idx, farm in _farms_df.iterrows():
-                 empty_results.append({
-                    'مزرعه': farm.get('مزرعه', f'مزرعه ناشناس ردیف {idx+1}'),
-                    'گروه': farm.get('گروه', 'نامشخص'),
-                    f'{index_name} (هفته جاری)': None,
-                    f'{index_name} (هفته قبل)': None,
-                    'تغییر': None,
-                    'سن': farm.get('سن', 'نامشخص'),
-                    'واریته': farm.get('واریته', 'نامشخص'),
-                 })
-             return pd.DataFrame(empty_results), errors
-
-
-        # 3. Combine images (handle cases where one image might be None)
-        bands_to_reduce = []
-        image_to_reduce = None
-        if image_curr is not None:
-             image_curr = image_curr.rename(f'{index_name}_curr')
-             bands_to_reduce.append(f'{index_name}_curr')
-             image_to_reduce = image_curr
-        if image_prev is not None:
-             image_prev = image_prev.rename(f'{index_name}_prev')
-             bands_to_reduce.append(f'{index_name}_prev')
-             if image_to_reduce is None:
-                  image_to_reduce = image_prev
-             else:
-                  image_to_reduce = image_to_reduce.addBands(image_prev)
-
-
-        # 4. ReduceRegions - Run only if there's something to reduce
-        reduced_fc = None
-        if image_to_reduce is not None:
-             try:
-                 # Use reduceRegions to calculate mean for all features at once
-                 reduced_fc = image_to_reduce.reduceRegions(
-                     collection=farm_fc,
-                     reducer=ee.Reducer.mean(), # Calculate mean
-                     scale=10, # Keep original scale for accuracy
-                     # tileScale=4 # Consider adjusting tileScale if timeouts occur
-                 )
-             except ee.EEException as reduce_err:
-                 errors.append(f"خطای GEE در reduceRegions: {reduce_err}")
-                 reduced_fc = None # Ensure it's None on error
-             except Exception as e:
-                  errors.append(f"خطای ناشناخته در reduceRegions: {e}")
-                  reduced_fc = None
-
-
-        # 5. Process Results
-        if reduced_fc is not None:
-             try:
-                 # Efficiently get properties from FeatureCollection
-                 reduced_list = reduced_fc.toList(reduced_fc.size())
-                 # Check if getInfo() is needed or if aggregate_dictionary works better
-                 # Using getInfo() on the list is often necessary for complex properties
-                 properties_list = reduced_list.getInfo()
-
-                 # Create a dictionary for quick lookup by farm name
-                 results_dict = {}
-                 for item in properties_list:
-                      props = item.get('properties', {})
-                      farm_name = props.get('مزرعه')
-                      if farm_name:
-                           results_dict[farm_name] = props # Store all retrieved properties
-
-
-                 # Iterate through the original farms df to ensure all farms are included
-                 # and to maintain original order/properties
-                 for idx, farm in _farms_df.iterrows():
-                    farm_name = farm.get('مزرعه', f'مزرعه ناشناس ردیف {idx+1}')
-                    farm_result = results_dict.get(farm_name, {}) # Get results from GEE if available
-
-                    current_val = farm_result.get(f'{index_name}_curr')
-                    previous_val = farm_result.get(f'{index_name}_prev')
-                    change = None
-
-                    # Calculate change only if both values are valid numbers
-                    if isinstance(current_val, (int, float)) and pd.notna(current_val) and \
-                       isinstance(previous_val, (int, float)) and pd.notna(previous_val):
-                        try:
-                            change = current_val - previous_val
-                        except TypeError:
-                            change = None
-                    else:
-                        change = None
-
-                    results_list.append({
-                        'مزرعه': farm_name,
-                        'گروه': farm.get('گروه', 'نامشخص'), # Get from original df
-                        f'{index_name} (هفته جاری)': current_val, # Value from GEE or None
-                        f'{index_name} (هفته قبل)': previous_val, # Value from GEE or None
-                        'تغییر': change,
-                        'سن': farm.get('سن', 'نامشخص'), # Get from original df
-                        'واریته': farm.get('واریته', 'نامشخص'), # Get from original df
-                    })
-
-             except ee.EEException as getinfo_err:
-                 errors.append(f"خطای GEE در دریافت نتایج reduceRegions: {getinfo_err}")
-                 # Fallback: return empty df with original farms?
-                 results_list = [] # Clear potentially partial list
-                 for idx, farm in _farms_df.iterrows():
-                      results_list.append({
-                         'مزرعه': farm.get('مزرعه', f'مزرعه ناشناس ردیف {idx+1}'),
-                         'گروه': farm.get('گروه', 'نامشخص'),
-                         f'{index_name} (هفته جاری)': None,
-                         f'{index_name} (هفته قبل)': None,
-                         'تغییر': None,
-                         'سن': farm.get('سن', 'نامشخص'),
-                         'واریته': farm.get('واریته', 'نامشخص'),
-                      })
-
-             except Exception as e:
-                  errors.append(f"خطای ناشناخته در پردازش نتایج GEE: {e}")
-                  results_list = [] # Clear potentially partial list
-                  # Fallback...
-                  for idx, farm in _farms_df.iterrows():
-                       results_list.append({
-                          'مزرعه': farm.get('مزرعه', f'مزرعه ناشناس ردیف {idx+1}'),
-                          'گروه': farm.get('گروه', 'نامشخص'),
-                          f'{index_name} (هفته جاری)': None,
-                          f'{index_name} (هفته قبل)': None,
-                          'تغییر': None,
-                          'سن': farm.get('سن', 'نامشخص'),
-                          'واریته': farm.get('واریته', 'نامشخص'),
-                       })
-        else:
-            # Handle case where reduceRegions failed or didn't run
-            errors.append("پردازش reduceRegions انجام نشد یا ناموفق بود.")
-            # results_list remains empty or should be populated with Nones
-            results_list = [] # Ensure it's empty if reduceRegions failed
-            for idx, farm in _farms_df.iterrows():
-                 results_list.append({
-                    'مزرعه': farm.get('مزرعه', f'مزرعه ناشناس ردیف {idx+1}'),
-                    'گروه': farm.get('گروه', 'نامشخص'),
-                    f'{index_name} (هفته جاری)': None,
-                    f'{index_name} (هفته قبل)': None,
-                    'تغییر': None,
-                    'سن': farm.get('سن', 'نامشخص'),
-                    'واریته': farm.get('واریته', 'نامشخص'),
-                 })
-
-
-        # 6. Convert to DataFrame
-        final_df = pd.DataFrame(results_list)
-
-        # Ensure correct column order if needed
-        cols_order = [
-             'مزرعه', 'گروه', f'{index_name} (هفته جاری)', f'{index_name} (هفته قبل)',
-             'تغییر', 'سن', 'واریته'
-         ]
-        final_df = final_df[[col for col in cols_order if col in final_df.columns]]
-
-
-        return final_df, errors
-
-    except ee.EEException as gee_err:
-        errors.append(f"خطای عمومی GEE در calculate_weekly_indices: {gee_err}")
-        return pd.DataFrame(), errors
-    except Exception as e:
-        errors.append(f"خطای عمومی ناشناخته در calculate_weekly_indices: {e}\n{traceback.format_exc()}")
-        return pd.DataFrame(), errors
-
-
 # ==============================================================================
 # Main Application Layout (Using Tabs)
 # ==============================================================================
@@ -1978,35 +1736,18 @@ with tab1:
                     selected_farm_gee_geom = ee.Geometry.MultiPolygon(all_farm_geometries)
                     center = selected_farm_gee_geom.centroid(maxError=1).getInfo()['coordinates']
                     center_lon, center_lat = center[0], center[1]
+                    bounds = selected_farm_gee_geom.bounds().getInfo()
+                    lon_diff = bounds['even'][2] - bounds['even'][0]
+                    lat_diff = bounds['even'][3] - bounds['even'][1]
+                    if max(lon_diff, lat_diff) > 10: zoom_level = 6
+                    elif max(lon_diff, lat_diff) > 5: zoom_level = 8
+                    elif max(lon_diff, lat_diff) > 2: zoom_level = 10
+                    elif max(lon_diff, lat_diff) > 0.5: zoom_level = 12
+                    else: zoom_level = 13
 
-                    # Correctly extract bounds
-                    bounds_info = selected_farm_gee_geom.bounds(maxError=1).getInfo()
-                    coords = bounds_info['coordinates'][0] # This is a list of [lon, lat] pairs
-                    lon_coords = [c[0] for c in coords]
-                    lat_coords = [c[1] for c in coords]
-                    lon_min, lon_max = min(lon_coords), max(lon_coords)
-                    lat_min, lat_max = min(lat_coords), max(lat_coords)
-
-                    lon_diff = lon_max - lon_min
-                    lat_diff = lat_max - lat_min
-
-                    # Adjust zoom based on the larger dimension
-                    if max(lon_diff, lat_diff) > 1.0: zoom_level = 10 # Wider view for larger areas
-                    elif max(lon_diff, lat_diff) > 0.5: zoom_level = 11
-                    elif max(lon_diff, lat_diff) > 0.1: zoom_level = 12
-                    else: zoom_level = 13 # Default zoom for smaller areas
-
-                except ee.EEException as e:
-                     st.warning(f"⚠️ خطای Google Earth Engine در پردازش هندسه کلی مزارع: {e}. نقشه با مرکز پیش‌فرض نمایش داده می‌شود.")
-                     selected_farm_gee_geom = None # Reset geometry if error occurs
-                except (KeyError, IndexError, TypeError) as e:
-                     st.warning(f"⚠️ خطا در پردازش اطلاعات مرزهای هندسی مزارع: {e}. نقشه با مرکز پیش‌فرض نمایش داده می‌شود.")
-                     # Log the actual bounds_info for debugging if needed
-                     # print("Error processing bounds_info:", bounds_info)
-                     selected_farm_gee_geom = None # Reset geometry if error occurs
                 except Exception as e:
-                     st.warning(f"⚠️ خطای ناشناخته در ایجاد هندسه GEE برای همه مزارع: {e}. نقشه با مرکز پیش‌فرض نمایش داده می‌شود.")
-                     selected_farm_gee_geom = None # Reset geometry if error occurs
+                     st.warning(f"⚠️ خطا در ایجاد هندسه GEE برای همه مزارع: {e}. نقشه با مرکز پیش‌فرض نمایش داده می‌شود.")
+                     selected_farm_gee_geom = None
             else:
                 st.warning("⚠️ هیچ هندسه GEE معتبری برای مزارع انتخابی یافت نشد. نمایش نقشه محدود خواهد بود.")
                 selected_farm_gee_geom = None
@@ -2014,6 +1755,7 @@ with tab1:
 
             st.subheader(f"نمایش کلی مزارع برای روز: {selected_day}")
             st.markdown(modern_metric_card("تعداد مزارع در این روز", f"{len(filtered_farms_df):,}", icon="fa-leaf", color="#185a9d"), unsafe_allow_html=True)
+            st.caption("تعداد کل مزارع ثبت شده برای روز انتخاب شده.")
 
             if 'واریته' in filtered_farms_df.columns and not filtered_farms_df['واریته'].isna().all():
                 variety_counts = filtered_farms_df[filtered_farms_df['واریته'].astype(str).str.lower() != 'نامشخص']['واریته'].value_counts().sort_values(ascending=False)
@@ -2138,96 +1880,6 @@ with tab1:
                 </div>
                 '''
                 m.get_root().html.add_child(folium.Element(legend_html))
-
-                # --- MODIFICATION START ---
-                # Prepare data for popups using the ALREADY calculated ranking table dataframe
-                # The ranking_df needs to be calculated *before* this point if not single farm
-                ranking_df_for_popups = pd.DataFrame() # Initialize empty
-                popup_calculation_errors_map = [] # Use a different var name for errors specific to this stage if needed
-
-                # Calculate the ranking table data IF 'all farms' is selected and it hasn't been calculated yet
-                # Note: This call will now use the optimized function.
-                # We call it here to ensure data is ready for popups *before* the map is displayed.
-                # The results will be cached if the inputs haven't changed.
-                if not is_single_farm and gee_initialized and start_date_current_str and end_date_current_str and start_date_previous_str and end_date_previous_str and not filtered_farms_df.empty:
-                     with st.spinner("در حال آماده‌سازی داده‌های رتبه‌بندی برای پاپ‌آپ‌های نقشه..."):
-                          ranking_df_for_popups, popup_calculation_errors_map = calculate_weekly_indices_for_table(
-                               filtered_farms_df,
-                               selected_index,
-                               start_date_current_str,
-                               end_date_current_str,
-                               start_date_previous_str,
-                               end_date_previous_str
-                          )
-                          if popup_calculation_errors_map:
-                               st.warning("⚠️ برخی خطاها در حین محاسبه اولیه شاخص‌ها برای پاپ‌آپ‌ها رخ داد (تا ۵ خطا):")
-                               for error in popup_calculation_errors_map[:5]: st.warning(f"- {error}")
-
-
-                # Convert the dataframe to a dictionary for faster lookup inside the loop
-                popup_data_dict = {}
-                if not ranking_df_for_popups.empty:
-                    # Use 'مزرعه' as index for quick lookup
-                    popup_data_dict = ranking_df_for_popups.set_index('مزرعه').to_dict('index')
-
-
-                if not filtered_farms_df.empty:
-                     for idx, farm in filtered_farms_df.iterrows():
-                          lat = farm.get('wgs84_centroid_lat')
-                          lon = farm.get('wgs84_centroid_lon')
-
-                          if pd.notna(lat) and pd.notna(lon):
-                               farm_name = farm.get('مزرعه', 'نامشخص')
-                               group = farm.get('گروه', 'نامشخص')
-                               age = farm.get('سن', 'نامشخص')
-                               variety = farm.get('واریته', 'نامشخص')
-
-                               current_index_val = 'N/A'
-                               previous_index_val = 'N/A'
-                               change_val_display = 'N/A'
-                               status_text = "بدون داده"
-
-                               # Get data for popup ONLY from the pre-calculated dictionary
-                               farm_data_for_popup = popup_data_dict.get(farm_name)
-
-                               if farm_data_for_popup is not None:
-                                    current_index_val_raw = farm_data_for_popup.get(f'{selected_index} (هفته جاری)')
-                                    previous_index_val_raw = farm_data_for_popup.get(f'{selected_index} (هفته قبل)')
-                                    change_val_raw = farm_data_for_popup.get('تغییر')
-
-                                    # Format for display, handling None/N/A/nan
-                                    current_index_val = f"{float(str(current_index_val_raw).replace('N/A', 'nan').replace('None', 'nan')):.3f}" if pd.notna(current_index_val_raw) and str(current_index_val_raw) != 'N/A' and str(current_index_val_raw) != 'None' else 'N/A'
-                                    previous_index_val = f"{float(str(previous_index_val_raw).replace('N/A', 'nan').replace('None', 'nan')):.3f}" if pd.notna(previous_index_val_raw) and str(previous_index_val_raw) != 'N/A' and str(previous_index_val_raw) != 'None' else 'N/A'
-                                    change_val_display = f"{float(str(change_val_raw).replace('N/A', 'nan').replace('None', 'nan')):.3f}" if pd.notna(change_val_raw) and str(change_val_raw) != 'N/A' and str(change_val_raw) != 'None' else 'N/A'
-
-                                    # Create a temporary Series/dict-like object for determine_status
-                                    status_row_data = {
-                                        f'{selected_index} (هفته جاری)': current_index_val_raw,
-                                        f'{selected_index} (هفته قبل)': previous_index_val_raw,
-                                        'تغییر': change_val_raw
-                                    }
-                                    status_text = determine_status(status_row_data, selected_index)
-                               else:
-                                   # If no data found for this farm in the pre-calculated dict, display N/A
-                                   # DO NOT make individual GEE calls here anymore
-                                   status_text = "داده در دسترس نیست"
-
-
-                               popup_html = f"""
-                               <strong>مزرعه:</strong> {farm_name}<br>
-                               <strong>گروه:</strong> {group}<br>
-                               <strong>سن:</strong> {age}<br>
-                               <strong>واریته:</strong> {variety}<br>
-                               ---<br>
-                               <strong>{selected_index} (جاری):</strong> {current_index_val} <br>
-                               <strong>{selected_index} (قبلی):</strong> {previous_index_val} <br>
-                               <strong>تغییر:</strong> {change_val_display} <br>
-                               <strong>وضعیت:</strong> {status_text}
-                               """
-                               # ... (rest of marker creation code) ...
-
-                # --- MODIFICATION END ---
-
 
                 ranking_df_map_popups = pd.DataFrame()
                 if not is_single_farm and start_date_current_str and end_date_current_str and start_date_previous_str and end_date_previous_str:
@@ -2396,23 +2048,102 @@ with tab1:
         st.subheader(f"📊 جدول رتبه‌بندی مزارع بر اساس {selected_index} (روز: {selected_day})")
         st.markdown("مقایسه مقادیر متوسط شاخص در هفته جاری با هفته قبل و تعیین وضعیت هر مزرعه.")
 
+        @st.cache_data(show_spinner=False, persist="disk")
+        def calculate_weekly_indices_for_table(
+            _farms_df, index_name, start_curr, end_curr, start_prev, end_prev
+        ):
+            results = []
+            errors = []
+            total_farms = len(_farms_df)
+            progress_placeholder = st.empty()
+
+
+            for i, (idx, farm) in enumerate(_farms_df.iterrows()):
+                farm_name = farm.get('مزرعه', f'مزرعه ناشناس ردیف {i+1}')
+                farm_gee_geom = farm.get('ee_geometry')
+
+                if farm_gee_geom is None:
+                    errors.append(f"هندسه GEE نامعتبر برای مزرعه '{farm_name}'. نادیده گرفته شد.")
+                    results.append({
+                         'مزرعه': farm_name,
+                         'گروه': farm.get('گروه', 'نامشخص'),
+                         f'{index_name} (هفته جاری)': None,
+                         f'{index_name} (هفته قبل)': None,
+                         'تغییر': None,
+                         'سن': farm.get('سن', 'نامشخص'),
+                         'واریته': farm.get('واریته', 'نامشخص'),
+                     })
+                    progress = (i + 1) / total_farms
+                    progress_placeholder.markdown(modern_progress_bar(progress), unsafe_allow_html=True)
+                    continue
+
+                def get_mean_value_single_index(start, end, index):
+                     try:
+                          image, error = get_processed_image(farm_gee_geom, start, end, index)
+                          if image:
+                              # Select the band explicitly before reducing to avoid projection issues
+                              mean_dict = image.select(index).reduceRegion(
+                                  reducer=ee.Reducer.mean(),
+                                  geometry=farm_gee_geom,
+                                  scale=10,
+                                  bestEffort=True,
+                                  maxPixels=1e8
+                              ).get(index).getInfo()
+                              return mean_dict, None
+                          else:
+                              return None, error
+                     except ee.EEException as e:
+                          # Check for common errors and provide more specific messages
+                          error_message = f"GEE Error for {farm_name} ({start}-{end}): {e}"
+                          try:
+                               error_details = e.args[0] if e.args else str(e)
+                               if isinstance(error_details, str) and 'computation timed out' in error_details.lower():
+                                   error_message += "\n(احتمالاً به دلیل حجم بالای پردازش یا بازه زمانی طولانی)"
+                               elif isinstance(error_details, str) and 'user memory limit exceeded' in error_details.lower():
+                                   error_message += "\n(احتمالاً به دلیل پردازش منطقه بزرگ یا عملیات پیچیده)"
+                               elif isinstance(error_details, str) and 'Image.projection: The bands of the specified image contains different projections' in error_details:
+                                    error_message += "\n(خطای پروجکشن داخلی در GEE. ممکن است با تلاش مجدد یا بازه زمانی متفاوت برطرف شود.)"
+                          except Exception:
+                               pass
+                          return None, error_message
+                     except Exception as e:
+                          return None, f"Unknown Error for {farm_name} ({start}-{end}): {e}"
+
+
+                current_val, err_curr = get_mean_value_single_index(start_curr, end_curr, index_name)
+                if err_curr: errors.append(f"مزرعه '{farm_name}' (هفته جاری): {err_curr}")
+
+                previous_val, err_prev = get_mean_value_single_index(start_prev, end_prev, index_name)
+                if err_prev: errors.append(f"مزرعه '{farm_name}' (هفته قبل): {err_prev}")
+
+                change = None
+                if pd.notna(current_val) and pd.notna(previous_val):
+                    try:
+                        change = current_val - previous_val
+                    except TypeError:
+                        change = None
+
+
+                results.append({
+                    'مزرعه': farm_name,
+                    'گروه': farm.get('گروه', 'نامشخص'),
+                    f'{index_name} (هفته جاری)': current_val, # Store raw numerical value here
+                    f'{index_name} (هفته قبل)': previous_val, # Store raw numerical value here
+                    'تغییر': change, # Store raw numerical value here
+                    'سن': farm.get('سن', 'نامشخص'),
+                    'واریته': farm.get('واریته', 'نامشخص'),
+                })
+
+                progress = (i + 1) / total_farms
+                progress_placeholder.markdown(modern_progress_bar(progress), unsafe_allow_html=True)
+
+            progress_placeholder.empty()
+            return pd.DataFrame(results), errors
+
         ranking_df = pd.DataFrame()
         calculation_errors = []
 
-        # --- MODIFICATION START ---
-        # Check if the data was already calculated for the popups (if 'all farms' selected)
-        if not is_single_farm and not ranking_df_for_popups.empty:
-            ranking_df = ranking_df_for_popups # Reuse the already calculated data
-            calculation_errors = popup_calculation_errors_map # Reuse the errors
-            st.success("✅ داده‌های رتبه‌بندی از محاسبات نقشه بارگذاری شد.") # Optional info message
-        # Otherwise, calculate it now (e.g., for single farm view or if map data wasn't generated)
-        elif gee_initialized and start_date_current_str and end_date_current_str and start_date_previous_str and end_date_previous_str and not filtered_farms_df.empty:
-             # Display progress bar here before calling the potentially long function
-             progress_placeholder_table = st.empty()
-             progress_placeholder_table.markdown(modern_progress_bar(0), unsafe_allow_html=True) # Show 0% initially
-             st.write("در حال محاسبه شاخص‌ها برای جدول رتبه‌بندی...") # Spinner might be better here
-
-             # Call the optimized function (will use cache if inputs are the same as map call)
+        if gee_initialized and start_date_current_str and end_date_current_str and start_date_previous_str and end_date_previous_str and not filtered_farms_df.empty:
              ranking_df, calculation_errors = calculate_weekly_indices_for_table(
                  filtered_farms_df,
                  selected_index,
@@ -2421,8 +2152,6 @@ with tab1:
                  start_date_previous_str,
                  end_date_previous_str
              )
-             progress_placeholder_table.empty() # Remove progress bar after calculation
-        # --- MODIFICATION END ---
         elif not gee_initialized:
              st.warning("⚠️ اتصال به Google Earth Engine برقرار نیست. جدول رتبه‌بندی در دسترس نمی‌باشد.")
         elif filtered_farms_df.empty:
@@ -2432,13 +2161,11 @@ with tab1:
 
 
         if calculation_errors:
-            # Display errors (limit displayed errors)
             st.warning("⚠️ برخی خطاها در حین محاسبه شاخص‌ها برای رتبه‌بندی رخ داد (تا ۱۰ خطا):")
-            unique_errors = list(set(calculation_errors)) # Show unique errors
-            for error in unique_errors[:10]:
+            for error in calculation_errors[:10]:
                 st.warning(f"- {error}")
-            if len(unique_errors) > 10:
-                st.warning(f"... و {len(unique_errors) - 10} خطای منحصربفرد دیگر.")
+            if len(calculation_errors) > 10:
+                st.warning(f"... و {len(calculation_errors) - 10} خطای دیگر.")
 
 
         if not ranking_df.empty:
