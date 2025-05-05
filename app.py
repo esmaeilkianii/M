@@ -1933,6 +1933,30 @@ with tab1:
     elif not gee_initialized:
          st.warning("⚠️ اتصال به Google Earth Engine برقرار نیست. نمایش نقشه و شاخص‌های ماهواره‌ای امکان‌پذیر نمی‌باشد.")
     else:
+        # --- PRE-CALCULATION FOR RANKING TABLE AND MAP POPUPS ---
+        ranking_df = pd.DataFrame() # Initialize
+        calculation_errors = [] # Initialize
+        if gee_initialized and start_date_current_str and end_date_current_str and start_date_previous_str and end_date_previous_str and not filtered_farms_df.empty:
+             # Calculate here, will be used for both map popups and the table below
+             # Show spinner/progress if desired
+             with st.spinner("در حال محاسبه شاخص‌ها برای نقشه و جدول رتبه‌بندی..."):
+                  ranking_df, calculation_errors = calculate_weekly_indices_for_table(
+                      filtered_farms_df,
+                      selected_index,
+                      start_date_current_str,
+                      end_date_current_str,
+                      start_date_previous_str,
+                      end_date_previous_str
+                  )
+             if calculation_errors:
+                 # Display errors early if needed, or handle later with the table
+                 st.warning("⚠️ برخی خطاها در حین محاسبه اولیه شاخص‌ها رخ داد (تا ۵ خطا):")
+                 unique_errors_precalc = list(set(calculation_errors)) # Show unique errors
+                 for error in unique_errors_precalc[:5]: st.warning(f"- {error}")
+                 if len(unique_errors_precalc) > 5: st.warning(f"... و {len(unique_errors_precalc) - 5} خطای منحصربفرد دیگر.")
+        # --- END PRE-CALCULATION ---
+
+
         selected_farm_details = None
         selected_farm_gee_geom = None
         center_lat = INITIAL_LAT
@@ -2397,158 +2421,129 @@ with tab1:
         st.subheader(f"📊 جدول رتبه‌بندی مزارع بر اساس {selected_index} (روز: {selected_day})")
         st.markdown("مقایسه مقادیر متوسط شاخص در هفته جاری با هفته قبل و تعیین وضعیت هر مزرعه.")
 
-        ranking_df = pd.DataFrame()
-        calculation_errors = []
-
         # --- MODIFICATION START ---
-        # Check if the data was already calculated for the popups (if 'all farms' selected)
-        if not is_single_farm and not ranking_df_for_popups.empty:
-            ranking_df = ranking_df_for_popups # Reuse the already calculated data
-            calculation_errors = popup_calculation_errors_map # Reuse the errors
-            st.success("✅ داده‌های رتبه‌بندی از محاسبات نقشه بارگذاری شد.") # Optional info message
-        # Otherwise, calculate it now (e.g., for single farm view or if map data wasn't generated)
-        elif gee_initialized and start_date_current_str and end_date_current_str and start_date_previous_str and end_date_previous_str and not filtered_farms_df.empty:
-             # Display progress bar here before calling the potentially long function
-             progress_placeholder_table = st.empty()
-             progress_placeholder_table.markdown(modern_progress_bar(0), unsafe_allow_html=True) # Show 0% initially
-             st.write("در حال محاسبه شاخص‌ها برای جدول رتبه‌بندی...") # Spinner might be better here
-
-             # Call the optimized function (will use cache if inputs are the same as map call)
-             ranking_df, calculation_errors = calculate_weekly_indices_for_table(
-                 filtered_farms_df,
-                 selected_index,
-                 start_date_current_str,
-                 end_date_current_str,
-                 start_date_previous_str,
-                 end_date_previous_str
-             )
-             progress_placeholder_table.empty() # Remove progress bar after calculation
-        # --- MODIFICATION END ---
-        elif not gee_initialized:
-             st.warning("⚠️ اتصال به Google Earth Engine برقرار نیست. جدول رتبه‌بندی در دسترس نمی‌باشد.")
-        elif filtered_farms_df.empty:
-             st.warning("⚠️ هیچ مزرعه‌ای برای محاسبه رتبه‌بندی یافت نشد.")
-        else:
-             st.warning("⚠️ بازه‌های زمانی معتبر برای محاسبه رتبه‌بندی در دسترس نیست.")
-
-
+        # The calculation is now done *before* the map generation.
+        # We just need to check the results (ranking_df and calculation_errors) here.
         if calculation_errors:
-            # Display errors (limit displayed errors)
-            st.warning("⚠️ برخی خطاها در حین محاسبه شاخص‌ها برای رتبه‌بندی رخ داد (تا ۱۰ خطا):")
-            unique_errors = list(set(calculation_errors)) # Show unique errors
-            for error in unique_errors[:10]:
-                st.warning(f"- {error}")
-            if len(unique_errors) > 10:
-                st.warning(f"... و {len(unique_errors) - 10} خطای منحصربفرد دیگر.")
+             # Display errors from the pre-calculation step if any occurred
+             st.warning("⚠️ برخی خطاها در حین محاسبه شاخص‌ها برای رتبه‌بندی رخ داده بود (جزئیات ممکن است بالاتر نمایش داده شده باشد).")
 
-
+        # Proceed with table display if ranking_df is populated
         if not ranking_df.empty:
-            ascending_sort = selected_index == 'MSI'
+             # Existing table display logic remains largely the same
+             ascending_sort = selected_index == 'MSI'
 
-            sort_col_name_raw = f'{selected_index} (هفته جاری)'
+             sort_col_name_raw = f'{selected_index} (هفته جاری)'
 
-            if sort_col_name_raw in ranking_df.columns:
-                # Sort directly on the raw numerical column (which might have None/NaN)
-                # Use 'na_position' to control where missing values appear
-                ranking_df_sorted = ranking_df.sort_values(
-                    by=sort_col_name_raw,
-                    ascending=ascending_sort,
-                    na_position='last' # Place missing values at the end
-                ).reset_index(drop=True)
-            else:
-                 st.warning(f"⚠️ ستون '{sort_col_name_raw}' برای مرتب‌سازی جدول یافت نشد.")
-                 ranking_df_sorted = ranking_df.copy()
+             if sort_col_name_raw in ranking_df.columns:
+                 # Sort directly on the raw numerical column (which might have None/NaN)
+                 # Use 'na_position' to control where missing values appear
+                 ranking_df_sorted = ranking_df.sort_values(
+                     by=sort_col_name_raw,
+                     ascending=ascending_sort,
+                     na_position='last' # Place missing values at the end
+                 ).reset_index(drop=True)
+             else:
+                  st.warning(f"⚠️ ستون '{sort_col_name_raw}' برای مرتب‌سازی جدول یافت نشد.")
+                  ranking_df_sorted = ranking_df.copy() # Use the unsorted df
 
+             if not ranking_df_sorted.empty:
+                  ranking_df_sorted.index = ranking_df_sorted.index + 1
+                  ranking_df_sorted.index.name = 'رتبه'
 
-            if not ranking_df_sorted.empty:
-                 ranking_df_sorted.index = ranking_df_sorted.index + 1
-                 ranking_df_sorted.index.name = 'رتبه'
+                  # Calculate status AFTER sorting, based on the sorted data (which has raw numbers)
+                  ranking_df_sorted['وضعیت'] = ranking_df_sorted.apply(
+                      lambda row: determine_status(row, selected_index), axis=1
+                  )
 
-                 # Calculate status AFTER sorting, based on the sorted data (which has raw numbers)
-                 ranking_df_sorted['وضعیت'] = ranking_df_sorted.apply(
-                     lambda row: determine_status(row, selected_index), axis=1
-                 )
+                  ranking_df_sorted['وضعیت_نمایش'] = ranking_df_sorted['وضعیت'].apply(lambda s: status_badge(s))
 
-                 ranking_df_sorted['وضعیت_نمایش'] = ranking_df_sorted['وضعیت'].apply(lambda s: status_badge(s))
-
-                 # Format the numerical columns for display AFTER status calculation and sorting
-                 cols_to_format = [f'{selected_index} (هفته جاری)', f'{selected_index} (هفته قبل)', 'تغییر']
-                 for col in cols_to_format:
-                     if col in ranking_df_sorted.columns:
-                          # Convert numerical values to formatted strings, leaving None/NaN as N/A
-                          ranking_df_sorted[col] = ranking_df_sorted[col].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "N/A")
-
-
-                 display_columns = ['مزرعه', 'گروه', 'سن', 'واریته'] + cols_to_format + ['وضعیت_نمایش']
-                 final_display_columns = [col for col in display_columns if col in ranking_df_sorted.columns]
-
-                 ranking_df_display = ranking_df_sorted[final_display_columns].rename(columns={'وضعیت_نمایش': 'وضعیت'})
-
-                 st.write("<style>td {vertical-align: middle !important;}</style>", unsafe_allow_html=True)
-                 st.write(ranking_df_display.to_html(escape=False, index=True), unsafe_allow_html=True)
-
-                 st.subheader("📊 خلاصه وضعیت مزارع (بر اساس رتبه‌بندی)")
-
-                 status_counts = ranking_df_sorted['وضعیت'].value_counts()
-
-                 # Define groups based on keywords
-                 positive_terms = [s for s in status_counts.index if "بهبود" in s or "رشد مثبت" in s or "افزایش رطوبت" in s]
-                 negative_terms = [s for s in status_counts.index if any(sub in s for sub in ["تنش", "کاهش", "بدتر", "نیاز"])]
-                 neutral_terms = [s for s in status_counts.index if any(sub in s for sub in ["ثابت", "رطوبت ثابت", "پوشش گیاهی پایین", "قابل توجه"])] # Added 'قابل توجه' for NDMI decrease
-                 nodata_terms = [s for s in status_counts.index if "بدون داده" in s or "N/A" in s] # Added N/A for completeness
-
-                 col1, col2, col3, col4 = st.columns(4)
-
-                 with col1:
-                     pos_count = sum(status_counts.get(term, 0) for term in positive_terms)
-                     st.metric("🟢 بهبود", pos_count)
-
-                 with col2:
-                     neutral_count = sum(status_counts.get(term, 0) for term in neutral_terms)
-                     st.metric("⚪ ثابت", neutral_count)
-
-                 with col3:
-                     neg_count = sum(status_counts.get(term, 0) for term in negative_terms)
-                     st.metric("🔴 تنش", neg_count)
-
-                 with col4:
-                      nodata_count = sum(status_counts.get(term, 0) for term in nodata_terms)
-                      st.metric("🟡 بدون داده", nodata_count)
-
-                 st.info(f"""
-                 **توضیحات وضعیت:**
-                 - **🟢 بهبود/رشد مثبت**: مزارعی که نسبت به هفته قبل بهبود قابل توجهی داشته‌اند (افزایش شاخص‌هایی مانند NDVI یا کاهش شاخص‌هایی مانند MSI) یا افزایش رطوبت نشان می‌دهند.
-                 - **⚪ ثابت**: مزارعی که تغییر معناداری در شاخص نداشته‌اند (درون آستانه تغییر) یا وضعیت پایداری دارند (مثل رطوبت ثابت یا پوشش گیاهی پایین بدون تغییر). شامل کاهش‌های رطوبت که به حد تنش نرسیده‌اند.
-                 - **🔴 تنش/کاهش/بدتر شدن**: مزارعی که نسبت به هفته قبل وضعیت نامطلوب‌تری داشته‌اند (کاهش شاخص‌هایی مانند NDVI یا افزایش شاخص‌هایی مانند MSI) یا نیاز آبیاری/کودی تشخیص داده شده است. شامل تنش رطوبتی یا کاهش رطوبت قابل توجه.
-                 - **🟡 بدون داده**: مزارعی که به دلیل عدم دسترسی به تصاویر ماهواره‌ای بدون ابر در یک یا هر دو بازه زمانی، امکان محاسبه تغییرات وجود نداشته است.
-                 """)
-
-                 st.markdown("---")
-                 st.subheader("🤖 خلاصه هوش مصنوعی از وضعیت مزارع")
-                 if gemini_model:
-                      with st.spinner("در حال تولید خلاصه هوش مصنوعی..."):
-                          ai_map_summary = get_ai_map_summary(gemini_model, ranking_df_sorted, selected_index, selected_day)
-                      st.markdown(ai_map_summary)
-                 else:
-                      st.info("⚠️ سرویس تحلیل هوش مصنوعی پیکربندی نشده یا در دسترس نیست.")
-
-                 ranking_df_clean = ranking_df_sorted.drop(columns=['وضعیت_نمایش'], errors='ignore')
-                 # Format numerical columns back to string for CSV export if desired, or keep as numbers
-                 # Let's keep them as numbers for potential further analysis outside the app
-                 csv_data = ranking_df_clean.to_csv(index=True).encode('utf-8')
-                 st.download_button(
-                     label="📥 دانلود جدول رتبه‌بندی (CSV)",
-                     data=csv_data,
-                     file_name=f'ranking_{selected_index}_{selected_day}_{end_date_current_str}.csv',
-                     mime='text/csv',
-                 )
-            else:
-                 st.info("⚠️ داده‌های جدول رتبه‌بندی پس از مرتب‌سازی خالی است. ممکن است مشکلی در داده‌های ورودی یا مرتب‌سازی وجود داشته باشد.")
-        else:
-            st.info(f"ℹ️ داده‌ای برای جدول رتبه‌بندی بر اساس شاخص {selected_index} در این بازه زمانی یافت نشد (احتمالاً به دلیل عدم دسترسی به تصاویر ماهواره‌ای بدون ابر).")
+                  # Format the numerical columns for display AFTER status calculation and sorting
+                  cols_to_format = [f'{selected_index} (هفته جاری)', f'{selected_index} (هفته قبل)', 'تغییر']
+                  for col in cols_to_format:
+                      if col in ranking_df_sorted.columns:
+                           # Convert numerical values to formatted strings, leaving None/NaN as N/A
+                           ranking_df_sorted[col] = ranking_df_sorted[col].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "N/A")
 
 
-    st.markdown("---")
+                  display_columns = ['مزرعه', 'گروه', 'سن', 'واریته'] + cols_to_format + ['وضعیت_نمایش']
+                  final_display_columns = [col for col in display_columns if col in ranking_df_sorted.columns]
+
+                  ranking_df_display = ranking_df_sorted[final_display_columns].rename(columns={'وضعیت_نمایش': 'وضعیت'})
+
+                  st.write("<style>td {vertical-align: middle !important;}</style>", unsafe_allow_html=True)
+                  st.write(ranking_df_display.to_html(escape=False, index=True), unsafe_allow_html=True)
+
+                  st.subheader("📊 خلاصه وضعیت مزارع (بر اساس رتبه‌بندی)")
+
+                  status_counts = ranking_df_sorted['وضعیت'].value_counts()
+
+                  # Define groups based on keywords
+                  positive_terms = [s for s in status_counts.index if "بهبود" in s or "رشد مثبت" in s or "افزایش رطوبت" in s]
+                  negative_terms = [s for s in status_counts.index if any(sub in s for sub in ["تنش", "کاهش", "بدتر", "نیاز"])]
+                  neutral_terms = [s for s in status_counts.index if any(sub in s for sub in ["ثابت", "رطوبت ثابت", "پوشش گیاهی پایین", "قابل توجه"])] # Added 'قابل توجه' for NDMI decrease
+                  nodata_terms = [s for s in status_counts.index if "بدون داده" in s or "N/A" in s] # Added N/A for completeness
+
+                  col1, col2, col3, col4 = st.columns(4)
+
+                  with col1:
+                      pos_count = sum(status_counts.get(term, 0) for term in positive_terms)
+                      st.metric("🟢 بهبود", pos_count)
+
+                  with col2:
+                      neutral_count = sum(status_counts.get(term, 0) for term in neutral_terms)
+                      st.metric("⚪ ثابت", neutral_count)
+
+                  with col3:
+                      neg_count = sum(status_counts.get(term, 0) for term in negative_terms)
+                      st.metric("🔴 تنش", neg_count)
+
+                  with col4:
+                       nodata_count = sum(status_counts.get(term, 0) for term in nodata_terms)
+                       st.metric("🟡 بدون داده", nodata_count)
+
+                  st.info(f"""
+                  **توضیحات وضعیت:**
+                  - **🟢 بهبود/رشد مثبت**: مزارعی که نسبت به هفته قبل بهبود قابل توجهی داشته‌اند (افزایش شاخص‌هایی مانند NDVI یا کاهش شاخص‌هایی مانند MSI) یا افزایش رطوبت نشان می‌دهند.
+                  - **⚪ ثابت**: مزارعی که تغییر معناداری در شاخص نداشته‌اند (درون آستانه تغییر) یا وضعیت پایداری دارند (مثل رطوبت ثابت یا پوشش گیاهی پایین بدون تغییر). شامل کاهش‌های رطوبت که به حد تنش نرسیده‌اند.
+                  - **🔴 تنش/کاهش/بدتر شدن**: مزارعی که نسبت به هفته قبل وضعیت نامطلوب‌تری داشته‌اند (کاهش شاخص‌هایی مانند NDVI یا افزایش شاخص‌هایی مانند MSI) یا نیاز آبیاری/کودی تشخیص داده شده است. شامل تنش رطوبتی یا کاهش رطوبت قابل توجه.
+                  - **🟡 بدون داده**: مزارعی که به دلیل عدم دسترسی به تصاویر ماهواره‌ای بدون ابر در یک یا هر دو بازه زمانی، امکان محاسبه تغییرات وجود نداشته است.
+                  """)
+
+                  st.markdown("---")
+                  st.subheader("🤖 خلاصه هوش مصنوعی از وضعیت مزارع")
+                  if gemini_model:
+                       with st.spinner("در حال تولید خلاصه هوش مصنوعی..."):
+                           ai_map_summary = get_ai_map_summary(gemini_model, ranking_df_sorted, selected_index, selected_day)
+                       st.markdown(ai_map_summary)
+                  else:
+                       st.info("⚠️ سرویس تحلیل هوش مصنوعی پیکربندی نشده یا در دسترس نیست.")
+
+                  ranking_df_clean = ranking_df_sorted.drop(columns=['وضعیت_نمایش'], errors='ignore')
+                  # Format numerical columns back to string for CSV export if desired, or keep as numbers
+                  # Let's keep them as numbers for potential further analysis outside the app
+                  csv_data = ranking_df_clean.to_csv(index=True).encode('utf-8')
+                  st.download_button(
+                      label="📥 دانلود جدول رتبه‌بندی (CSV)",
+                      data=csv_data,
+                      file_name=f'ranking_{selected_index}_{selected_day}_{end_date_current_str}.csv',
+                      mime='text/csv',
+                  )
+             else:
+                  st.info("⚠️ داده‌های جدول رتبه‌بندی پس از مرتب‌سازی خالی است. ممکن است مشکلی در داده‌های ورودی یا مرتب‌سازی وجود داشته باشد.")
+        # Handle cases where calculation failed or no data was found
+        elif not gee_initialized:
+              st.warning("⚠️ اتصال به Google Earth Engine برقرار نیست. جدول رتبه‌بندی در دسترس نمی‌باشد.")
+         elif filtered_farms_df.empty:
+              st.warning("⚠️ هیچ مزرعه‌ای برای محاسبه رتبه‌بندی یافت نشد.")
+         else: # Likely means calculation failed or returned empty df
+              st.info(f"ℹ️ داده‌ای برای جدول رتبه‌بندی بر اساس شاخص {selected_index} در این بازه زمانی یافت نشد (احتمالاً به دلیل خطای محاسبه یا عدم دسترسی به تصاویر ماهواره‌ای بدون ابر).")
+         else:
+              # Fallback message if pre-conditions weren't met for calculation
+              st.warning("⚠️ پیش‌نیازهای لازم برای محاسبه جدول رتبه‌بندی فراهم نیست (مانند اتصال GEE یا انتخاب بازه زمانی معتبر).")
+
+
+     st.markdown("---")
 
 
 with tab2:
