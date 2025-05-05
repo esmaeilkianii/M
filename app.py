@@ -1118,13 +1118,13 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
                 error_details = e.args[0] if e.args else str(e)
                 if isinstance(error_details, str):
                      if 'computation timed out' in error_details.lower():
-                         error_message += "\\n(احتمالاً به دلیل حجم بالای پردازش یا بازه زمانی طولانی)"
-                     elif 'user memory limit exceeded' in error_details.lower():
-                         error_message += "\\n(احتمالاً به دلیل پردازش منطقه بزرگ یا عملیات پیچیده)"
-                     elif ('projection' in error_details.lower() and 'different projections' in error_details.lower()) or \
+                         error_message += "\n(احتمالاً به دلیل حجم بالای پردازش یا بازه زمانی طولانی)"
+            elif 'user memory limit exceeded' in error_details.lower():
+                         error_message += "\n(احتمالاً به دلیل پردازش منطقه بزرگ یا عملیات پیچیده)"
+            elif ('projection' in error_details.lower() and 'different projections' in error_details.lower()) or \
                           ('projection' in error_details.lower() and 'unable to transform' in error_details.lower()): # Catch both projection error types
-                        error_message += "\\n(خطای پروجکشن داخلی در GEE. ممکن است با تلاش مجدد یا بازه زمانی متفاوت برطرف شود.)"
-                     elif 'geometryconstructors' in error_details.lower() or 'invalid polygon' in error_details.lower():
+                        error_message += "\n(خطای پروجکشن داخلی در GEE. ممکن است با تلاش مجدد یا بازه زمانی متفاوت برطرف شود.)"
+            elif 'geometryconstructors' in error_details.lower() or 'invalid polygon' in error_details.lower():
                          error_message += "\\n(احتمالاً مشکلی در هندسه ورودی وجود دارد)"
 
             except Exception:
@@ -1154,23 +1154,21 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
 
             # Call fallback, store result in separate variables
             fallback_image, fallback_count, fallback_error_msg = filter_and_process_collection(fallback_start_date, fallback_end_date)
-
             if fallback_image is not None:
-                 image = fallback_image # Use fallback image if successful
-                 error_msg = None # Clear error message if fallback succeeded
-                 print(f"Found {fallback_count} images in fallback range {fallback_start_date}-{fallback_end_date}.")
-                 # Optionally add info message: st.info(f"ℹ️ از داده‌های تصویری تا تاریخ {fallback_end_date} برای نمایش نقشه استفاده شد.")
+                image = fallback_image  # Use fallback image if successful
+                error_msg = None  # Clear error message if fallback succeeded
+                print(f"Found {fallback_count} images in fallback range {fallback_start_date}-{fallback_end_date}.")
             else:
-                 # Fallback also failed. Prioritize the fallback error message if it exists and is informative, otherwise use the initial error message.
-                 if fallback_error_msg and "هیچ تصویر" not in fallback_error_msg: # Prioritize specific errors from fallback
-                      error_msg = f"تلاش اول ناموفق ({initial_error_msg}). تلاش دوم ({fallback_start_date}-{fallback_end_date}) نیز ناموفق: {fallback_error_msg}"
-                 else: # Use initial error if fallback error is generic "no image" or None
-                      error_msg = initial_error_msg if initial_error_msg else fallback_error_msg # Fallback error only if initial was None
+                # Fallback also failed. Prioritize the fallback error message if it exists and is informative
+                if fallback_error_msg and "هیچ تصویر" not in fallback_error_msg:
+                    error_msg = f"تلاش اول ناموفق ({initial_error_msg}). تلاش دوم ({fallback_start_date}-{fallback_end_date}) نیز ناموفق: {fallback_error_msg}"
+                else:
+                    error_msg = initial_error_msg if initial_error_msg else fallback_error_msg
 
-                 # Ensure error_msg is never None if image is None at this stage
-                 if image is None and not error_msg:
-                     error_msg = f"پردازش تصویر برای بازه {initial_start_date}-{initial_end_date} و بازه جایگزین {fallback_start_date}-{fallback_end_date} ناموفق بود (خطای نامشخص)."
-                 print(f"Attempt 2 also failed for {fallback_start_date}-{fallback_end_date}. Final Error: {error_msg}")
+                # Ensure error_msg is never None if image is None
+                if image is None and not error_msg:
+                    error_msg = f"پردازش تصویر برای بازه {initial_start_date}-{initial_end_date} و بازه جایگزین {fallback_start_date}-{fallback_end_date} ناموفق بود (خطای نامشخص)."
+                print(f"Attempt 2 also failed for {fallback_start_date}-{fallback_end_date}. Final Error: {error_msg}")
 
         except ValueError as date_err:
             # Handle potential errors converting date strings
