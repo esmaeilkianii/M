@@ -1104,46 +1104,52 @@ def maskS2clouds(image):
                 .updateMask(final_mask)
 
 def add_indices(image):
-    red = image.select('B4')
-    nir = image.select('B8')
-    blue = image.select('B2')
-    green = image.select('B3')
-    swir1 = image.select('B11')
+    # First, ensure all bands have consistent projection by reprojecting optical bands
+    # Get a reference projection from B4 (typically red band)
+    red_proj = image.select('B4').projection()
+    
+    # Select all necessary bands and reproject to ensure consistent projection
+    red = image.select('B4').reproject(crs=red_proj)
+    nir = image.select('B8').reproject(crs=red_proj)
+    blue = image.select('B2').reproject(crs=red_proj)
+    green = image.select('B3').reproject(crs=red_proj)
+    swir1 = image.select('B11').reproject(crs=red_proj)
 
     epsilon = 1e-9
 
     ndvi_denominator = nir.add(red)
-    ndvi = image.expression(
+    ndvi = ee.Image.expression(
         '(NIR - RED) / (NIR + RED)',
         {'NIR': nir, 'RED': red}
     ).rename('NDVI').updateMask(ndvi_denominator.gt(epsilon))
 
     evi_denominator = nir.add(red.multiply(6)).subtract(blue.multiply(7.5)).add(1)
-    evi = image.expression(
+    evi = ee.Image.expression(
         '2.5 * (NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1)',
         {'NIR': nir, 'RED': red, 'BLUE': blue}
     ).rename('EVI').updateMask(evi_denominator.abs().gt(epsilon))
 
     ndmi_denominator = nir.add(swir1)
-    ndmi = image.normalizedDifference(['B8', 'B11']).rename('NDMI').updateMask(ndmi_denominator.gt(epsilon))
+    ndmi = ee.Image.normalizedDifference(['B8', 'B11']).reproject(crs=red_proj).rename('NDMI').updateMask(ndmi_denominator.gt(epsilon))
 
     savi_denominator = nir.add(red).add(0.5)
-    savi = image.expression(
+    savi = ee.Image.expression(
         '((NIR - RED) / (NIR + RED + L)) * (1 + L)',
         {'NIR': nir, 'RED': red, 'L': 0.5}
     ).rename('SAVI').updateMask(savi_denominator.gt(epsilon))
 
     nir_safe = nir.max(ee.Image(epsilon))
-    msi = image.expression('SWIR1 / NIR', {'SWIR1': swir1, 'NIR': nir_safe}).rename('MSI')
+    msi = ee.Image.expression('SWIR1 / NIR', {'SWIR1': swir1, 'NIR': nir_safe}).rename('MSI')
 
-    lai = evi.multiply(3.618).subtract(0.118).rename('LAI').reproject(crs=image.projection().crs(), scale=10)
+    lai = evi.multiply(3.618).subtract(0.118).rename('LAI').reproject(crs=red_proj)
     lai = lai.updateMask(lai.gt(0))
 
     green_safe = green.max(ee.Image(epsilon))
-    cvi = image.expression('(NIR / GREEN) * (RED / GREEN)',
+    cvi = ee.Image.expression('(NIR / GREEN) * (RED / GREEN)',
                          {'NIR': nir, 'GREEN': green_safe, 'RED': red}
-    ).rename('CVI').reproject(crs=image.projection().crs(), scale=10)
+    ).rename('CVI').reproject(crs=red_proj)
 
+    # Return with all bands in the same projection
     return image.addBands([ndvi, evi, ndmi, msi, lai, cvi, savi])
 
 @st.cache_data(show_spinner=False, persist="disk")
@@ -1174,8 +1180,31 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
             if count == 0:
                 return None, 0, f"هیچ تصویر Sentinel-2 بدون ابر در بازه {s_date} تا {e_date} یافت نشد."
 
+            # First apply indices to each image
             indexed_col = s2_sr_col.map(add_indices)
-            median_image = indexed_col.median()
+            
+            # Select just the requested index band before calculating median 
+            # to avoid projection mismatches between bands
+            filtered_col = indexed_col.select([index_name])
+            
+            # Calculate median only on the selected index band
+            try:
+                median_image = filtered_col.median()
+            except ee.EEException as median_err:
+                # If median fails, try an alternative approach
+                if "different projections" in str(median_err):
+                    # Try to reproject each image before calculating median
+                    first_image = indexed_col.first()
+                    first_proj = first_image.select(index_name).projection()
+                    
+                    # Reproject each image's index band to match the first one
+                    reprojected_col = indexed_col.map(
+                        lambda img: img.select(index_name).reproject(crs=first_proj)
+                    )
+                    median_image = reprojected_col.median()
+                else:
+                    # Re-raise if it's not a projection error
+                    raise
 
             available_bands = median_image.bandNames().getInfo()
             if index_name not in available_bands:
@@ -1196,7 +1225,7 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
 
 
             # Select the band before returning
-            output_image = median_image.select(index_name)
+            output_image = median_image
 
             # Final validity check: Ensure the selected band has data over the geometry
             try:
@@ -1205,8 +1234,16 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
                     geometry=_geometry,
                     scale=30, # Use slightly coarser scale for faster check
                     bestEffort=True
-                ).get(index_name).getInfo()
-                if test_reduction is None:
+                ).getInfo()
+                
+                # Check if any values were returned
+                has_data = False
+                for key, value in test_reduction.items():
+                    if value is not None:
+                        has_data = True
+                        break
+                
+                if not has_data:
                      return None, count, f"تصویر برای شاخص '{index_name}' در بازه {s_date}-{e_date} ایجاد شد اما هیچ داده معتبری روی هندسه مورد نظر ندارد (احتمالاً همه پیکسل‌ها Mask شده‌اند)."
             except ee.EEException as reduce_err:
                  # If reduction itself fails, report it
