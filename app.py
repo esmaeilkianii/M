@@ -204,25 +204,25 @@ except Exception as e: st.sidebar.error(f"خطا در محاسبه بازه زم
 
 # ========================= GEE Functions (REVISED for ee.Image operations) =========================
 @st.cache_data(persist="disk")
-def maskS2clouds_ee(image: ee.Image) -> ee.Image:
-    qa = image.select('QA60')
+def maskS2clouds_ee(_image: ee.Image) -> ee.Image:
+    qa = _image.select('QA60')
     cloudBitMask = 1 << 10; cirrusBitMask = 1 << 11
     mask = qa.bitwiseAnd(cloudBitMask).eq(0).And(qa.bitwiseAnd(cirrusBitMask).eq(0))
-    scl = image.select('SCL'); good_quality = scl.remap([4, 5, 6], [1, 1, 1], 0)
-    opticalBands = image.select('B.*').multiply(0.0001)
-    return image.addBands(opticalBands, None, True).updateMask(mask).updateMask(good_quality)
+    scl = _image.select('SCL'); good_quality = scl.remap([4, 5, 6], [1, 1, 1], 0)
+    opticalBands = _image.select('B.*').multiply(0.0001)
+    return _image.addBands(opticalBands, None, True).updateMask(mask).updateMask(good_quality)
 
 @st.cache_data(persist="disk")
-def add_indices_ee(image: ee.Image) -> ee.Image:
+def add_indices_ee(_image: ee.Image) -> ee.Image:
     try:
-        ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI')
-        ndwi = image.normalizedDifference(['B8', 'B11']).rename('NDWI')
-        ndre = image.normalizedDifference(['B8', 'B5']).rename('NDRE')
+        ndvi = _image.normalizedDifference(['B8', 'B4']).rename('NDVI')
+        ndwi = _image.normalizedDifference(['B8', 'B11']).rename('NDWI')
+        ndre = _image.normalizedDifference(['B8', 'B5']).rename('NDRE')
         lai = ndvi.multiply(3.5).rename('LAI')
-        re1_safe = image.select('B5').max(ee.Image(0.0001))
-        chl = image.expression('(NIR / RE1) - 1', {'NIR': image.select('B8'), 'RE1': re1_safe}).rename('CHL')
-        return image.addBands([ndvi, ndwi, ndre, lai, chl])
-    except Exception as e: print(f"Warning: Index calculation failed for an image: {e}"); return image
+        re1_safe = _image.select('B5').max(ee.Image(0.0001))
+        chl = _image.expression('(NIR / RE1) - 1', {'NIR': _image.select('B8'), 'RE1': re1_safe}).rename('CHL')
+        return _image.addBands([ndvi, ndwi, ndre, lai, chl])
+    except Exception as e: print(f"Warning: Index calculation failed for an image: {e}"); return _image
 
 @st.cache_data(ttl=3600, show_spinner=False, persist="disk")
 def get_processed_image_serialized(_geometry_json, start_date, end_date, index_name):
