@@ -14,85 +14,251 @@ from streamlit_folium import st_folium
 import base64
 import google.generativeai as genai # Added for Gemini
 
-# --- Custom CSS ---
+# --- Custom CSS (Enhanced for Modern Look and Animations) ---
 st.set_page_config(
     page_title="سامانه پایش هوشمند نیشکر",
     page_icon="🌾",
     layout="wide"
 )
 
-# Custom CSS for Persian text alignment and professional styling
 st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700&display=swap');
-        
-        /* Main container */
+
+        /* Base Styles and Animations */
+        body {
+            font-family: 'Vazirmatn', sans-serif;
+            background-color: #e9ecef; /* Light gray background */
+        }
+
         .main {
             font-family: 'Vazirmatn', sans-serif;
+            background-color: #ffffff; /* White background for main content */
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            animation: fadeIn 1s ease-in-out; /* Main content fade-in */
         }
-        
+
+        @keyframes fadeIn {
+            0% { opacity: 0; transform: translateY(20px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+
         /* Headers */
         h1, h2, h3 {
             font-family: 'Vazirmatn', sans-serif;
-            color: #2c3e50;
+            color: #2c3e50; /* Dark blue-gray */
             text-align: right;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #3498db; /* Blue underline */
         }
-        
+
+        h1 { font-size: 2.5em; }
+        h2 { font-size: 2em; }
+        h3 { font-size: 1.5em; }
+
+
         /* Metrics */
         .css-1xarl3l { /* Streamlit's default metric class, adjust if needed */
             font-family: 'Vazirmatn', sans-serif;
-            background-color: #f8f9fa;
+            background-color: #ecf0f1; /* Light silver */
             border-radius: 10px;
-            padding: 1rem;
+            padding: 1.5rem; /* Increased padding */
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 1rem;
+            transition: transform 0.3s ease-in-out; /* Hover animation */
         }
-        
+         .css-1xarl3l:hover {
+             transform: translateY(-5px); /* Lift effect on hover */
+         }
+
         /* Tabs */
         .stTabs [data-baseweb="tab-list"] {
-            gap: 2px;
+            gap: 5px; /* Increased gap */
             direction: rtl;
+            margin-bottom: 1rem;
         }
-        
+
         .stTabs [data-baseweb="tab"] {
             height: 50px;
             padding: 10px 20px;
             background-color: #f8f9fa;
-            border-radius: 5px 5px 0 0;
+            border-radius: 8px 8px 0 0; /* Rounded top corners */
             font-family: 'Vazirmatn', sans-serif;
             font-weight: 600;
+            color: #34495e; /* Darker text */
+            transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
         }
-        
-        /* Tables */
+         .stTabs [data-baseweb="tab"]:hover {
+             background-color: #e0e0e0; /* Light gray hover */
+             color: #2c3e50;
+         }
+         .stTabs [data-baseweb="tab"][aria-selected="true"] {
+             background-color: #3498db; /* Blue for selected tab */
+             color: white;
+             font-weight: 700;
+             border-bottom-color: transparent; /* Remove underline */
+         }
+
+        /* Tables (Pandas DataFrames) */
         .dataframe {
             font-family: 'Vazirmatn', sans-serif;
             text-align: right;
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 1rem;
         }
-        
+         .dataframe th {
+             background-color: #3498db;
+             color: white;
+             padding: 10px;
+             text-align: right;
+         }
+         .dataframe td {
+             border: 1px solid #dddddd;
+             padding: 10px;
+         }
+         .dataframe tr:nth-child(even) {
+             background-color: #f2f2f2; /* Zebra striping */
+         }
+
         /* Sidebar */
         .css-1d391kg { /* Streamlit's default sidebar class, adjust if needed */
             font-family: 'Vazirmatn', sans-serif;
             direction: rtl;
+            background-color: #34495e; /* Dark blue-gray sidebar */
+            color: white;
+            padding: 1.5rem;
         }
-        
+        .css-1d391kg h1, .css-1d391kg h2, .css-1d391kg h3, .css-1d391kg label {
+             color: white; /* White text in sidebar headers and labels */
+             border-bottom-color: #3498db;
+        }
+        .css-1d391kg .stselectbox > label,
+        .css-1d391kg .sttextinput > label,
+        .css-1d391kg .stbutton > label {
+            color: white !important; /* Ensure labels are white */
+        }
+        /* Adjust color for Streamlit elements in sidebar */
+        .stSelectbox div[data-baseweb="select"] > div,
+        .stTextInput > div > input,
+        .stButton > button {
+             color: #34495e; /* Dark text for controls in sidebar */
+             background-color: #ecf0f1; /* Light background for controls */
+        }
+         .stButton > button {
+             background-color: #2ecc71; /* Green button */
+             color: white;
+             font-weight: bold;
+             border-radius: 5px;
+             transition: background-color 0.3s ease-in-out;
+         }
+         .stButton > button:hover {
+             background-color: #27ae60; /* Darker green on hover */
+         }
+
         /* Custom status badges */
         .status-badge {
             padding: 4px 8px;
             border-radius: 15px;
             font-size: 0.8em;
             font-weight: bold;
+            text-align: center;
+            display: inline-block;
         }
         .status-positive {
-            background-color: #d4edda;
-            color: #155724;
+            background-color: #d4edda; /* Light green */
+            color: #155724; /* Dark green */
         }
         .status-neutral {
-            background-color: #fff3cd;
-            color: #856404;
+            background-color: #fff3cd; /* Light yellow */
+            color: #856404; /* Dark yellow */
         }
         .status-negative {
-            background-color: #f8d7da;
-            color: #721c24;
+            background-color: #f8d7da; /* Light red */
+            color: #721c24; /* Dark red */
         }
+         .status-info { /* For "بدون داده" */
+            background-color: #d1ecf1; /* Light blue */
+            color: #0c5460; /* Dark blue */
+        }
+
+        /* Info/Warning/Error boxes */
+        .stAlertDialog, .stSuccess, .stWarning, .stError, .stInfo {
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            font-family: 'Vazirmatn', sans-serif;
+            text-align: right;
+        }
+         .stInfo { background-color: #d1ecf1; color: #0c5460; border-left: 5px solid #2196f3; } /* Blue */
+         .stSuccess { background-color: #d4edda; color: #155724; border-left: 5px solid #4CAF50; } /* Green */
+         .stWarning { background-color: #fff3cd; color: #856404; border-left: 5px solid #ff9800; } /* Orange */
+         .stError { background-color: #f8d7da; color: #721c24; border-left: 5px solid #f44336; } /* Red */
+
+
+        /* Progress Bar */
+        .stProgress > div > div > div > div {
+            background-color: #2ecc71; /* Green progress bar */
+        }
+
+        /* Map container adjustments if necessary */
+        .streamlit-container [data-testid="stColumn"] > div > div {
+             overflow: hidden; /* Prevent map overflow */
+             border-radius: 10px; /* Rounded corners for map container */
+        }
+
+        /* Gemini Input/Button Styling */
+        .stTextInput label + div input {
+             border-radius: 5px;
+             border: 1px solid #bdc3c7;
+             padding: 10px;
+             transition: border-color 0.3s ease-in-out;
+        }
+         .stTextInput label + div input:focus {
+             border-color: #3498db; /* Blue border on focus */
+             outline: none;
+             box-shadow: 0 0 5px rgba(52, 152, 219, 0.5);
+         }
+
+        .stButton button {
+             font-family: 'Vazirmatn', sans-serif;
+             border-radius: 5px;
+             padding: 10px 20px;
+             margin-top: 10px;
+             cursor: pointer;
+             transition: background-color 0.3s ease-in-out, opacity 0.3s ease-in-out;
+        }
+         .stButton button:hover {
+             opacity: 0.9;
+         }
+         /* Specific button colors */
+         .stButton button:contains("ارسال سوال"),
+         .stButton button:contains("پرسیدن سوال") { /* Add more button text for specific styling if needed */
+             background-color: #3498db; /* Blue */
+             color: white;
+         }
+         .stButton button:contains("تولید گزارش") {
+             background-color: #9b59b6; /* Purple */
+             color: white;
+         }
+         .stButton button:contains("تحلیل روند زمانی") {
+             background-color: #e67e22; /* Orange */
+             color: white;
+         }
+          .stButton button:contains("دریافت پیشنهادات") {
+             background-color: #1abc9c; /* Teal */
+             color: white;
+         }
+
+         /* Add some spacing below buttons */
+        .stButton {
+             margin-bottom: 15px;
+        }
+
+
     </style>
 """, unsafe_allow_html=True)
 
@@ -129,7 +295,7 @@ def initialize_gee():
 
 
 # --- Load Farm Data ---
-@st.cache_data(show_spinner="در حال بارگذاری داده‌های مزارع...")
+@st.cache_data(show_spinner="در حال بارگذاری داده‌های مزارع...", persist=True)
 def load_farm_data(csv_path=CSV_FILE_PATH):
     """Loads farm data from the specified CSV file."""
     try:
@@ -256,21 +422,16 @@ persian_to_weekday = {
 }
 try:
     target_weekday = persian_to_weekday[selected_day]
-    days_ago = (today.weekday() - target_weekday + 7) % 7
-    end_date_current = today - datetime.timedelta(days=days_ago if days_ago !=0 else 0) # Corrected logic for today
-    if today.weekday() == target_weekday: # If today is the selected day
-        end_date_current = today
-    else: # Find the most recent past selected_day
-        days_to_subtract = (today.weekday() - target_weekday + 7) % 7
-        end_date_current = today - datetime.timedelta(days=days_to_subtract)
-
+    # Calculate the date of the most recent past (or current) occurrence of the target weekday
+    days_to_subtract = (today.weekday() - target_weekday + 7) % 7
+    end_date_current = today - datetime.timedelta(days=days_to_subtract)
 
     start_date_current = end_date_current - datetime.timedelta(days=6)
     end_date_previous = start_date_current - datetime.timedelta(days=1)
     start_date_previous = end_date_previous - datetime.timedelta(days=6)
 
     start_date_current_str = start_date_current.strftime('%Y-%m-%d')
-    end_date_current_str = end_date_current.strftime('%Y-%m-%d')
+    end_date_current_str = end_date_current.strftime('%Y-%m-%m')
     start_date_previous_str = start_date_previous.strftime('%Y-%m-%d')
     end_date_previous_str = end_date_previous.strftime('%Y-%m-%d')
 
@@ -293,24 +454,37 @@ def maskS2clouds(image):
     cirrusBitMask = 1 << 11
     mask = qa.bitwiseAnd(cloudBitMask).eq(0).And(qa.bitwiseAnd(cirrusBitMask).eq(0))
     scl = image.select('SCL')
+    # Pixels with SCL values 4, 5, 6, 7, 11 are usually good for vegetation analysis
     good_quality = scl.remap([4, 5, 6, 7, 11], [1, 1, 1, 1, 1], 0)
     opticalBands = image.select('B.*').multiply(0.0001)
     return image.addBands(opticalBands, None, True).updateMask(mask).updateMask(good_quality)
 
 def add_indices(image):
-    ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI')
+    # Ensure bands exist before calculating indices
+    bands = image.bandNames()
+    ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI') if 'B8' in bands and 'B4' in bands else image.addBands(ee.Image(-9999).rename('NDVI'))
     evi = image.expression(
         '2.5 * (NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1)',
         {'NIR': image.select('B8'), 'RED': image.select('B4'), 'BLUE': image.select('B2')}
-    ).rename('EVI')
-    ndmi = image.normalizedDifference(['B8', 'B11']).rename('NDMI')
-    msi = image.expression('SWIR1 / NIR', {'SWIR1': image.select('B11'), 'NIR': image.select('B8')}).rename('MSI')
-    lai = ndvi.multiply(3.5).rename('LAI')
-    green_safe = image.select('B3').max(ee.Image(0.0001))
+    ).rename('EVI') if all(b in bands for b in ['B8', 'B4', 'B2']) else image.addBands(ee.Image(-9999).rename('EVI'))
+
+    ndmi = image.normalizedDifference(['B8', 'B11']).rename('NDMI') if 'B8' in bands and 'B11' in bands else image.addBands(ee.Image(-9999).rename('NDMI'))
+
+    # MSI calculation requires B11 (SWIR1) and B8 (NIR)
+    msi = image.expression('SWIR1 / NIR', {'SWIR1': image.select('B11'), 'NIR': image.select('B8')}).rename('MSI') if 'B11' in bands and 'B8' in bands else image.addBands(ee.Image(-9999).rename('MSI'))
+
+    # LAI is an estimation based on NDVI
+    lai = ndvi.multiply(3.5).rename('LAI') if 'NDVI' in ndvi.bandNames().getInfo() else image.addBands(ee.Image(-9999).rename('LAI'))
+
+    # CVI requires B8 (NIR), B3 (Green), B4 (Red)
+    green_safe = image.select('B3').max(ee.Image(0.0001)) if 'B3' in bands else ee.Image(0.0001)
     cvi = image.expression('(NIR / GREEN) * (RED / GREEN)',
         {'NIR': image.select('B8'), 'GREEN': green_safe, 'RED': image.select('B4')}
-    ).rename('CVI')
-    return image.addBands([ndvi, evi, ndmi, msi, lai, cvi])
+    ).rename('CVI') if all(b in bands for b in ['B8', 'B3', 'B4']) else image.addBands(ee.Image(-9999).rename('CVI'))
+
+    # Return original image with calculated indices added. Use bandNames().addAll to ensure all bands are kept.
+    return image.addBands([ndvi, evi, ndmi, msi, lai, cvi]).select(image.bandNames().addAll([ndvi.bandNames(), evi.bandNames(), ndmi.bandNames(), msi.bandNames(), lai.bandNames(), cvi.bandNames()]).distinct())
+
 
 @st.cache_data(show_spinner="در حال پردازش تصاویر ماهواره‌ای...", persist=True)
 def get_processed_image(_geometry, start_date, end_date, index_name):
@@ -348,10 +522,14 @@ def get_index_time_series(_point_geom, index_name, start_date='2023-01-01', end_
                      .map(maskS2clouds)
                      .map(add_indices))
         def extract_value(image):
-            value = image.reduceRegion(
-                reducer=ee.Reducer.first(), geometry=_point_geom, scale=10
-            ).get(index_name)
-            return ee.Feature(None, {'date': image.date().format('YYYY-MM-dd'), index_name: value})
+            # Ensure the selected index band exists in the image
+            if index_name in image.bandNames().getInfo():
+                value = image.reduceRegion(
+                    reducer=ee.Reducer.first(), geometry=_point_geom, scale=10
+                ).get(index_name)
+                return ee.Feature(None, {'date': image.date().format('YYYY-MM-dd'), index_name: value})
+            return ee.Feature(None, {'date': image.date().format('YYYY-MM-dd'), index_name: None}) # Return None if band is missing
+
         ts_features = s2_sr_col.map(extract_value).filter(ee.Filter.notNull([index_name]))
         ts_info = ts_features.getInfo()['features']
         if not ts_info:
@@ -455,7 +633,7 @@ with tab1:
 
     ranking_df_sorted = pd.DataFrame() # Initialize to avoid NameError if ranking_df is empty
     if not ranking_df.empty:
-        ascending_sort = selected_index in ['MSI']
+        ascending_sort = selected_index in ['MSI'] # MSI and potentially NDMI lower is better
         ranking_df_sorted = ranking_df.sort_values(
             by=f'{selected_index} (هفته جاری)', ascending=ascending_sort, na_position='last'
         ).reset_index(drop=True)
@@ -469,18 +647,45 @@ with tab1:
                 if row['تغییر'] > 0.05: return "رشد مثبت"
                 elif row['تغییر'] < -0.05: return "تنش/کاهش"
                 else: return "ثابت"
-            elif index_name in ['MSI', 'NDMI']: # NDMI was missing, MSI logic might need adjustment
-                if row['تغییر'] < -0.05: return "بهبود" # Lower MSI/NDMI is better, so negative change is improvement
+            elif index_name in ['MSI', 'NDMI']: # Lower MSI/NDMI is generally better
+                if row['تغییر'] < -0.05: return "بهبود" # Negative change is improvement
                 elif row['تغییر'] > 0.05: return "تنش/بدتر شدن"
                 else: return "ثابت"
-            return "نامشخص"
+            return "نامشخص" # Should not happen with the checks above
 
         ranking_df_sorted['وضعیت'] = ranking_df_sorted.apply(lambda row: determine_status(row, selected_index), axis=1)
+
+        # Format numerical columns and add status badge
+        def format_with_badge(row, col, index_name):
+            value = row[col]
+            status = row['وضعیت']
+            formatted_value = f"{value:.3f}" if pd.notna(value) and isinstance(value, (int, float)) else "N/A"
+
+            if col == 'وضعیت':
+                 status_class = "status-info" if status == "بدون داده" else ("status-positive" if status in ["رشد مثبت", "بهبود"] else ("status-negative" if status in ["تنش/کاهش", "تنش/بدتر شدن"] else "status-neutral"))
+                 return f'<span class="status-badge {status_class}">{status}</span>'
+            elif col == 'تغییر':
+                 status = determine_status(row, index_name) # Re-determine status for change column
+                 change_class = "status-info" if status == "بدون داده" else ("status-positive" if status in ["رشد مثبت", "بهبود"] else ("status-negative" if status in ["تنش/کاهش", "تنش/بدتر شدن"] else "status-neutral"))
+                 return f'<span style="color: {'green' if status in ["رشد مثبت", "بهبود"] else ('red' if status in ["تنش/کاهش", "تنش/بدتر شدن"] else 'gray')}; font-weight: bold;">{formatted_value}</span>'
+            else:
+                 return formatted_value
+
+
         cols_to_format = [f'{selected_index} (هفته جاری)', f'{selected_index} (هفته قبل)', 'تغییر']
+        # Apply formatting for display, but keep original numeric for sorting if needed elsewhere
+        ranking_df_display = ranking_df_sorted.copy()
         for col_format in cols_to_format:
-            if col_format in ranking_df_sorted.columns:
-                 ranking_df_sorted[col_format] = ranking_df_sorted[col_format].map(lambda x: f"{x:.3f}" if pd.notna(x) else "N/A")
-        st.dataframe(ranking_df_sorted, use_container_width=True)
+             if col_format in ranking_df_display.columns:
+                  # Apply numeric formatting
+                  ranking_df_display[col_format] = ranking_df_display[col_format].map(lambda x: f"{x:.3f}" if pd.notna(x) and isinstance(x, (int, float)) else "N/A")
+
+        # Apply badge formatting to Status column and conditional coloring/bolding to Change column
+        ranking_df_display['وضعیت'] = ranking_df_display.apply(lambda row: format_with_badge(row, 'وضعیت', selected_index), axis=1)
+        ranking_df_display['تغییر'] = ranking_df_display.apply(lambda row: format_with_badge(row, 'تغییر', selected_index), axis=1)
+
+        # Use st.markdown for HTML rendering of badges and colored text
+        st.markdown(ranking_df_display.to_html(escape=False), unsafe_allow_html=True)
 
         st.subheader("📊 خلاصه وضعیت مزارع")
         status_counts = ranking_df_sorted['وضعیت'].value_counts()
@@ -504,6 +709,7 @@ with tab1:
         - **❔ بدون داده**: اطلاعات کافی برای ارزیابی وضعیت موجود نیست.
         """)
 
+        # Prepare CSV data from the original numerical dataframe
         csv_data = ranking_df_sorted.to_csv(index=True).encode('utf-8')
         st.download_button(
             label="📥 دانلود جدول رتبه‌بندی (CSV)", data=csv_data,
@@ -517,9 +723,9 @@ with tab2:
     vis_params = {
         'NDVI': {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']},
         'EVI': {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']},
-        'NDMI': {'min': -1, 'max': 1, 'palette': ['brown', 'white', 'blue']},
+        'NDMI': {'min': -1, 'max': 1, 'palette': ['brown', 'white', 'blue']}, # Brown (dry) to Blue (wet)
         'LAI': {'min': 0, 'max': 6, 'palette': ['white', 'lightgreen', 'darkgreen']},
-        'MSI': {'min': 0, 'max': 3, 'palette': ['blue', 'white', 'brown']}, # Low MSI = high moisture (blue), High MSI = low moisture (brown)
+        'MSI': {'min': 0, 'max': 3, 'palette': ['blue', 'white', 'brown']}, # Blue (low stress/wet) to Brown (high stress/dry)
         'CVI': {'min': 0, 'max': 20, 'palette': ['yellow', 'lightgreen', 'darkgreen']},
     }
     map_center_lat = lat if selected_farm_name != "همه مزارع" else INITIAL_LAT
@@ -543,15 +749,15 @@ with tab2:
                 # Custom Legend
                 legend_html_content = ""
                 if selected_index in ['NDVI', 'EVI', 'LAI', 'CVI']:
-                    legend_html_content = '<p style="margin: 0; color: red;">بحرانی/پایین</p><p style="margin: 0; color: yellow;">متوسط</p><p style="margin: 0; color: green;">سالم/بالا</p>'
-                elif selected_index == 'NDMI': # NDMI: Blue for wet, brown for dry
-                     legend_html_content = '<p style="margin: 0; color: brown;">خشک</p><p style="margin: 0; color: white;">متوسط</p><p style="margin: 0; color: blue;">مرطوب</p>'
-                elif selected_index == 'MSI': # MSI: Brown for high stress (dry), Blue for low stress (wet)
-                     legend_html_content = '<p style="margin: 0; color: blue;">رطوبت بالا / تنش کم</p><p style="margin: 0; color: white;">متوسط</p><p style="margin: 0; color: brown;">رطوبت پایین / تنش زیاد</p>'
+                    legend_html_content = '<p style="margin: 0; color: red; text-align: right;">بحرانی/پایین</p><p style="margin: 0; color: yellow; text-align: right;">متوسط</p><p style="margin: 0; color: green; text-align: right;">سالم/بالا</p>'
+                elif selected_index == 'NDMI':
+                     legend_html_content = '<p style="margin: 0; color: brown; text-align: right;">خشک</p><p style="margin: 0; color: white; text-align: right;">متوسط</p><p style="margin: 0; color: blue; text-align: right;">مرطوب</p>'
+                elif selected_index == 'MSI':
+                     legend_html_content = '<p style="margin: 0; color: blue; text-align: right;">رطوبت بالا / تنش کم</p><p style="margin: 0; color: white; text-align: right;">متوسط</p><p style="margin: 0; color: brown; text-align: right;">رطوبت پایین / تنش زیاد</p>'
 
                 if legend_html_content:
                     legend_html = f'''
-                    <div style="position: fixed; bottom: 50px; left: 10px; z-index: 1000; background-color: white; padding: 10px; border: 1px solid grey; border-radius: 5px; font-family: Vazirmatn, sans-serif;">
+                    <div style="position: fixed; bottom: 50px; left: 10px; z-index: 1000; background-color: white; padding: 10px; border: 1px solid grey; border-radius: 5px; font-family: Vazirmatn, sans-serif; text-align: right;">
                         <p style="margin: 0; font-weight: bold;">راهنمای {selected_index}</p>
                         {legend_html_content}
                     </div>
@@ -609,7 +815,7 @@ with tab2:
                 st.warning(f"خطا در دریافت داده‌های سری زمانی: {ts_error}")
             elif not ts_df.empty:
                 fig = px.line(ts_df, y=selected_index, title=f"روند زمانی {selected_index} برای {selected_farm_name}")
-                fig.update_layout(xaxis_title="تاریخ", yaxis_title=selected_index, font=dict(family="Vazirmatn"))
+                fig.update_layout(xaxis_title="تاریخ", yaxis_title=index_options[selected_index], font=dict(family="Vazirmatn"))
                 st.plotly_chart(fig, use_container_width=True)
                 st.caption(f"نمودار تغییرات شاخص {selected_index} برای مزرعه {selected_farm_name} در 2 سال گذشته.")
             else:
@@ -644,7 +850,7 @@ with tab3:
                         prev_val_str = farm_data_for_prompt[f'{selected_index} (هفته قبل)'].iloc[0]
                         change_str = farm_data_for_prompt['تغییر'].iloc[0]
                         status_str = farm_data_for_prompt['وضعیت'].iloc[0]
-                        context_data = f"داده‌های مزرعه '{selected_farm_name}' برای شاخص {selected_index} (هفته منتهی به {end_date_current_str}):\n" \
+                        context_data = f"داده‌های مزرعه '{selected_farm_name}' برای شاخص {selected_index} ({index_options.get(selected_index, selected_index)}) (هفته منتهی به {end_date_current_str}):\n" \
                                        f"- مقدار هفته جاری: {current_val_str}\n" \
                                        f"- مقدار هفته قبل: {prev_val_str}\n" \
                                        f"- تغییر نسبت به هفته قبل: {change_str}\n" \
@@ -692,7 +898,7 @@ with tab3:
                              f"اطلاعات مزرعه:\n" \
                              f"- مساحت: {area_str} هکتار\n" \
                              f"- واریته: {variety_str}\n" \
-                             f"- شاخص مورد بررسی: {selected_index} ({index_options[selected_index]})\n" \
+                             f"- شاخص مورد بررسی: {selected_index} ({index_options.get(selected_index, selected_index)})\n" \
                              f"- مقدار شاخص در هفته جاری: {current_val_str}\n" \
                              f"- مقدار شاخص در هفته قبل: {prev_val_str}\n" \
                              f"- تغییر نسبت به هفته قبل: {change_str}\n" \
@@ -701,9 +907,6 @@ with tab3:
 
                     with st.spinner("در حال تولید گزارش با Gemini..."):
                         response = ask_gemini(prompt, temperature=0.6, top_p=0.9)
-                        st.markdown(f"### گزارش هفتگی مزرعه {selected_farm_name} (شاخص {selected_index})")
-                        st.markdown(f"**تاریخ گزارش:** {datetime.date.today().strftime('%Y-%m-%d')}")
-                        st.markdown(f"**بازه زمانی مورد بررسی:** {start_date_current_str} الی {end_date_current_str}")
                         st.markdown(response)
                 else:
                     st.error(f"داده‌های کافی برای تولید گزارش برای مزرعه {selected_farm_name} یافت نشد.")
@@ -715,9 +918,11 @@ with tab3:
         elif selected_farm_geom:
             is_point_geom_gemini = False
             try:
+                # Check if the geometry is a Point by checking its type
                 if selected_farm_geom.type().getInfo() == 'Point': is_point_geom_gemini = True
             except Exception:
-                if isinstance(selected_farm_geom, ee.geometry.Point): is_point_geom_gemini = True
+                 # Fallback in case getInfo() fails or it's not an EE geometry object
+                 if isinstance(selected_farm_geom, ee.geometry.Point): is_point_geom_gemini = True
 
             if is_point_geom_gemini:
                 if st.button(f"🔍 تحلیل روند زمانی {selected_index} برای '{selected_farm_name}'", key="btn_gemini_timeseries"):
@@ -732,10 +937,17 @@ with tab3:
                     elif not ts_df_gemini.empty:
                         # Prepare a summary of time series for the prompt
                         ts_summary = f"داده‌های سری زمانی شاخص {selected_index} برای مزرعه '{selected_farm_name}' در 6 ماه گذشته (از {timeseries_start_date_gemini} تا {timeseries_end_date_gemini}):\n"
-                        ts_summary += ts_df_gemini.iloc[::len(ts_df_gemini)//5 if len(ts_df_gemini)>5 else 1].to_string(header=True, index=True) # Sample ~5 points
+                        # Sample ~5-10 points or include start/end/min/max
+                        sample_size = min(10, len(ts_df_gemini))
+                        ts_summary += ts_df_gemini.iloc[::len(ts_df_gemini)//sample_size if len(ts_df_gemini)>sample_size else 1].to_string(header=True, index=True)
                         ts_summary += f"\nمقدار اولیه حدود {ts_df_gemini[selected_index].iloc[0]:.3f} و مقدار نهایی حدود {ts_df_gemini[selected_index].iloc[-1]:.3f} بوده است."
-                        
-                        prompt = f"شما یک تحلیلگر داده‌های کشاورزی هستید. بر اساس داده‌های سری زمانی زیر برای شاخص {selected_index} مزرعه '{selected_farm_name}' طی 6 ماه گذشته:\n{ts_summary}\n" \
+                        if not ts_df_gemini.empty:
+                             min_val = ts_df_gemini[selected_index].min()
+                             max_val = ts_df_gemini[selected_index].max()
+                             ts_summary += f"\nکمترین مقدار ثبت شده حدود {min_val:.3f} و بیشترین مقدار حدود {max_val:.3f} بوده است."
+
+
+                        prompt = f"شما یک تحلیلگر داده‌های کشاورزی هستید. بر اساس داده‌های سری زمانی زیر برای شاخص {selected_index} ({index_options.get(selected_index, selected_index)}) مزرعه '{selected_farm_name}' طی 6 ماه گذشته:\n{ts_summary}\n" \
                                  f"۱. روند کلی تغییرات شاخص (افزایشی، کاهشی، نوسانی، ثابت) را توصیف کنید.\n" \
                                  f"۲. نقاط عطف یا تغییرات قابل توجه در روند را شناسایی کنید (اگر وجود دارد).\n" \
                                  f"۳. دلایل احتمالی کلی (مانند تغییرات فصلی، مراحل رشد گیاه، تنش‌های محیطی عمومی) برای این روندها چه می‌تواند باشد؟\n" \
@@ -760,12 +972,17 @@ with tab3:
                 if not farm_data_for_actions.empty:
                     current_val_str = farm_data_for_actions[f'{selected_index} (هفته جاری)'].iloc[0]
                     status_str = farm_data_for_actions['وضعیت'].iloc[0]
+                    # Add other relevant farm details if available and helpful for actions
+                    area_str = f"{selected_farm_details.get('مساحت', 'N/A'):,.2f}" if pd.notna(selected_farm_details.get('مساحت')) else "N/A"
+                    variety_str = selected_farm_details.get('واریته', 'N/A')
+                    age_str = selected_farm_details.get('سن', 'N/A')
 
-                    prompt = f"شما یک مشاور کشاورزی هوشمند هستید. برای مزرعه '{selected_farm_name}'، شاخص {selected_index} ({index_options[selected_index]}) در هفته جاری مقدار {current_val_str} را نشان می‌دهد و وضعیت کلی آن '{status_str}' ارزیابی شده است.\n" \
-                             f"بر اساس این اطلاعات:\n" \
-                             f"۱. تفسیر مختصری از مقدار فعلی شاخص {selected_index} ارائه دهید (مثلاً اگر NDVI پایین است، یعنی چه؟ اگر MSI بالاست یعنی چه؟).\n" \
-                             f"۲. با توجه به مقدار شاخص و وضعیت، چه نوع بررسی‌ها یا اقدامات عمومی کشاورزی (مانند بررسی آبیاری، نیاز به عناصر غذایی، پایش آفات و بیماری‌ها، مدیریت بقایا) ممکن است لازم باشد؟ لطفاً پیشنهادات کلی و غیر تخصصی ارائه دهید.\n" \
-                             f"پاسخ به زبان فارسی و به صورت عملیاتی باشد."
+
+                    prompt = f"شما یک مشاور کشاورزی هوشمند هستید که در زمینه نیشکر تخصص دارید. برای مزرعه '{selected_farm_name}' (مساحت: {area_str} هکتار، واریته: {variety_str}, سن: {age_str}), شاخص {selected_index} ({index_options.get(selected_index, selected_index)}) در هفته جاری مقدار {current_val_str} را نشان می‌دهد و وضعیت کلی آن '{status_str}' ارزیابی شده است.\n" \
+                             f"بر اساس این اطلاعات و دانش کلی کشاورزی نیشکر:\n" \
+                             f"۱. تفسیر مختصری از مقدار فعلی شاخص {selected_index} در زمینه رشد نیشکر ارائه دهید (مثلاً اگر NDVI پایین است، چه چیزی را نشان می‌دهد؟ اگر MSI بالاست، نشانه چیست؟).\n" \
+                             f"۲. با توجه به مقدار شاخص، وضعیت ('{status_str}') و اطلاعات مزرعه، چه نوع بررسی‌ها یا اقدامات عمومی کشاورزی (مانند بررسی وضعیت آبیاری، نیاز به کوددهی، پایش علائم آفات و بیماری‌ها، مدیریت زهکشی، عملیات خاک‌ورزی) ممکن است لازم باشد؟ لطفاً پیشنهادات کلی و غیر تخصصی ارائه دهید که نیاز به بازدید میدانی یا مشاوره با متخصص را مطرح کند.\n" \
+                             f"پاسخ به زبان فارسی، ساختاریافته و به صورت عملیاتی برای یک کشاورز باشد."
 
                     with st.spinner("در حال دریافت پیشنهادات کشاورزی با Gemini..."):
                         response = ask_gemini(prompt, temperature=0.8, top_k=30)
@@ -781,12 +998,24 @@ with tab3:
                 st.info("لطفاً سوال خود را وارد کنید.")
             else:
                 prompt = f"شما یک دانشنامه هوشمند در زمینه کشاورزی و سنجش از دور هستید. لطفاً به سوال زیر که توسط یک کاربر سامانه پایش نیشکر پرسیده شده است، به زبان فارسی پاسخ دهید. سعی کنید پاسخ شما ساده، قابل فهم و دقیق باشد.\n\nسوال کاربر: '{user_general_q}'"
-                if "مزرعه من قرمز شده" in user_general_q or "مزرعه قرمز" in user_general_q: # Heuristic
+                # Add some context for specific questions if possible
+                context_for_general_q = ""
+                if "مزرعه من قرمز شده" in user_general_q or "مزرعه قرمز" in user_general_q or ("قرمز" in user_general_q and "نقشه" in user_general_q): # Heuristic for map color questions
                      if selected_farm_name != "همه مزارع" and not ranking_df_sorted.empty:
                         farm_data_color = ranking_df_sorted[ranking_df_sorted['مزرعه'] == selected_farm_name]
-                        if not farm_data_color.empty and selected_index in ['NDVI', 'EVI', 'LAI', 'CVI']: # Indices where red is bad
+                        # Check if the selected index is one where 'red' in the palette indicates low/bad values
+                        indices_where_red_is_bad = ['NDVI', 'EVI', 'LAI', 'CVI']
+                        if not farm_data_color.empty and selected_index in indices_where_red_is_bad:
                             current_val_color = farm_data_color[f'{selected_index} (هفته جاری)'].iloc[0]
-                            prompt = f"شما یک دانشنامه هوشمند در زمینه کشاورزی و سنجش از دور هستید. کاربر پرسیده: '{user_general_q}'. در این سامانه، رنگ قرمز روی نقشه برای شاخص‌هایی مانند NDVI معمولاً نشان‌دهنده مقدار پایین و وضعیت نامطلوب پوشش گیاهی است. برای مزرعه '{selected_farm_name}'، مقدار فعلی شاخص {selected_index} برابر {current_val_color} است. لطفاً توضیح دهید که چه عواملی می‌توانند باعث پایین بودن این شاخص و 'قرمز' دیده شدن مزرعه در نقشه شوند و چه بررسی‌هایی ممکن است لازم باشد. پاسخ به زبان فارسی."
+                            context_for_general_q = f"در این سامانه، رنگ قرمز روی نقشه برای شاخص‌هایی مانند {selected_index} ({index_options.get(selected_index, selected_index)}) معمولاً نشان‌دهنده مقدار پایین و وضعیت نامطلوب پوشش گیاهی/سلامت گیاه است. برای مزرعه '{selected_farm_name}'، مقدار فعلی شاخص {selected_index} برابر {current_val_color} است (بر اساس داده‌های هفته جاری). لطفاً توضیح دهید که چه عواملی می‌توانند باعث پایین بودن این شاخص و 'قرمز' دیده شدن مزرعه در نقشه شوند و چه بررسی‌هایی ممکن است لازم باشد. پاسخ به زبان فارسی."
+                            prompt = f"شما یک دانشنامه هوشمند در زمینه کشاورزی و سنجش از دور هستید. کاربر پرسیده: '{user_general_q}'. {context_for_general_q} سعی کنید پاسخ شما ساده، قابل فهم و دقیق باشد."
+                        elif not farm_data_color.empty and selected_index in ['MSI', 'NDMI']: # Indices where red/brown might indicate stress/dryness
+                            current_val_color = farm_data_color[f'{selected_index} (هفته جاری)'].iloc[0]
+                            context_for_general_q = f"در این سامانه، برای شاخص‌هایی مانند {selected_index} ({index_options.get(selected_index, selected_index)})، رنگ‌هایی مانند قرمز یا قهوه‌ای معمولاً نشان‌دهنده تنش رطوبتی بالا یا خشکی هستند. برای مزرعه '{selected_farm_name}'، مقدار فعلی شاخص {selected_index} برابر {current_val_color} است (بر اساس داده‌های هفته جاری). لطفاً توضیح دهید که چه عواملی می‌توانند باعث بالا بودن این شاخص (و 'قرمز' یا 'قهوه‌ای' دیده شدن مزرعه در نقشه) شوند و چه بررسی‌هایی ممکن است لازم باشد. پاسخ به زبان فارسی."
+                            prompt = f"شما یک دانشنامه هوشمند در زمینه کشاورزی و سنجش از دور هستید. کاربر پرسیده: '{user_general_q}'. {context_for_general_q} سعی کنید پاسخ شما ساده، قابل فهم و دقیق باشد."
+
+                if not context_for_general_q: # If no specific context was added
+                     prompt = f"شما یک دانشنامه هوشمند در زمینه کشاورزی و سنجش از دور هستید. لطفاً به سوال زیر که توسط یک کاربر سامانه پایش نیشکر پرسیده شده است، به زبان فارسی پاسخ دهید. سعی کنید پاسخ شما ساده، قابل فهم و دقیق باشد.\n\nسوال کاربر: '{user_general_q}'"
 
 
                 with st.spinner("در حال جستجو برای پاسخ با Gemini..."):
