@@ -624,7 +624,7 @@ with tab1:
             elif col == 'تغییر':
                  status = determine_status(row, index_name) # Re-determine status for change column
                  change_class = "status-info" if status == "بدون داده" else ("status-positive" if status in ["رشد مثبت", "بهبود"] else ("status-negative" if status in ["تنش/کاهش", "تنش/بدتر شدن"] else "status-neutral"))
-                 return f'<span style="color: {'green' if status in ["رشد مثبت", "بهبود"] else ('red' if status in ["تنش/کاهش", "تنش/بدتر شدن"] else 'gray')}; font-weight: bold;">{formatted_value}</span>'
+                 return f'<span style="color: {"green" if status in ["رشد مثبت", "بهبود"] else ("red" if status in ["تنش/کاهش", "تنش/بدتر شدن"] else "gray")}; font-weight: bold;">{formatted_value}</span>'
             else:
                  return formatted_value
 
@@ -975,6 +975,13 @@ with tab3:
                      prompt = f"شما یک دانشنامه هوشمند در زمینه کشاورزی و سنجش از دور هستید. لطفاً به سوال زیر که توسط یک کاربر سامانه پایش نیشکر پرسیده شده است، به زبان فارسی پاسخ دهید. سعی کنید پاسخ شما ساده، قابل فهم و دقیق باشد.\n\nسوال کاربر: '{user_general_q}'"
 
 
+                with st.spinner("در حال جستجو برای پاسخ با Gemini..."):
+                    response = ask_gemini(prompt, temperature=0.3)
+                    st.markdown(response)
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("ساخته شده با 💻 توسط [اسماعیل کیانی] با استفاده از Streamlit, Google Earth Engine, geemap و Gemini API")
+st.sidebar.markdown("🌾 شرکت کشت و صنعت دهخدا")
                 with st.spinner("در حال جستجو برای پاسخ با Gemini..."):
                     response = ask_gemini(prompt, temperature=0.3)
                     st.markdown(response)
