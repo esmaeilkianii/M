@@ -24,242 +24,162 @@ st.set_page_config(
 st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700&display=swap');
-
-        /* Base Styles and Animations */
+        @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css');
+        @import url('https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css');
         body {
             font-family: 'Vazirmatn', sans-serif;
-            background-color: #e9ecef; /* Light gray background */
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
         }
-
         .main {
             font-family: 'Vazirmatn', sans-serif;
-            background-color: #ffffff; /* White background for main content */
+            background-color: #ffffff;
             padding: 2rem;
             border-radius: 10px;
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            animation: fadeIn 1s ease-in-out; /* Main content fade-in */
+            animation: fadeIn 1s ease-in-out;
         }
-
-        @keyframes fadeIn {
-            0% { opacity: 0; transform: translateY(20px); }
-            100% { opacity: 1; transform: translateY(0); }
+        .header {
+            background: linear-gradient(135deg, #43cea2 0%, #185a9d 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            animation: fadeIn 0.8s ease-in-out;
         }
-
-        /* Headers */
-        h1, h2, h3 {
-            font-family: 'Vazirmatn', sans-serif;
-            color: #2c3e50; /* Dark blue-gray */
-            text-align: right;
-            margin-bottom: 1rem;
-            padding-bottom: 0.5rem;
-            border-bottom: 2px solid #3498db; /* Blue underline */
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 900;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            animation: bounceIn 1s ease-in-out;
         }
-
-        h1 { font-size: 2.5em; }
-        h2 { font-size: 2em; }
-        h3 { font-size: 1.5em; }
-
-
-        /* Metrics */
-        .css-1xarl3l { /* Streamlit's default metric class, adjust if needed */
-            font-family: 'Vazirmatn', sans-serif;
-            background-color: #ecf0f1; /* Light silver */
-            border-radius: 10px;
-            padding: 1.5rem; /* Increased padding */
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 1rem;
-            transition: transform 0.3s ease-in-out; /* Hover animation */
+        .metric-card {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin: 15px 0;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+            transition: all 0.5s ease;
+            animation: bounceIn 0.8s ease-in-out;
         }
-         .css-1xarl3l:hover {
-             transform: translateY(-5px); /* Lift effect on hover */
-         }
-
-        /* Tabs */
+        .metric-card::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 5px;
+            background: linear-gradient(to right, #43cea2, #185a9d);
+        }
+        .metric-card:hover {
+            transform: translateY(-5px) scale(1.02);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.2);
+        }
+        .metric-card h3 {
+            font-size: 1.2em;
+            opacity: 0.9;
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+        .metric-card h2 {
+            font-size: 2.5em;
+            font-weight: 900;
+            margin: 0;
+            padding: 0;
+            line-height: 1;
+        }
+        .metric-card i {
+            font-size: 2em;
+            margin-bottom: 15px;
+            display: block;
+            opacity: 0.8;
+        }
         .stTabs [data-baseweb="tab-list"] {
-            gap: 5px; /* Increased gap */
+            gap: 5px;
             direction: rtl;
             margin-bottom: 1rem;
         }
-
         .stTabs [data-baseweb="tab"] {
             height: 50px;
             padding: 10px 20px;
             background-color: #f8f9fa;
-            border-radius: 8px 8px 0 0; /* Rounded top corners */
+            border-radius: 8px 8px 0 0;
             font-family: 'Vazirmatn', sans-serif;
             font-weight: 600;
-            color: #34495e; /* Darker text */
+            color: #34495e;
             transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
         }
-         .stTabs [data-baseweb="tab"]:hover {
-             background-color: #e0e0e0; /* Light gray hover */
-             color: #2c3e50;
-         }
-         .stTabs [data-baseweb="tab"][aria-selected="true"] {
-             background-color: #3498db; /* Blue for selected tab */
-             color: white;
-             font-weight: 700;
-             border-bottom-color: transparent; /* Remove underline */
-         }
-
-        /* Tables (Pandas DataFrames) */
-        .dataframe {
-            font-family: 'Vazirmatn', sans-serif;
-            text-align: right;
-            border-collapse: collapse;
-            width: 100%;
-            margin-bottom: 1rem;
+        .stTabs [data-baseweb="tab"]:hover {
+            background-color: #e0e0e0;
+            color: #2c3e50;
         }
-         .dataframe th {
-             background-color: #3498db;
-             color: white;
-             padding: 10px;
-             text-align: right;
-         }
-         .dataframe td {
-             border: 1px solid #dddddd;
-             padding: 10px;
-         }
-         .dataframe tr:nth-child(even) {
-             background-color: #f2f2f2; /* Zebra striping */
-         }
-
+        .stTabs [data-baseweb="tab"][aria-selected="true"] {
+            background-color: #3498db;
+            color: white;
+            font-weight: 700;
+            border-bottom-color: transparent;
+        }
         /* Sidebar */
-        .css-1d391kg { /* Streamlit's default sidebar class, adjust if needed */
+        .css-1d391kg {
             font-family: 'Vazirmatn', sans-serif;
             direction: rtl;
-            background-color: #34495e; /* Dark blue-gray sidebar */
+            background-color: #34495e;
             color: white;
             padding: 1.5rem;
         }
         .css-1d391kg h1, .css-1d391kg h2, .css-1d391kg h3, .css-1d391kg label {
-             color: white; /* White text in sidebar headers and labels */
-             border-bottom-color: #3498db;
+            color: white;
+            border-bottom-color: #3498db;
         }
         .css-1d391kg .stselectbox > label,
         .css-1d391kg .sttextinput > label,
         .css-1d391kg .stbutton > label {
-            color: white !important; /* Ensure labels are white */
+            color: white !important;
         }
-        /* Adjust color for Streamlit elements in sidebar */
-        .stSelectbox div[data-baseweb="select"] > div,
-        .stTextInput > div > input,
         .stButton > button {
-             color: #34495e; /* Dark text for controls in sidebar */
-             background-color: #ecf0f1; /* Light background for controls */
-        }
-         .stButton > button {
-             background-color: #2ecc71; /* Green button */
-             color: white;
-             font-weight: bold;
-             border-radius: 5px;
-             transition: background-color 0.3s ease-in-out;
-         }
-         .stButton > button:hover {
-             background-color: #27ae60; /* Darker green on hover */
-         }
-
-        /* Custom status badges */
-        .status-badge {
-            padding: 4px 8px;
-            border-radius: 15px;
-            font-size: 0.8em;
+            background-color: #2ecc71;
+            color: white;
             font-weight: bold;
-            text-align: center;
-            display: inline-block;
+            border-radius: 5px;
+            transition: background-color 0.3s ease-in-out;
         }
-        .status-positive {
-            background-color: #d4edda; /* Light green */
-            color: #155724; /* Dark green */
+        .stButton > button:hover {
+            background-color: #27ae60;
         }
-        .status-neutral {
-            background-color: #fff3cd; /* Light yellow */
-            color: #856404; /* Dark yellow */
+        /* Animation keyframes */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
-        .status-negative {
-            background-color: #f8d7da; /* Light red */
-            color: #721c24; /* Dark red */
+        @keyframes bounceIn {
+            0% {
+                opacity: 0;
+                transform: scale(0.3);
+            }
+            50% {
+                opacity: 1;
+                transform: scale(1.05);
+            }
+            70% { transform: scale(0.9); }
+            100% { transform: scale(1); }
         }
-         .status-info { /* For "بدون داده" */
-            background-color: #d1ecf1; /* Light blue */
-            color: #0c5460; /* Dark blue */
-        }
-
-        /* Info/Warning/Error boxes */
-        .stAlertDialog, .stSuccess, .stWarning, .stError, .stInfo {
-            border-radius: 8px;
-            padding: 1rem;
-            margin-bottom: 1rem;
-            font-family: 'Vazirmatn', sans-serif;
-            text-align: right;
-        }
-         .stInfo { background-color: #d1ecf1; color: #0c5460; border-left: 5px solid #2196f3; } /* Blue */
-         .stSuccess { background-color: #d4edda; color: #155724; border-left: 5px solid #4CAF50; } /* Green */
-         .stWarning { background-color: #fff3cd; color: #856404; border-left: 5px solid #ff9800; } /* Orange */
-         .stError { background-color: #f8d7da; color: #721c24; border-left: 5px solid #f44336; } /* Red */
-
-
-        /* Progress Bar */
-        .stProgress > div > div > div > div {
-            background-color: #2ecc71; /* Green progress bar */
-        }
-
-        /* Map container adjustments if necessary */
-        .streamlit-container [data-testid="stColumn"] > div > div {
-             overflow: hidden; /* Prevent map overflow */
-             border-radius: 10px; /* Rounded corners for map container */
-        }
-
-        /* Gemini Input/Button Styling */
-        .stTextInput label + div input {
-             border-radius: 5px;
-             border: 1px solid #bdc3c7;
-             padding: 10px;
-             transition: border-color 0.3s ease-in-out;
-        }
-         .stTextInput label + div input:focus {
-             border-color: #3498db; /* Blue border on focus */
-             outline: none;
-             box-shadow: 0 0 5px rgba(52, 152, 219, 0.5);
-         }
-
-        .stButton button {
-             font-family: 'Vazirmatn', sans-serif;
-             border-radius: 5px;
-             padding: 10px 20px;
-             margin-top: 10px;
-             cursor: pointer;
-             transition: background-color 0.3s ease-in-out, opacity 0.3s ease-in-out;
-        }
-         .stButton button:hover {
-             opacity: 0.9;
-         }
-         /* Specific button colors */
-         .stButton button:contains("ارسال سوال"),
-         .stButton button:contains("پرسیدن سوال") { /* Add more button text for specific styling if needed */
-             background-color: #3498db; /* Blue */
-             color: white;
-         }
-         .stButton button:contains("تولید گزارش") {
-             background-color: #9b59b6; /* Purple */
-             color: white;
-         }
-         .stButton button:contains("تحلیل روند زمانی") {
-             background-color: #e67e22; /* Orange */
-             color: white;
-         }
-          .stButton button:contains("دریافت پیشنهادات") {
-             background-color: #1abc9c; /* Teal */
-             color: white;
-         }
-
-         /* Add some spacing below buttons */
-        .stButton {
-             margin-bottom: 15px;
-        }
-
-
     </style>
+""", unsafe_allow_html=True)
+
+# --- Header Modern ---
+st.markdown("""
+    <div class="header">
+        <h1>🌾 سامانه پایش هوشمند نیشکر</h1>
+        <p style="margin-top: 10px; font-size: 1.2em; opacity: 0.9;">مطالعات کاربردی شرکت کشت و صنعت دهخدا</p>
+    </div>
 """, unsafe_allow_html=True)
 
 # --- Configuration ---
@@ -547,11 +467,48 @@ def get_index_time_series(_point_geom, index_name, start_date='2023-01-01', end_
 # ==============================================================================
 # Main Panel Display
 # ==============================================================================
-tab1, tab2, tab3 = st.tabs(["📊 داشبورد اصلی", "🗺️ نقشه و نمودارها", "💡 تحلیل هوشمند با Gemini"])
+tab1, tab2, tab3 = st.tabs([
+    "<i class='fas fa-tachometer-alt'></i> داشبورد اصلی",
+    "<i class='fas fa-map-marked-alt'></i> نقشه و نمودارها",
+    "<i class='fas fa-brain'></i> تحلیل هوشمند با Gemini"
+])
 
 with tab1:
-    st.header(APP_TITLE)
-    st.subheader(APP_SUBTITLE)
+    # کارت‌های متریک رنگی و مدرن
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.markdown("""
+            <div class="metric-card">
+                <i class="fas fa-chart-area"></i>
+                <h3>تعداد کل مزارع</h3>
+                <h2>{}</h2>
+            </div>
+        """.format(len(farm_data_df)), unsafe_allow_html=True)
+    with col2:
+        st.markdown("""
+            <div class="metric-card">
+                <i class="fas fa-seedling"></i>
+                <h3>تعداد واریته‌ها</h3>
+                <h2>{}</h2>
+            </div>
+        """.format(farm_data_df['واریته'].nunique() if 'واریته' in farm_data_df.columns else "-"), unsafe_allow_html=True)
+    with col3:
+        st.markdown("""
+            <div class="metric-card">
+                <i class="fas fa-building"></i>
+                <h3>تعداد ادارات</h3>
+                <h2>{}</h2>
+            </div>
+        """.format(farm_data_df['اداره'].nunique() if 'اداره' in farm_data_df.columns else "-"), unsafe_allow_html=True)
+    with col4:
+        st.markdown("""
+            <div class="metric-card">
+                <i class="fas fa-calendar-alt"></i>
+                <h3>تعداد سن‌ها</h3>
+                <h2>{}</h2>
+            </div>
+        """.format(farm_data_df['سن'].nunique() if 'سن' in farm_data_df.columns else "-"), unsafe_allow_html=True)
+    st.markdown("---")
 
     selected_farm_details = None
     selected_farm_geom = None
