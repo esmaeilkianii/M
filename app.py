@@ -290,51 +290,22 @@ def maskS2clouds_ee(_image: ee.Image) -> ee.Image:
 @st.cache_data(persist="disk")
 def add_indices_ee(_image: ee.Image) -> ee.Image:
     try:
-        # Ensure bands exist before calculating indices
-        bands = _image.bandNames()
-        ndvi = ee.Image(0).rename('NDVI') # Default to 0 if bands missing
-        ndwi = ee.Image(0).rename('NDWI')
-        ndre = ee.Image(0).rename('NDRE')
-        lai = ee.Image(0).rename('LAI')
-        chl = ee.Image(0).rename('CHL')
-
-        if 'B8' in bands.getInfo() and 'B4' in bands.getInfo():
-             ndvi = _image.normalizedDifference(['B8', 'B4']).rename('NDVI')
-        if 'B8' in bands.getInfo() and 'B11' in bands.getInfo():
-             ndwi = _image.normalizedDifference(['B8', 'B11']).rename('NDWI')
-        # NDRE requires B5 (Red Edge 1)
-        if 'B8' in bands.getInfo() and 'B5' in bands.getInfo():
-             ndre = _image.normalizedDifference(['B8', 'B5']).rename('NDRE')
-             # LAI estimation often based on NDVI, but let's use the standard relation if NDVI is available
-             if 'NDVI' in ndvi.bandNames().getInfo(): # Check if NDVI was calculated
-                  lai = ndvi.multiply(3.5).rename('LAI')
-
-        # CHL calculation requires B8 (NIR) and B5 (Red Edge 1)
-        if 'B8' in bands.getInfo() and 'B5' in bands.getInfo():
-            re1_safe = _image.select('B5').max(ee.Image(0.0001)) # Avoid division by zero
-            # The expression uses band names that must exist after scaling if applied in maskS2clouds_ee
-            # Assuming optical bands were scaled and renamed implicitly by addBands
-            chl = _image.expression('(NIR / RE1) - 1', {'NIR': _image.select('B8'), 'RE1': re1_safe}).rename('CHL')
-            # Clamp CHL to a reasonable range to avoid extreme values
-            chl = chl.clamp(0, 10).rename('CHL') # Assuming max CHL is around 10
-
-        # Add all calculated indices. Use overwrite=True if bands might exist.
-        # Filter out default 0 bands if the original index was calculated.
-        added_bands = []
-        if 'NDVI' in ndvi.bandNames().getInfo(): added_bands.append(ndvi)
-        if 'NDWI' in ndwi.bandNames().getInfo(): added_bands.append(ndwi)
-        if 'NDRE' in ndre.bandNames().getInfo(): added_bands.append(ndre)
-        # Add LAI only if NDVI was successfully calculated
-        if 'LAI' in lai.bandNames().getInfo() and 'NDVI' in ndvi.bandNames().getInfo(): added_bands.append(lai)
-        if 'CHL' in chl.bandNames().getInfo(): added_bands.append(chl)
-
-        # Use addBands to add calculated indices. Replace existing bands if they have the same name.
-        return _image.addBands(added_bands, None, True)
-
+        # Calculate indices directly; missing bands will result in masked values
+        ndvi = _image.normalizedDifference(['B8', 'B4']).rename('NDVI')
+        ndwi = _image.normalizedDifference(['B8', 'B11']).rename('NDWI')
+        ndre = _image.normalizedDifference(['B8', 'B5']).rename('NDRE')
+        lai = ndvi.multiply(3.5).rename('LAI')
+        chl = _image.expression(
+            '(NIR / RE1) - 1',
+            {
+                'NIR': _image.select('B8'),
+                'RE1': _image.select('B5').max(ee.Image(0.0001))
+            }
+        ).clamp(0, 10).rename('CHL')
+        # Add all calculated indices; if bands are missing, the result will be masked
+        return _image.addBands([ndvi, ndwi, ndre, lai, chl], None, True)
     except Exception as e:
         print(f"Warning: Index calculation failed for an image: {e}")
-        # Return the original image or an image with default bands in case of failure
-        # Returning original might be safer than failing the map operation
         return _image
 
 
