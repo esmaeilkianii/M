@@ -321,22 +321,16 @@ def get_processed_image_serialized(_geometry_json, start_date, end_date, index_n
                      .map(add_indices_ee)
                     )
 
-        count = s2_sr_col.size().getInfo()
-        if count == 0: return None, f"No valid images after processing ({start_date} to {end_date}). Consider adjusting date range or cloud filter."
-
-        # Select only the bands needed before taking the median to potentially reduce memory
+        # حذف getInfo()
+        # فقط ادامه دهید و اگر خطا رخ داد، مدیریت کنید
         all_indices_bands = list(INDEX_INFO.keys())
         s2_sr_col = s2_sr_col.select(all_indices_bands)
-
         median_image = s2_sr_col.median()
 
-        # Ensure the selected index band exists in the median image
-        available_bands_in_median = median_image.bandNames().getInfo()
-        if index_name not in available_bands_in_median:
-             # This might happen if add_indices_ee failed for all images in the collection
-             return None, f"شاخص '{index_name}' در تصویر median نهایی یافت نشد. باندهای موجود: {available_bands_in_median}. (این ممکن است به دلیل خطای پردازش تصاویر خام باشد)"
-
-        output_image = median_image.select(index_name)
+        try:
+            output_image = median_image.select(index_name)
+        except Exception as e:
+            return None, f"شاخص '{index_name}' در تصویر median نهایی یافت نشد. (احتمالاً به دلیل خطای پردازش تصاویر خام)"
 
         # Mask the output image to the geometry bounds explicitly
         output_image = output_image.clip(_geometry)
