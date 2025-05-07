@@ -382,25 +382,30 @@ def maskS2clouds(image):
 def add_indices(image):
     # Ensure bands exist before calculating indices
     bands = image.bandNames()
-    ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI') if 'B8' in bands and 'B4' in bands else image.addBands(ee.Image(-9999).rename('NDVI'))
+    # Convert bands to Python list for 'in' checks
+    try:
+        bands_py = bands.getInfo()
+    except Exception:
+        bands_py = []
+    ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI') if 'B8' in bands_py and 'B4' in bands_py else image.addBands(ee.Image(-9999).rename('NDVI'))
     evi = image.expression(
         '2.5 * (NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1)',
         {'NIR': image.select('B8'), 'RED': image.select('B4'), 'BLUE': image.select('B2')}
-    ).rename('EVI') if all(b in bands for b in ['B8', 'B4', 'B2']) else image.addBands(ee.Image(-9999).rename('EVI'))
+    ).rename('EVI') if all(b in bands_py for b in ['B8', 'B4', 'B2']) else image.addBands(ee.Image(-9999).rename('EVI'))
 
-    ndmi = image.normalizedDifference(['B8', 'B11']).rename('NDMI') if 'B8' in bands and 'B11' in bands else image.addBands(ee.Image(-9999).rename('NDMI'))
+    ndmi = image.normalizedDifference(['B8', 'B11']).rename('NDMI') if 'B8' in bands_py and 'B11' in bands_py else image.addBands(ee.Image(-9999).rename('NDMI'))
 
     # MSI calculation requires B11 (SWIR1) and B8 (NIR)
-    msi = image.expression('SWIR1 / NIR', {'SWIR1': image.select('B11'), 'NIR': image.select('B8')}).rename('MSI') if 'B11' in bands and 'B8' in bands else image.addBands(ee.Image(-9999).rename('MSI'))
+    msi = image.expression('SWIR1 / NIR', {'SWIR1': image.select('B11'), 'NIR': image.select('B8')}).rename('MSI') if 'B11' in bands_py and 'B8' in bands_py else image.addBands(ee.Image(-9999).rename('MSI'))
 
     # LAI is an estimation based on NDVI
     lai = ndvi.multiply(3.5).rename('LAI') if 'NDVI' in ndvi.bandNames().getInfo() else image.addBands(ee.Image(-9999).rename('LAI'))
 
     # CVI requires B8 (NIR), B3 (Green), B4 (Red)
-    green_safe = image.select('B3').max(ee.Image(0.0001)) if 'B3' in bands else ee.Image(0.0001)
+    green_safe = image.select('B3').max(ee.Image(0.0001)) if 'B3' in bands_py else ee.Image(0.0001)
     cvi = image.expression('(NIR / GREEN) * (RED / GREEN)',
         {'NIR': image.select('B8'), 'GREEN': green_safe, 'RED': image.select('B4')}
-    ).rename('CVI') if all(b in bands for b in ['B8', 'B3', 'B4']) else image.addBands(ee.Image(-9999).rename('CVI'))
+    ).rename('CVI') if all(b in bands_py for b in ['B8', 'B3', 'B4']) else image.addBands(ee.Image(-9999).rename('CVI'))
 
     # Return original image with calculated indices added. Use bandNames().addAll to ensure all bands are kept.
     return image.addBands([ndvi, evi, ndmi, msi, lai, cvi]).select(image.bandNames().addAll([ndvi.bandNames(), evi.bandNames(), ndmi.bandNames(), msi.bandNames(), lai.bandNames(), cvi.bandNames()]).distinct())
@@ -598,17 +603,22 @@ with tab1:
         ranking_df_sorted.index.name = 'رتبه'
 
         def determine_status(row, index_name):
-            if pd.isna(row['تغییر']) or pd.isna(row[f'{index_name} (هفته جاری)']) or pd.isna(row[f'{index_name} (هفته قبل)']):
+            # Ensure 'تغییر' is a float for comparison, otherwise return 'بدون داده'
+            try:
+                change_val = float(row['تغییر'])
+            except (ValueError, TypeError):
+                return "بدون داده"
+            if pd.isna(change_val) or pd.isna(row[f'{index_name} (هفته جاری)']) or pd.isna(row[f'{index_name} (هفته قبل)']):
                 return "بدون داده"
             if index_name in ['NDVI', 'EVI', 'LAI', 'CVI']:
-                if row['تغییر'] > 0.05: return "رشد مثبت"
-                elif row['تغییر'] < -0.05: return "تنش/کاهش"
+                if change_val > 0.05: return "رشد مثبت"
+                elif change_val < -0.05: return "تنش/کاهش"
                 else: return "ثابت"
-            elif index_name in ['MSI', 'NDMI']: # Lower MSI/NDMI is generally better
-                if row['تغییر'] < -0.05: return "بهبود" # Negative change is improvement
-                elif row['تغییر'] > 0.05: return "تنش/بدتر شدن"
+            elif index_name in ['MSI', 'NDMI']:
+                if change_val < -0.05: return "بهبود"
+                elif change_val > 0.05: return "تنش/بدتر شدن"
                 else: return "ثابت"
-            return "نامشخص" # Should not happen with the checks above
+            return "نامشخص"
 
         ranking_df_sorted['وضعیت'] = ranking_df_sorted.apply(lambda row: determine_status(row, selected_index), axis=1)
 
@@ -982,9 +992,9 @@ with tab3:
 st.sidebar.markdown("---")
 st.sidebar.markdown("ساخته شده با 💻 توسط [اسماعیل کیانی] با استفاده از Streamlit, Google Earth Engine, geemap و Gemini API")
 st.sidebar.markdown("🌾 شرکت کشت و صنعت دهخدا")
-with st.spinner("در حال جستجو برای پاسخ با Gemini..."):
-    response = ask_gemini(prompt, temperature=0.3)
-    st.markdown(response)
+                with st.spinner("در حال جستجو برای پاسخ با Gemini..."):
+                    response = ask_gemini(prompt, temperature=0.3)
+                    st.markdown(response)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("ساخته شده با 💻 توسط [اسماعیل کیانی] با استفاده از Streamlit, Google Earth Engine, geemap و Gemini API")
