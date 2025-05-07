@@ -982,9 +982,9 @@ with tab3:
 st.sidebar.markdown("---")
 st.sidebar.markdown("ساخته شده با 💻 توسط [اسماعیل کیانی] با استفاده از Streamlit, Google Earth Engine, geemap و Gemini API")
 st.sidebar.markdown("🌾 شرکت کشت و صنعت دهخدا")
-                with st.spinner("در حال جستجو برای پاسخ با Gemini..."):
-                    response = ask_gemini(prompt, temperature=0.3)
-                    st.markdown(response)
+with st.spinner("در حال جستجو برای پاسخ با Gemini..."):
+    response = ask_gemini(prompt, temperature=0.3)
+    st.markdown(response)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("ساخته شده با 💻 توسط [اسماعیل کیانی] با استفاده از Streamlit, Google Earth Engine, geemap و Gemini API")
