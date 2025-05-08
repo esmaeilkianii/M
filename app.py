@@ -29,7 +29,7 @@ st.set_page_config(
 # ==============================================================================
 GEMINI_API_KEY = "YOUR_GEMINI_API_KEY_HERE" # <--- REPLACE WITH YOUR ACTUAL KEY
 
-if GEMINI_API_KEY == "YOUR_GEMINI_API_KEY_HERE":
+if GEMINI_API_KEY == "AIzaSyC6ntMs3XDa3JTk07-6_BRRCduiQaRmQFQ":
     st.warning("""
         **هشدار:** کلید API جمینای خود را در کد برنامه (متغیر `GEMINI_API_KEY`) وارد نکرده‌اید.
         قابلیت‌های هوش مصنوعی جمینای غیرفعال خواهند بود.
