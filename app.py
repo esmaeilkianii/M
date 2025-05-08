@@ -27,13 +27,11 @@ st.set_page_config(
 # Replace "YOUR_GEMINI_API_KEY_HERE" with your actual Gemini API key.
 # If you are deploying this on a public platform, ensure this key is secured.
 # ==============================================================================
-GEMINI_API_KEY = "YOUR_GEMINI_API_KEY_HERE" # <--- REPLACE WITH YOUR ACTUAL KEY
+GEMINI_API_KEY = "AIzaSyC6ntMs3XDa3JTk07-6_BRRCduiQaRmQFQ" # <--- REPLACE WITH YOUR ACTUAL KEY
 
 if GEMINI_API_KEY == "AIzaSyC6ntMs3XDa3JTk07-6_BRRCduiQaRmQFQ":
     st.warning("""
-        **هشدار:** کلید API جمینای خود را در کد برنامه (متغیر `GEMINI_API_KEY`) وارد نکرده‌اید.
-        قابلیت‌های هوش مصنوعی جمینای غیرفعال خواهند بود.
-        لطفاً کد را ویرایش کرده و کلید معتبر خود را جایگزین `"YOUR_GEMINI_API_KEY_HERE"` نمایید.
+       Esmaeil.Kiani
     """, icon="⚠️")
 
 
