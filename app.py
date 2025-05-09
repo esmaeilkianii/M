@@ -1094,4 +1094,19 @@ st.sidebar.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
+# حذف هدر تکراری قبلی (در صورت وجود)
+# st.sidebar.markdown("<h1 ...") و مشابه آن را حذف یا کامنت کنید
+
+# --- بهبود ساختار پنل‌ها (نمونه برای یک پنل) ---
+# برای هر پنل اصلی، یک آیکون و عنوان با ساختار جدید اضافه کنید (در صورت نیاز، نمونه کد برای یک پنل داده می‌شود)
+# مثال:
+# st.markdown(f"""
+# <div class='custom-panel'>
+#   <div style='display:flex;align-items:center;gap:10px;'>
+#     <span>{SUGARCANE_SVG}</span>
+#     <h2 style='margin:0;color:#009688;'>جزئیات مزرعه</h2>
+#   </div>
+#   ...
+# </div>
+# """, unsafe_allow_html=True)
 # (در صورت نیاز، برای سایر پنل‌ها هم این ساختار را تکرار کنید)
