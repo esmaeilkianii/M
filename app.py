@@ -215,7 +215,7 @@ st.markdown("""
 # Inserted Header (moved from near the end of the file)
 st.markdown(f"""
     <div class="header-logo" style="margin-top: 1rem; margin-bottom: 1rem; padding-right: 1rem; padding-left: 1rem;">
-        <span class="sugarcane-icon">{logo (1).png}</span>
+        <span class="sugarcane-icon">{SUGARCANE_SVG}</span>
         <h1 style='margin:0 10px 0 0; font-size:2.2em; color:#0d3c47; font-weight:800; display:inline;'>سامانه پایش هوشمند نیشکر</h1>
         <img src="{LOGO_PATH}" alt="لوگو" />
     </div>
@@ -1103,7 +1103,7 @@ st.sidebar.markdown(f"""
 # st.markdown(f"""
 # <div class='custom-panel'>
 #   <div style='display:flex;align-items:center;gap:10px;'>
-#     <span>{logo (1).png}</span>
+#     <span>{SUGARCANE_SVG}</span>
 #     <h2 style='margin:0;color:#009688;'>جزئیات مزرعه</h2>
 #   </div>
 #   ...
