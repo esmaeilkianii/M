@@ -39,9 +39,20 @@ if GEMINI_API_KEY == "AIzaSyC6ntMs3XDa3JTk07-6_BRRCduiQaRmQFQ":
 st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700&display=swap');
+        
+        @keyframes colorCycleFive { /* ADDED for new background */
+            0%   {background-color: #ADD8E6;} /* Light Blue */
+            20%  {background-color: #FFB6C1;} /* Light Red (Pinkish) */
+            40%  {background-color: #90EE90;} /* Light Green */
+            60%  {background-color: #FFFFE0;} /* Light Yellow */
+            80%  {background-color: #FFDAB9;} /* Light Orange (Peach) */
+            100% {background-color: #ADD8E6;} /* Light Blue */
+        }
+
         body {
             font-family: 'Vazirmatn', sans-serif;
-            background: linear-gradient(135deg, #e0f7fa 0%, #f8fafc 100%);
+            /* background: linear-gradient(135deg, #e0f7fa 0%, #f8fafc 100%); MODIFIED */
+            animation: colorCycleFive 25s infinite ease-in-out; /* MODIFIED (25s for 5 colors, 5s each) */
             min-height: 100vh;
         }
         /* Fade-in and slide-in animation for main container */
@@ -123,7 +134,8 @@ st.markdown("""
         .css-1d391kg, .st-emotion-cache-1d391kg {
             font-family: 'Vazirmatn', sans-serif;
             direction: rtl;
-            background: linear-gradient(135deg, #b2ebf2 0%, #fff 100%);
+            /* background: linear-gradient(135deg, #b2ebf2 0%, #fff 100%); MODIFIED */
+            background-color: rgba(240, 248, 255, 0.9); /* AliceBlue with some transparency for sidebar */
             padding: 2rem 1.2rem 1.2rem 1.2rem;
             box-shadow: 2px 0 18px rgba(0,188,212,0.08);
             border-radius: 0 18px 18px 0;
@@ -168,6 +180,8 @@ st.markdown("""
             font-family: 'Vazirmatn', sans-serif;
             font-size: 1.05em;
             transition: border-color 0.2s, box-shadow 0.2s;
+            background-color: #ffffff !important; /* ADDED to ensure visibility */
+            color: #0d3c47 !important; /* ADDED to ensure visibility */
         }
         .stTextInput input:focus, .stSelectbox div[data-baseweb="select"] > div:focus-within, .stDateInput input:focus {
             border-color: #00bcd4;
@@ -188,14 +202,23 @@ st.markdown("""
             transform: scale(1.01);
         }
         /* Scrollbar styling */
-        ::-webkit-scrollbar { width: 10px; background: #e0f7fa; }
-        ::-webkit-scrollbar-thumb { background: #b2ebf2; border-radius: 8px; }
+        ::-webkit-scrollbar { width: 10px; background: #f1f1f1; } /* MODIFIED - Neutral background */
+        ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 8px; } /* MODIFIED - Neutral thumb */
         /* Responsive tweaks */
         @media (max-width: 900px) {
             .custom-panel { padding: 16px 6px; }
             .stTabs [data-baseweb="tab"] { padding: 10px 10px; font-size: 0.98em; }
         }
     </style>
+""", unsafe_allow_html=True)
+
+# Inserted Header (moved from near the end of the file)
+st.markdown(f"""
+    <div class="header-logo" style="margin-top: 1rem; margin-bottom: 1rem; padding-right: 1rem; padding-left: 1rem;">
+        <span class="sugarcane-icon">{SUGARCANE_SVG}</span>
+        <h1 style='margin:0 10px 0 0; font-size:2.2em; color:#0d3c47; font-weight:800; display:inline;'>سامانه پایش هوشمند نیشکر</h1>
+        <img src="{LOGO_PATH}" alt="لوگو" />
+    </div>
 """, unsafe_allow_html=True)
 
 # --- Configuration ---
@@ -1059,41 +1082,10 @@ LOGO_PATH = "logo (1).png"  # مسیر لوگوی پروژه
 SUGARCANE_SVG = '''<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><g><rect width="32" height="32" rx="16" fill="#e0f7fa"/><path d="M16 26C16 26 13 19 13 13C13 8 16 6 16 6C16 6 19 8 19 13C19 19 16 26 16 26Z" stroke="#43a047" stroke-width="2" fill="#a5d6a7"/><path d="M16 13C16 13 14 11 14 9" stroke="#388e3c" stroke-width="1.5" stroke-linecap="round"/><path d="M16 13C16 13 18 11 18 9" stroke="#388e3c" stroke-width="1.5" stroke-linecap="round"/></g></svg>'''
 
 # --- Parallax Background HTML ---
-st.markdown(f"""
-    <style>
-    .parallax-bg {{
-        position: fixed;
-        top: 0; left: 0; width: 100vw; height: 350px;
-        background: url('{BACKGROUND_IMAGE_URL}') center center/cover no-repeat;
-        z-index: -10;
-        animation: moveBg 30s linear infinite alternate;
-        filter: brightness(0.85) blur(0.5px);
-    }}
-    @keyframes moveBg {{
-        0% {{ background-position: center 0; }}
-        100% {{ background-position: center 60px; }}
-    }}
-    .header-logo {{
-        display: flex; align-items: center; justify-content: flex-end;
-        gap: 12px; margin-bottom: 10px;
-    }}
-    .header-logo img {{ height: 54px; border-radius: 12px; box-shadow: 0 2px 8px #b2ebf2; }}
-    .header-logo .sugarcane-icon {{ margin-left: 8px; }}
-    .sidebar-logo {{ display: flex; flex-direction: column; align-items: center; margin-bottom: 18px; }}
-    .sidebar-logo img {{ height: 70px; border-radius: 16px; box-shadow: 0 2px 12px #b2ebf2; margin-bottom: 6px; }}
-    </style>
-    <div class="parallax-bg"></div>
-""", unsafe_allow_html=True)
-
+# The st.markdown block for parallax CSS (original lines 1082-1097) is removed.
+# The st.markdown block for the parallax div (original lines 1098-1099) is removed.
 # --- Header with Logo and Sugarcane Icon ---
-st.markdown(f"""
-    <div class="header-logo">
-        <span class="sugarcane-icon">{SUGARCANE_SVG}</span>
-        <h1 style='margin:0 10px 0 0; font-size:2.2em; color:#0d3c47; font-weight:800; display:inline;'>سامانه پایش هوشمند نیشکر</h1>
-        <img src="{LOGO_PATH}" alt="لوگو" />
-    </div>
-""", unsafe_allow_html=True)
-
+# The st.markdown block for the header (original lines 1102-1110) is removed as it has been moved to the top.
 # --- Sidebar Logo ---
 st.sidebar.markdown(f"""
     <div class="sidebar-logo">
@@ -1102,19 +1094,4 @@ st.sidebar.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# حذف هدر تکراری قبلی (در صورت وجود)
-# st.sidebar.markdown("<h1 ...") و مشابه آن را حذف یا کامنت کنید
-
-# --- بهبود ساختار پنل‌ها (نمونه برای یک پنل) ---
-# برای هر پنل اصلی، یک آیکون و عنوان با ساختار جدید اضافه کنید (در صورت نیاز، نمونه کد برای یک پنل داده می‌شود)
-# مثال:
-# st.markdown(f"""
-# <div class='custom-panel'>
-#   <div style='display:flex;align-items:center;gap:10px;'>
-#     <span>{SUGARCANE_SVG}</span>
-#     <h2 style='margin:0;color:#009688;'>جزئیات مزرعه</h2>
-#   </div>
-#   ...
-# </div>
-# """, unsafe_allow_html=True)
 # (در صورت نیاز، برای سایر پنل‌ها هم این ساختار را تکرار کنید)
