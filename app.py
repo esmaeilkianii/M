@@ -12,221 +12,88 @@ import requests # Needed for getThumbUrl download
 import traceback
 from streamlit_folium import st_folium
 import base64
-import google.generativeai as genai
+import google.generativeai as genai # Added for Gemini
 
-# --- Page Configuration ---
+# --- Custom CSS ---
 st.set_page_config(
     page_title="سامانه پایش هوشمند نیشکر",
     page_icon="🌾",
     layout="wide"
 )
 
-# ==============================================================================
-# HARDCODED GEMINI API KEY
-# WARNING: It's best practice to use environment variables or Streamlit secrets for API keys.
-# Replace "YOUR_GEMINI_API_KEY_HERE" with your actual Gemini API key.
-# If you are deploying this on a public platform, ensure this key is secured.
-# ==============================================================================
-GEMINI_API_KEY = "AIzaSyC6ntMs3XDa3JTk07-6_BRRCduiQaRmQFQ" # <--- REPLACE WITH YOUR ACTUAL KEY
-
-if GEMINI_API_KEY == "AIzaSyC6ntMs3XDa3JTk07-6_BRRCduiQaRmQFQ":
-    st.warning("""
-       Esmaeil.Kiani
-    """, icon="⚠️")
-
-
-# --- Custom CSS for Modern Look and Animations ---
+# Custom CSS for Persian text alignment and professional styling
 st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700&display=swap');
         
-        @keyframes colorCycleFive { /* ADDED for new background */
-            0%   {background-color: #ADD8E6;} /* Light Blue */
-            20%  {background-color: #FFB6C1;} /* Light Red (Pinkish) */
-            40%  {background-color: #90EE90;} /* Light Green */
-            60%  {background-color: #FFFFE0;} /* Light Yellow */
-            80%  {background-color: #FFDAB9;} /* Light Orange (Peach) */
-            100% {background-color: #ADD8E6;} /* Light Blue */
-        }
-
-        body {
+        /* Main container */
+        .main {
             font-family: 'Vazirmatn', sans-serif;
-            /* background: linear-gradient(135deg, #e0f7fa 0%, #f8fafc 100%); MODIFIED */
-            animation: colorCycleFive 25s infinite ease-in-out; /* MODIFIED (25s for 5 colors, 5s each) */
-            min-height: 100vh;
         }
-        /* Fade-in and slide-in animation for main container */
-        .main > div {
-            animation: fadeSlideIn 1s cubic-bezier(.4,0,.2,1);
-            animation-fill-mode: both;
-        }
-        @keyframes fadeSlideIn {
-            0% { opacity: 0; transform: translateY(30px); }
-            100% { opacity: 1; transform: translateY(0); }
-        }
+        
         /* Headers */
         h1, h2, h3 {
             font-family: 'Vazirmatn', sans-serif;
-            color: #0d3c47;
+            color: #2c3e50;
             text-align: right;
         }
-        h1 { font-weight: 700; }
-        h2 { font-weight: 600; border-bottom: 2px solid #b2ebf2; padding-bottom: 0.3em; }
-        h3 { font-weight: 500; color: #009688; }
-        /* Metric Cards */
-        div[data-testid="stMetric"] {
-            background: linear-gradient(120deg, #e0f2f1 60%, #fff 100%);
-            border: none;
-            border-radius: 18px;
-            padding: 1.3rem 1.7rem;
-            box-shadow: 0 6px 24px rgba(0, 188, 212, 0.10);
-            transition: transform 0.22s, box-shadow 0.22s;
+        
+        /* Metrics */
+        .css-1xarl3l { /* Streamlit's default metric class, adjust if needed */
             font-family: 'Vazirmatn', sans-serif;
+            background-color: #f8f9fa;
+            border-radius: 10px;
+            padding: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        div[data-testid="stMetric"]:hover {
-            transform: translateY(-5px) scale(1.03);
-            box-shadow: 0 10px 32px rgba(0, 188, 212, 0.18);
-        }
-        div[data-testid="stMetric"] label {
-            font-weight: 500; color: #009688; font-size: 1em;
-        }
-        div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
-            font-size: 2.3em; font-weight: 700; color: #0d47a1;
-        }
+        
         /* Tabs */
         .stTabs [data-baseweb="tab-list"] {
-            gap: 7px; direction: rtl; border-bottom: 2px solid #b2ebf2;
+            gap: 2px;
+            direction: rtl;
         }
+        
         .stTabs [data-baseweb="tab"] {
-            height: 56px; padding: 13px 30px;
-            background: linear-gradient(90deg, #e0f7fa 60%, #fff 100%);
-            border-radius: 12px 12px 0 0;
+            height: 50px;
+            padding: 10px 20px;
+            background-color: #f8f9fa;
+            border-radius: 5px 5px 0 0;
             font-family: 'Vazirmatn', sans-serif;
-            font-weight: 600; font-size: 1.08em; color: #009688;
-            border: none; border-bottom: 4px solid transparent;
-            transition: color 0.2s, border-bottom-color 0.2s, background 0.2s;
+            font-weight: 600;
         }
-        .stTabs [data-baseweb="tab"]:hover {
-            background: #b2ebf2; color: #ff9800;
-        }
-        .stTabs [data-baseweb="tab"][aria-selected="true"] {
-            background: #fff; color: #0d47a1; border-bottom: 4px solid #ff9800;
-            box-shadow: 0 -3px 8px rgba(0,188,212,0.07);
-        }
+        
         /* Tables */
         .dataframe {
             font-family: 'Vazirmatn', sans-serif;
             text-align: right;
-            border-radius: 12px;
-            overflow: hidden;
-            background: #fff;
-            box-shadow: 0 2px 12px rgba(0,188,212,0.07);
         }
-        .dataframe thead th {
-            background: #b2ebf2;
-            color: #0d3c47;
-            font-weight: 700;
-            position: sticky; top: 0; z-index: 2;
-        }
-        .dataframe tbody tr:nth-child(even) { background: #f1f8e9; }
-        .dataframe tbody tr:nth-child(odd) { background: #fff; }
+        
         /* Sidebar */
-        .css-1d391kg, .st-emotion-cache-1d391kg {
+        .css-1d391kg { /* Streamlit's default sidebar class, adjust if needed */
             font-family: 'Vazirmatn', sans-serif;
             direction: rtl;
-            /* background: linear-gradient(135deg, #b2ebf2 0%, #fff 100%); MODIFIED */
-            background-color: rgba(240, 248, 255, 0.9); /* AliceBlue with some transparency for sidebar */
-            padding: 2rem 1.2rem 1.2rem 1.2rem;
-            box-shadow: 2px 0 18px rgba(0,188,212,0.08);
-            border-radius: 0 18px 18px 0;
         }
-        .css-1d391kg .stSelectbox label, .css-1d391kg .stTextInput label {
-            font-weight: 600; color: #0d3c47;
-        }
-        /* Status badges */
+        
+        /* Custom status badges */
         .status-badge {
-            padding: 6px 14px; border-radius: 20px; font-size: 0.95em; font-weight: 600; display: inline-block;
+            padding: 4px 8px;
+            border-radius: 15px;
+            font-size: 0.8em;
+            font-weight: bold;
         }
-        .status-positive { background: #e0f2f1; color: #00796b; border: 1px solid #b2dfdb; }
-        .status-neutral { background: #fffde7; color: #fbc02d; border: 1px solid #ffe082; }
-        .status-negative { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
-        .status-no-data { background: #eceff1; color: #607d8b; border: 1px solid #b0bec5; }
-        /* Buttons */
-        .stButton > button {
-            border-radius: 30px;
-            padding: 12px 28px;
-            font-weight: 700;
-            border: none;
-            background: linear-gradient(90deg, #00bcd4 60%, #009688 100%);
-            color: white;
-            font-size: 1.08em;
-            box-shadow: 0 4px 16px rgba(0,188,212,0.13);
-            transition: background 0.2s, transform 0.18s, box-shadow 0.2s;
+        .status-positive {
+            background-color: #d4edda;
+            color: #155724;
         }
-        .stButton > button:hover {
-            background: linear-gradient(90deg, #ff9800 60%, #00bcd4 100%);
-            transform: translateY(-2px) scale(1.04);
-            box-shadow: 0 8px 24px rgba(255,152,0,0.13);
+        .status-neutral {
+            background-color: #fff3cd;
+            color: #856404;
         }
-        .stButton > button:active {
-            transform: translateY(0px) scale(0.98);
-            box-shadow: 0 2px 6px rgba(0,188,212,0.10);
-        }
-        /* Input fields */
-        .stTextInput input, .stSelectbox div[data-baseweb="select"] > div, .stDateInput input {
-            border-radius: 10px;
-            border: 1.5px solid #b2ebf2;
-            padding: 12px 14px;
-            font-family: 'Vazirmatn', sans-serif;
-            font-size: 1.05em;
-            transition: border-color 0.2s, box-shadow 0.2s;
-            background-color: #ffffff !important; /* ADDED to ensure visibility */
-            color: #0d3c47 !important; /* ADDED to ensure visibility */
-        }
-        .stTextInput input:focus, .stSelectbox div[data-baseweb="select"] > div:focus-within, .stDateInput input:focus {
-            border-color: #00bcd4;
-            box-shadow: 0 0 0 0.18rem rgba(0,188,212,.18);
-        }
-        /* Custom panel/card */
-        .custom-panel {
-            background: rgba(255,255,255,0.92);
-            padding: 28px 22px;
-            border-radius: 18px;
-            box-shadow: 0 8px 32px rgba(0,188,212,0.10);
-            margin-bottom: 28px;
-            animation: fadeSlideIn 0.8s cubic-bezier(.4,0,.2,1);
-        }
-        /* Add subtle hover effect to custom panels */
-        .custom-panel:hover {
-            box-shadow: 0 12px 36px rgba(255,152,0,0.10);
-            transform: scale(1.01);
-        }
-        /* Scrollbar styling */
-        ::-webkit-scrollbar { width: 10px; background: #f1f1f1; } /* MODIFIED - Neutral background */
-        ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 8px; } /* MODIFIED - Neutral thumb */
-        /* Responsive tweaks */
-        @media (max-width: 900px) {
-            .custom-panel { padding: 16px 6px; }
-            .stTabs [data-baseweb="tab"] { padding: 10px 10px; font-size: 0.98em; }
+        .status-negative {
+            background-color: #f8d7da;
+            color: #721c24;
         }
     </style>
-""", unsafe_allow_html=True)
-# Inserted Header (moved from near the end of the file)
-
-# Define SUGARCANE_SVG and LOGO_PATH here as they are used in the markdown below.
-# These definitions are copied from their original location later in the file
-# to resolve the NameError caused by moving this header block.
-# Consider consolidating these definitions if they are duplicated elsewhere.
-LOGO_PATH = "logo (1).png"
-SUGARCANE_SVG = '''<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><g><rect width="32" height="32" rx="16" fill="#e0f7fa"/><path d="M16 26C16 26 13 19 13 13C13 8 16 6 16 6C16 6 19 8 19 13C19 19 16 26 16 26Z" stroke="#43a047" stroke-width="2" fill="#a5d6a7"/><path d="M16 13C16 13 14 11 14 9" stroke="#388e3c" stroke-width="1.5" stroke-linecap="round"/><path d="M16 13C16 13 18 11 18 9" stroke="#388e3c" stroke-width="1.5" stroke-linecap="round"/></g></svg>'''
-
-st.markdown(f"""
-    <div class="header-logo" style="margin-top: 1rem; margin-bottom: 1rem; padding-right: 1rem; padding-left: 1rem;">
-        <span class="sugarcane-icon">{SUGARCANE_SVG}</span>
-        <h1 style='margin:0 10px 0 0; font-size:2.2em; color:#0d3c47; font-weight:800; display:inline;'>سامانه پایش هوشمند نیشکر</h1>
-        <img src="{LOGO_PATH}" alt="لوگو" />
-    </div>
-""", unsafe_allow_html=True)
 """, unsafe_allow_html=True)
 
 # --- Configuration ---
@@ -239,8 +106,6 @@ INITIAL_ZOOM = 12
 # --- File Paths (Relative to the script location in Hugging Face) ---
 CSV_FILE_PATH = 'cleaned_output.csv'
 SERVICE_ACCOUNT_FILE = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json'
-LOGO_PATH = "logo (1).png"  # مسیر لوگوی پروژه
-SUGARCANE_SVG = '''<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><g><rect width="32" height="32" rx="16" fill="#e0f7fa"/><path d="M16 26C16 26 13 19 13 13C13 8 16 6 16 6C16 6 19 8 19 13C19 19 16 26 16 26Z" stroke="#43a047" stroke-width="2" fill="#a5d6a7"/><path d="M16 13C16 13 14 11 14 9" stroke="#388e3c" stroke-width="1.5" stroke-linecap="round"/><path d="M16 13C16 13 18 11 18 9" stroke="#388e3c" stroke-width="1.5" stroke-linecap="round"/></g></svg>'''
 
 # --- GEE Authentication ---
 @st.cache_resource # Cache the GEE initialization
@@ -264,7 +129,7 @@ def initialize_gee():
 
 
 # --- Load Farm Data ---
-@st.cache_data(show_spinner="⏳ در حال بارگذاری داده‌های مزارع...")
+@st.cache_data(show_spinner="در حال بارگذاری داده‌های مزارع...")
 def load_farm_data(csv_path=CSV_FILE_PATH):
     """Loads farm data from the specified CSV file."""
     try:
@@ -308,47 +173,47 @@ if farm_data_df is None:
 # ==============================================================================
 # Gemini API Configuration
 # ==============================================================================
+st.sidebar.subheader("✨ تنظیمات هوش مصنوعی Gemini")
+GEMINI_API_KEY = st.sidebar.text_input("🔑 کلید API جمینای خود را وارد کنید:", type="password", help="برای استفاده از قابلیت‌های هوشمند، کلید API خود را از Google AI Studio دریافت و وارد کنید.")
+
 gemini_model = None
-if GEMINI_API_KEY and GEMINI_API_KEY != "YOUR_GEMINI_API_KEY_HERE":
+if GEMINI_API_KEY:
     try:
         genai.configure(api_key=GEMINI_API_KEY)
-        gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
-        st.sidebar.success("✅ اتصال به Gemini برقرار شد.", icon="💡")
+        gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest') # Using a recent model
+        st.sidebar.success("✅ اتصال به Gemini برقرار شد.")
     except Exception as e:
-        st.sidebar.error(f"خطا در اتصال به Gemini: {e}", icon="⚠️")
+        st.sidebar.error(f"خطا در اتصال به Gemini: {e}")
         gemini_model = None
 else:
-    st.sidebar.info("کلید API جمینای معتبر برای فعالسازی قابلیت‌های هوشمند لازم است.", icon="🔑")
-
+    st.sidebar.info("قابلیت‌های هوشمند Gemini با وارد کردن کلید API فعال می‌شوند.")
 
 def ask_gemini(prompt_text, temperature=0.7, top_p=1.0, top_k=40):
     """Sends a prompt to Gemini and returns the response."""
     if not gemini_model:
-        return "خطا: مدل Gemini مقداردهی اولیه نشده است. لطفاً از صحت کلید API اطمینان حاصل کنید."
+        return "خطا: مدل Gemini مقداردهی اولیه نشده است. لطفاً کلید API را بررسی کنید."
     try:
+        # Configuration for generation
         generation_config = genai.types.GenerationConfig(
             temperature=temperature,
             top_p=top_p,
             top_k=top_k,
-            max_output_tokens=3072 # Increased token limit
+            max_output_tokens=2048 # Adjust as needed
         )
         response = gemini_model.generate_content(prompt_text, generation_config=generation_config)
         return response.text
     except Exception as e:
         return f"خطا در ارتباط با Gemini API: {e}\n{traceback.format_exc()}"
 
-# ==============================================================================
-# Sidebar
-# ==============================================================================
-st.sidebar.markdown("<h1 style='text-align: center; color: #0056b3; font-weight: 700;'>🌾 سامانه پایش نیشکر</h1>", unsafe_allow_html=True)
-st.sidebar.markdown("<p style='text-align: center; font-size: 0.9em; color: #555;'>کشت و صنعت دهخدا</p>", unsafe_allow_html=True)
-st.sidebar.markdown("---")
 
-st.sidebar.header("⚙️ تنظیمات نمایش")
+# ==============================================================================
+# Sidebar Filters
+# ==============================================================================
+st.sidebar.header("تنظیمات نمایش")
 
 available_days = sorted(farm_data_df['روزهای هفته'].unique())
 selected_day = st.sidebar.selectbox(
-    "📅 انتخاب روز هفته:",
+    "📅 روز هفته را انتخاب کنید:",
     options=available_days,
     index=0,
     help="داده‌های مزارع بر اساس این روز فیلتر می‌شوند."
@@ -363,7 +228,7 @@ if filtered_farms_df.empty:
 available_farms = sorted(filtered_farms_df['مزرعه'].unique())
 farm_options = ["همه مزارع"] + available_farms
 selected_farm_name = st.sidebar.selectbox(
-    "🏞️ انتخاب مزرعه:",
+    "🌾 مزرعه مورد نظر را انتخاب کنید:",
     options=farm_options,
     index=0,
     help="مزرعه‌ای که می‌خواهید جزئیات آن را ببینید یا 'همه مزارع' برای نمایش کلی."
@@ -378,7 +243,7 @@ index_options = {
     "CVI": "شاخص کلروفیل (تخمینی)",
 }
 selected_index = st.sidebar.selectbox(
-    "🌿 انتخاب شاخص:",
+    "📈 شاخص مورد نظر برای نمایش روی نقشه:",
     options=list(index_options.keys()),
     format_func=lambda x: f"{x} ({index_options[x]})",
     index=0
@@ -392,12 +257,12 @@ persian_to_weekday = {
 try:
     target_weekday = persian_to_weekday[selected_day]
     days_ago = (today.weekday() - target_weekday + 7) % 7
-    end_date_current = today - datetime.timedelta(days=days_ago if days_ago !=0 else 0)
-    if today.weekday() == target_weekday:
+    end_date_current = today - datetime.timedelta(days=days_ago if days_ago !=0 else 0) # Corrected logic for today
+    if today.weekday() == target_weekday: # If today is the selected day
         end_date_current = today
-    else:
+    else: # Find the most recent past selected_day
         days_to_subtract = (today.weekday() - target_weekday + 7) % 7
-        end_date_current = today - datetime.timedelta(days=days_to_subtract if days_to_subtract != 0 else 7)
+        end_date_current = today - datetime.timedelta(days=days_to_subtract)
 
 
     start_date_current = end_date_current - datetime.timedelta(days=6)
@@ -408,11 +273,9 @@ try:
     end_date_current_str = end_date_current.strftime('%Y-%m-%d')
     start_date_previous_str = start_date_previous.strftime('%Y-%m-%d')
     end_date_previous_str = end_date_previous.strftime('%Y-%m-%d')
-    
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("🗓️ بازه‌های زمانی")
-    st.sidebar.info(f"**هفته جاری:** {start_date_current_str} تا {end_date_current_str}")
-    st.sidebar.info(f"**هفته قبل:** {start_date_previous_str} تا {end_date_previous_str}")
+
+    st.sidebar.info(f"بازه زمانی فعلی: {start_date_current_str} تا {end_date_current_str}")
+    st.sidebar.info(f"بازه زمانی قبلی: {start_date_previous_str} تا {end_date_previous_str}")
 
 except KeyError:
     st.sidebar.error(f"نام روز هفته '{selected_day}' قابل شناسایی نیست.")
@@ -430,26 +293,26 @@ def maskS2clouds(image):
     cirrusBitMask = 1 << 11
     mask = qa.bitwiseAnd(cloudBitMask).eq(0).And(qa.bitwiseAnd(cirrusBitMask).eq(0))
     scl = image.select('SCL')
-    good_quality = scl.remap([2, 4, 5, 6, 7, 11], [1, 1, 1, 1, 1, 1], 0) # Added more clear sky classes
+    good_quality = scl.remap([4, 5, 6, 7, 11], [1, 1, 1, 1, 1], 0)
     opticalBands = image.select('B.*').multiply(0.0001)
     return image.addBands(opticalBands, None, True).updateMask(mask).updateMask(good_quality)
 
 def add_indices(image):
     ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI')
     evi = image.expression(
-        '2.5 * (NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1.0001)', # Added small epsilon to avoid div by zero
+        '2.5 * (NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1)',
         {'NIR': image.select('B8'), 'RED': image.select('B4'), 'BLUE': image.select('B2')}
     ).rename('EVI')
     ndmi = image.normalizedDifference(['B8', 'B11']).rename('NDMI')
-    msi = image.expression('SWIR1 / (NIR + 0.0001)', {'SWIR1': image.select('B11'), 'NIR': image.select('B8')}).rename('MSI')
-    lai = ndvi.multiply(3.5).rename('LAI') # Simple LAI estimation
-    green_safe = image.select('B3').max(ee.Image(0.0001)) # Ensure green is not zero
+    msi = image.expression('SWIR1 / NIR', {'SWIR1': image.select('B11'), 'NIR': image.select('B8')}).rename('MSI')
+    lai = ndvi.multiply(3.5).rename('LAI')
+    green_safe = image.select('B3').max(ee.Image(0.0001))
     cvi = image.expression('(NIR / GREEN) * (RED / GREEN)',
         {'NIR': image.select('B8'), 'GREEN': green_safe, 'RED': image.select('B4')}
     ).rename('CVI')
     return image.addBands([ndvi, evi, ndmi, msi, lai, cvi])
 
-@st.cache_data(show_spinner="⏳ در حال پردازش تصاویر ماهواره‌ای...", persist=True)
+@st.cache_data(show_spinner="در حال پردازش تصاویر ماهواره‌ای...", persist=True)
 def get_processed_image(_geometry, start_date, end_date, index_name):
     try:
         s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
@@ -458,64 +321,42 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
                      .map(maskS2clouds))
         count = s2_sr_col.size().getInfo()
         if count == 0:
-            return None, f"تصویری بدون ابر برای بازه {start_date} تا {end_date} یافت نشد."
+            return None, f"No cloud-free Sentinel-2 images found for {start_date} to {end_date}."
         indexed_col = s2_sr_col.map(add_indices)
-        # Use qualityMosaic for less cloudy pixels if median is too blurry or use median for general trend
-        # median_image = indexed_col.median()
-        median_image = indexed_col.qualityMosaic(selected_index if selected_index in ['NDVI', 'EVI'] else 'NDVI') # Prioritize NDVI for mosaicing
-        if not median_image.bandNames().contains(selected_index).getInfo(): # If index not in mosaic (e.g. all cloudy)
-             median_image = indexed_col.median() # Fallback to median
-        
+        median_image = indexed_col.median()
         output_image = median_image.select(index_name)
         return output_image, None
     except ee.EEException as e:
         error_message = f"خطای Google Earth Engine: {e}"
         try:
             error_details = e.args[0] if e.args else str(e)
-            if isinstance(error_details, str):
-                if 'computation timed out' in error_details.lower():
-                     error_message += "\n(احتمالاً به دلیل حجم بالای پردازش یا بازه زمانی طولانی. سعی کنید بازه را کوتاهتر کنید.)"
-                elif 'user memory limit exceeded' in error_details.lower():
-                     error_message += "\n(احتمالاً به دلیل پردازش منطقه بزرگ یا عملیات پیچیده. سعی کنید منطقه کوچکتری را انتخاب کنید.)"
-                elif 'image.select: Pattern' in error_details and 'matches no bands' in error_details:
-                     error_message += f"\n(شاخص '{index_name}' در تصویر محاسبه شده یافت نشد. ممکن است به دلیل پوشش ابر کامل باشد.)"
+            if isinstance(error_details, str) and 'computation timed out' in error_details.lower():
+                 error_message += "\n(احتمالاً به دلیل حجم بالای پردازش یا بازه زمانی طولانی)"
+            elif isinstance(error_details, str) and 'user memory limit exceeded' in error_details.lower():
+                 error_message += "\n(احتمالاً به دلیل پردازش منطقه بزرگ یا عملیات پیچیده)"
         except Exception: pass
         return None, error_message
     except Exception as e:
         return None, f"خطای ناشناخته در پردازش GEE: {e}\n{traceback.format_exc()}"
 
-@st.cache_data(show_spinner="⏳ در حال دریافت سری زمانی شاخص...", persist=True)
+@st.cache_data(show_spinner="در حال دریافت سری زمانی شاخص...", persist=True)
 def get_index_time_series(_point_geom, index_name, start_date='2023-01-01', end_date=today.strftime('%Y-%m-%d')):
     try:
         s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
                      .filterBounds(_point_geom)
                      .filterDate(start_date, end_date)
                      .map(maskS2clouds)
-                     .map(add_indices)
-                     .sort('system:time_start')) # Sort for chronological order
-        
+                     .map(add_indices))
         def extract_value(image):
-            # Ensure the index band exists before trying to reduce
-            has_band = ee.Algorithms.IsEqual(ee.List(image.bandNames()).contains(index_name), True)
-            
-            # Use a conditional to avoid errors if band is missing
-            value = ee.Algorithms.If(
-                has_band,
-                image.reduceRegion(reducer=ee.Reducer.first(), geometry=_point_geom, scale=10).get(index_name),
-                None # Return None if the band is not present
-            )
+            value = image.reduceRegion(
+                reducer=ee.Reducer.first(), geometry=_point_geom, scale=10
+            ).get(index_name)
             return ee.Feature(None, {'date': image.date().format('YYYY-MM-dd'), index_name: value})
-
         ts_features = s2_sr_col.map(extract_value).filter(ee.Filter.notNull([index_name]))
         ts_info = ts_features.getInfo()['features']
-
         if not ts_info:
-            return pd.DataFrame(columns=['date', index_name]), "داده‌ای برای سری زمانی یافت نشد (ممکن است به دلیل پوشش ابر یا عدم وجود تصاویر باشد)."
-        
-        ts_data = [{'date': f['properties']['date'], index_name: f['properties'][index_name]} for f in ts_info if f['properties'][index_name] is not None]
-        if not ts_data:
-             return pd.DataFrame(columns=['date', index_name]), "داده معتبری (پس از فیلتر مقادیر null) برای سری زمانی یافت نشد."
-
+            return pd.DataFrame(columns=['date', index_name]), "داده‌ای برای سری زمانی یافت نشد."
+        ts_data = [{'date': f['properties']['date'], index_name: f['properties'][index_name]} for f in ts_info]
         ts_df = pd.DataFrame(ts_data)
         ts_df['date'] = pd.to_datetime(ts_df['date'])
         ts_df = ts_df.sort_values('date').set_index('date')
@@ -526,595 +367,432 @@ def get_index_time_series(_point_geom, index_name, start_date='2023-01-01', end_
         return pd.DataFrame(columns=['date', index_name]), f"خطای ناشناخته در دریافت سری زمانی: {e}\n{traceback.format_exc()}"
 
 # ==============================================================================
-# Main Panel Display with Modern Tabs
+# Main Panel Display
 # ==============================================================================
-# New tab order and names
-tab_dashboard, tab_gemini, tab_map = st.tabs([
-    "📊 داشبورد اصلی", 
-    "💡 تحلیل هوشمند Gemini", 
-    "🗺️ نقشه و نمودارها"
-])
+tab1, tab2, tab3 = st.tabs(["📊 داشبورد اصلی", "🗺️ نقشه و نمودارها", "💡 تحلیل هوشمند با Gemini"])
 
-
-with tab_dashboard: # Was tab1
-    st.header(f"{APP_TITLE}")
-    st.caption(f"{APP_SUBTITLE} | روز انتخابی: {selected_day} | شاخص: {selected_index}")
+with tab1:
+    st.header(APP_TITLE)
+    st.subheader(APP_SUBTITLE)
 
     selected_farm_details = None
     selected_farm_geom = None
-    lat, lon = INITIAL_LAT, INITIAL_LON
+    lat, lon = INITIAL_LAT, INITIAL_LON # Default values
 
     if selected_farm_name == "همه مزارع":
         min_lon_df, min_lat_df = filtered_farms_df['طول جغرافیایی'].min(), filtered_farms_df['عرض جغرافیایی'].min()
         max_lon_df, max_lat_df = filtered_farms_df['طول جغرافیایی'].max(), filtered_farms_df['عرض جغرافیایی'].max()
-        try:
-            selected_farm_geom = ee.Geometry.Rectangle([min_lon_df, min_lat_df, max_lon_df, max_lat_df])
-        except Exception as e:
-            st.error(f"خطا در ایجاد هندسه برای 'همه مزارع': {e}. مقادیر: {min_lon_df}, {min_lat_df}, {max_lon_df}, {max_lat_df}")
-            selected_farm_geom = None # Prevent further errors
-        
-        with st.container():
-            st.markdown('<div class="custom-panel">', unsafe_allow_html=True)
-            st.subheader(f"ภาพรวม مزارع برای روز: {selected_day}")
-            st.info(f"تعداد مزارع در این روز: {len(filtered_farms_df)}")
-            st.markdown('</div>', unsafe_allow_html=True)
-
+        selected_farm_geom = ee.Geometry.Rectangle([min_lon_df, min_lat_df, max_lon_df, max_lat_df])
+        st.subheader(f"نمایش کلی مزارع برای روز: {selected_day}")
+        st.info(f"تعداد مزارع در این روز: {len(filtered_farms_df)}")
     else:
         selected_farm_details = filtered_farms_df[filtered_farms_df['مزرعه'] == selected_farm_name].iloc[0]
         lat = selected_farm_details['عرض جغرافیایی']
         lon = selected_farm_details['طول جغرافیایی']
         selected_farm_geom = ee.Geometry.Point([lon, lat])
-
-        with st.container():
-            st.markdown('<div class="custom-panel">', unsafe_allow_html=True)
-            st.subheader(f"جزئیات مزرعه: {selected_farm_name} (روز: {selected_day})")
-            details_cols = st.columns([1,1,1,2]) # Adjusted column widths
-            with details_cols[0]:
-                st.metric("مساحت (هکتار)", f"{selected_farm_details.get('مساحت', 'N/A'):,.2f}" if pd.notna(selected_farm_details.get('مساحت')) else "N/A")
-            with details_cols[1]:
-                 st.metric("واریته", f"{selected_farm_details.get('واریته', 'N/A')}")
-            with details_cols[2]:
-                st.metric("سن", f"{selected_farm_details.get('سن', 'N/A')}")
-            with details_cols[3]:
-                 st.markdown(f"""
-                    **کانال:** {selected_farm_details.get('کانال', 'N/A')} | 
-                    **اداره:** {selected_farm_details.get('اداره', 'N/A')} <br>
-                    <span>**مختصات:**</span> {lat:.5f}, {lon:.5f}
-                 """, unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+        st.subheader(f"جزئیات مزرعه: {selected_farm_name} (روز: {selected_day})")
+        details_cols = st.columns(3)
+        with details_cols[0]:
+            st.metric("مساحت داشت (هکتار)", f"{selected_farm_details.get('مساحت', 'N/A'):,.2f}" if pd.notna(selected_farm_details.get('مساحت')) else "N/A")
+            st.metric("واریته", f"{selected_farm_details.get('واریته', 'N/A')}")
+        with details_cols[1]:
+            st.metric("کانال", f"{selected_farm_details.get('کانال', 'N/A')}")
+            st.metric("سن", f"{selected_farm_details.get('سن', 'N/A')}")
+        with details_cols[2]:
+            st.metric("اداره", f"{selected_farm_details.get('اداره', 'N/A')}")
+            st.metric("مختصات", f"{lat:.5f}, {lon:.5f}")
 
     st.markdown("---")
-    with st.container():
-        st.markdown('<div class="custom-panel">', unsafe_allow_html=True)
-        st.subheader(f"📊 جدول رتبه‌بندی مزارع بر اساس {selected_index} (روز: {selected_day})")
-        st.caption("مقایسه مقادیر متوسط شاخص در هفته جاری با هفته قبل.")
+    st.subheader(f"📊 جدول رتبه‌بندی مزارع بر اساس {selected_index} (روز: {selected_day})")
+    st.markdown("مقایسه مقادیر متوسط شاخص در هفته جاری با هفته قبل.")
 
-        @st.cache_data(show_spinner=f"⏳ در حال محاسبه {selected_index} برای مزارع...", persist=True)
-        def calculate_weekly_indices(_farms_df, index_name, start_curr, end_curr, start_prev, end_prev):
-            results = []
-            errors = []
-            # total_farms = len(_farms_df)
-            # progress_text = f"پردازش مزارع برای شاخص {index_name}"
-            # progress_bar = st.progress(0, text=progress_text)
-            
-            # Using st.status for a cleaner progress display
-            with st.status(f"درحال محاسبه شاخص {index_name} برای {len(_farms_df)} مزرعه...", expanded=False) as status_calc:
-                for i, (idx, farm) in enumerate(_farms_df.iterrows()):
-                    farm_name = farm['مزرعه']
-                    _lat = farm['عرض جغرافیایی']
-                    _lon = farm['طول جغرافیایی']
-                    point_geom = ee.Geometry.Point([_lon, _lat]).buffer(30) # Buffer point slightly for mean calculation
-
-                    def get_mean_value(start, end, period_name):
-                        try:
-                            st.write(f"   - مزرعه {farm_name}: محاسبه برای {period_name} ({start} تا {end})")
-                            image, error = get_processed_image(point_geom, start, end, index_name)
-                            if image:
-                                mean_dict = image.reduceRegion(reducer=ee.Reducer.mean(), geometry=point_geom, scale=10, maxPixels=1e9).getInfo()
-                                val = mean_dict.get(index_name)
-                                if val is None:
-                                    return None, f"شاخص {index_name} در داده‌های {farm_name} ({start}-{end}) یافت نشد."
-                                return val, None
-                            return None, error if error else "تصویری یافت نشد."
-                        except Exception as e:
-                            return None, f"خطا در محاسبه مقدار برای {farm_name} ({start}-{end}): {str(e)[:200]}" # Truncate long errors
-                    
-                    current_val, err_curr = get_mean_value(start_curr, end_curr, "هفته جاری")
-                    if err_curr: errors.append(f"{farm_name} (هفته جاری): {err_curr}")
-                    
-                    previous_val, err_prev = get_mean_value(start_prev, end_prev, "هفته قبل")
-                    if err_prev: errors.append(f"{farm_name} (هفته قبل): {err_prev}")
-                    
-                    change = None
-                    if current_val is not None and previous_val is not None:
-                        try: change = current_val - previous_val
-                        except TypeError: change = None # Should not happen if both are numbers
-
-                    results.append({
-                        'مزرعه': farm_name, 'کانال': farm.get('کانال', 'N/A'), 'اداره': farm.get('اداره', 'N/A'),
-                        f'{index_name} (هفته جاری)': current_val, f'{index_name} (هفته قبل)': previous_val, 'تغییر': change
-                    })
-                    # progress_bar.progress((i + 1) / total_farms, text=f"{progress_text} ({i+1}/{total_farms})")
-                status_calc.update(label=f"محاسبه {index_name} برای {len(_farms_df)} مزرعه کامل شد!", state="complete")
-            # progress_bar.empty()
-            return pd.DataFrame(results), errors
-
-        ranking_df, calculation_errors = calculate_weekly_indices(
-            filtered_farms_df, selected_index,
-            start_date_current_str, end_date_current_str,
-            start_date_previous_str, end_date_previous_str
-        )
-
-        if calculation_errors:
-            with st.expander("⚠️ مشاهده خطاهای محاسبه شاخص‌ها", expanded=False):
-                for error_idx, error_msg in enumerate(calculation_errors):
-                    st.caption(f"- {error_msg}")
-                    if error_idx > 10 and len(calculation_errors) > 15 : # Limit displayed errors
-                        st.caption(f"... و {len(calculation_errors) - 10} خطای دیگر.")
-                        break
-
-
-        ranking_df_sorted = pd.DataFrame()
-        if not ranking_df.empty:
-            ascending_sort = selected_index in ['MSI'] # Lower MSI is better (less stress)
-            ranking_df_sorted = ranking_df.sort_values(
-                by=f'{selected_index} (هفته جاری)', ascending=ascending_sort, na_position='last'
-            ).reset_index(drop=True)
-            ranking_df_sorted.index = ranking_df_sorted.index + 1
-            ranking_df_sorted.index.name = 'رتبه'
-
-            def determine_status(row, index_name):
-                # Determine status based on change and index type
-                if pd.isna(row['تغییر']) or pd.isna(row[f'{index_name} (هفته جاری)']) or pd.isna(row[f'{index_name} (هفته قبل)']):
-                    return "بدون داده"
-                
-                change_val = row['تغییر']
-                # Positive indices (higher is better): NDVI, EVI, LAI, CVI
-                if index_name in ['NDVI', 'EVI', 'LAI', 'CVI']:
-                    if change_val > 0.05: return "رشد مثبت"
-                    elif change_val < -0.05: return "کاهش/تنش"
-                    else: return "ثابت"
-                # Negative indices (lower is better, e.g., stress): MSI
-                elif index_name == 'MSI':
-                    if change_val < -0.05: return "بهبود (تنش کمتر)" # Negative change means MSI decreased = good
-                    elif change_val > 0.05: return "بدتر شدن (تنش بیشتر)" # Positive change means MSI increased = bad
-                    else: return "ثابت"
-                # Indices where interpretation of change can be dual: NDMI (Moisture)
-                elif index_name == 'NDMI':
-                     # Assuming higher NDMI is generally better (more moisture)
-                    if change_val > 0.05: return "افزایش رطوبت"
-                    elif change_val < -0.05: return "کاهش رطوبت"
-                    else: return "ثابت"
-                return "نامشخص"
-
-            ranking_df_sorted['وضعیت'] = ranking_df_sorted.apply(lambda row: determine_status(row, selected_index), axis=1)
-            
-            # Prepare DataFrame for display
-            display_df = ranking_df_sorted.copy()
-            cols_to_format = [f'{selected_index} (هفته جاری)', f'{selected_index} (هفته قبل)', 'تغییر']
-            for col_format in cols_to_format:
-                if col_format in display_df.columns:
-                    display_df[col_format] = display_df[col_format].map(lambda x: f"{x:.3f}" if pd.notna(x) else "N/A")
-            
-            # Apply HTML styling for status badges
-            def style_status(status):
-                if status == "رشد مثبت" or status == "بهبود (تنش کمتر)" or status == "افزایش رطوبت":
-                    return f'<span class="status-badge status-positive">{status}</span>'
-                elif status == "کاهش/تنش" or status == "بدتر شدن (تنش بیشتر)" or status == "کاهش رطوبت":
-                    return f'<span class="status-badge status-negative">{status}</span>'
-                elif status == "ثابت":
-                    return f'<span class="status-badge status-neutral">{status}</span>'
-                elif status == "بدون داده":
-                    return f'<span class="status-badge status-no-data">{status}</span>'
-                return status
-
-            display_df['وضعیت'] = display_df['وضعیت'].apply(style_status)
-            st.markdown(display_df.to_html(escape=False, index=True, classes='dataframe'), unsafe_allow_html=True)
-
-
-            st.subheader("📊 خلاصه وضعیت مزارع")
-            status_counts = ranking_df_sorted['وضعیت'].value_counts()
-            col1, col2, col3, col4 = st.columns(4)
-            
-            positive_statuses = ["رشد مثبت", "بهبود (تنش کمتر)", "افزایش رطوبت"]
-            negative_statuses = ["کاهش/تنش", "بدتر شدن (تنش بیشتر)", "کاهش رطوبت"]
-
-            count_positive = sum(status_counts.get(s, 0) for s in positive_statuses)
-            count_negative = sum(status_counts.get(s, 0) for s in negative_statuses)
-            
-            with col1:
-                st.metric("🟢 بهبود/رشد", count_positive, help="مزارع با رشد مثبت، بهبود تنش یا افزایش رطوبت")
-            with col2:
-                st.metric("⚪ ثابت", status_counts.get("ثابت", 0), help="مزارع بدون تغییر محسوس")
-            with col3:
-                st.metric("🔴 تنش/کاهش", count_negative, help="مزارع با کاهش، بدتر شدن تنش یا کاهش رطوبت")
-            with col4:
-                st.metric("❔ بدون داده", status_counts.get("بدون داده", 0), help="مزارع بدون اطلاعات کافی برای ارزیابی")
-
-            st.info("""
-            **راهنمای وضعیت:**
-            - **🟢 بهبود/رشد**: مزارعی که نسبت به هفته قبل بهبود قابل توجهی داشته‌اند (افزایش در شاخص‌های مثبت مانند NDVI، کاهش در شاخص‌های تنش مانند MSI، یا افزایش رطوبت NDMI).
-            - **⚪ ثابت**: مزارعی که تغییر معناداری نداشته‌اند.
-            - **🔴 تنش/کاهش**: مزارعی که نسبت به هفته قبل وضعیت نامطلوب‌تری داشته‌اند.
-            - **❔ بدون داده**: اطلاعات کافی برای ارزیابی وضعیت موجود نیست.
-            """)
-
-            csv_data = ranking_df_sorted.to_csv(index=True).encode('utf-8-sig') # utf-8-sig for Excel compatibility
-            st.download_button(
-                label="📥 دانلود جدول رتبه‌بندی (CSV)", data=csv_data,
-                file_name=f'ranking_{selected_index}_{selected_day}_{end_date_current_str}.csv', mime='text/csv',
-            )
-        else:
-            st.info(f"داده‌ای برای جدول رتبه‌بندی بر اساس {selected_index} در این بازه زمانی یافت نشد.")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-
-with tab_map: # Was tab2
-    with st.container():
-        st.markdown('<div class="custom-panel">', unsafe_allow_html=True)
-        st.subheader(f"🗺️ نقشه وضعیت مزارع ({selected_index})")
-        vis_params = {
-            'NDVI': {'min': 0, 'max': 1, 'palette': ['#CE7E45', '#DF923D', '#F1B555', '#FCD163', '#99B718', '#74A901', '#66A000', '#529400', '#3E8601', '#207401', '#056201', '#004C00', '#023B01', '#012E01', '#011D01', '#011301']}, # More detailed NDVI palette
-            'EVI': {'min': 0, 'max': 1, 'palette': ['#CE7E45', '#DF923D', '#F1B555', '#FCD163', '#99B718', '#74A901', '#66A000', '#529400', '#3E8601', '#207401', '#056201', '#004C00', '#023B01', '#012E01', '#011D01', '#011301']},
-            'NDMI': {'min': -1, 'max': 1, 'palette': ['#b2182b', '#d6604d', '#f4a582', '#fddbc7', '#f7f7f7', '#d1e5f0', '#92c5de', '#4393c3', '#2166ac']}, # Diverging Red-Blue
-            'LAI': {'min': 0, 'max': 7, 'palette': ['#FFFFE5', '#FFF7BC', '#FEE391', '#FEC44F', '#FE9929', '#EC7014', '#CC4C02', '#993404', '#662506']}, # Sequential Yellow-Orange-Brown
-            'MSI': {'min': 0, 'max': 3.5, 'palette': ['#2166ac', '#4393c3', '#92c5de', '#d1e5f0', '#f7f7f7', '#fddbc7', '#f4a582', '#d6604d', '#b2182b']}, # Reversed NDMI: Blue (low stress) to Red (high stress)
-            'CVI': {'min': 0, 'max': 25, 'palette': ['#FFFFD9', '#EDF8B1', '#C7E9B4', '#7FCDBB', '#41B6C4', '#1D91C0', '#225EA8', '#253494', '#081D58']}, # Sequential Yellow-Green-Blue for Chlorophyll
-        }
-        map_center_lat = lat if selected_farm_name != "همه مزارع" else INITIAL_LAT
-        map_center_lon = lon if selected_farm_name != "همه مزارع" else INITIAL_LON
-        initial_zoom_map = 15 if selected_farm_name != "همه مزارع" else INITIAL_ZOOM
-
-        m = geemap.Map(location=[map_center_lat, map_center_lon], zoom=initial_zoom_map, add_google_map=False)
-        m.add_basemap("HYBRID")
-        m.add_basemap("SATELLITE") # Add another option
-
-        if selected_farm_geom:
-            gee_image_current, error_msg_current = get_processed_image(
-                selected_farm_geom.buffer(100) if selected_farm_name != "همه مزارع" else selected_farm_geom, # Buffer single farm for better context
-                start_date_current_str, end_date_current_str, selected_index
-            )
-            if gee_image_current:
+    @st.cache_data(show_spinner=f"در حال محاسبه {selected_index} برای مزارع...", persist=True)
+    def calculate_weekly_indices(_farms_df, index_name, start_curr, end_curr, start_prev, end_prev):
+        results = []
+        errors = []
+        total_farms = len(_farms_df)
+        progress_bar = st.progress(0)
+        for i, (idx, farm) in enumerate(_farms_df.iterrows()):
+            farm_name = farm['مزرعه']
+            _lat = farm['عرض جغرافیایی']
+            _lon = farm['طول جغرافیایی']
+            point_geom = ee.Geometry.Point([_lon, _lat])
+            def get_mean_value(start, end):
                 try:
-                    m.addLayer(
-                        gee_image_current,
-                        vis_params.get(selected_index, {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']}),
-                        f"{selected_index} ({start_date_current_str} to {end_date_current_str})"
-                    )
-                    
-                    # Add legend
-                    legend_dict = {
-                        'NDVI': 'پوشش گیاهی (کم <span style="color:red;">■</span> تا زیاد <span style="color:green;">■</span>)',
-                        'EVI': 'پوشش گیاهی بهبودیافته (کم <span style="color:red;">■</span> تا زیاد <span style="color:green;">■</span>)',
-                        'NDMI': 'رطوبت (خشک <span style="color:brown;">■</span> تا مرطوب <span style="color:blue;">■</span>)',
-                        'LAI': 'شاخص سطح برگ (کم <span style="color:yellow;">■</span> تا زیاد <span style="color:darkgreen;">■</span>)',
-                        'MSI': 'تنش رطوبتی (رطوبت بالا/تنش کم <span style="color:blue;">■</span> تا رطوبت پایین/تنش زیاد <span style="color:brown;">■</span>)',
-                        'CVI': 'کلروفیل (کم <span style="color:yellow;">■</span> تا زیاد <span style="color:darkgreen;">■</span>)',
-                    }
-                    m.add_legend(title=f"راهنمای {selected_index}", legend_dict=legend_dict, position="bottomright")
+                    image, error = get_processed_image(point_geom, start, end, index_name)
+                    if image:
+                        mean_dict = image.reduceRegion(reducer=ee.Reducer.mean(), geometry=point_geom, scale=10).getInfo()
+                        return mean_dict.get(index_name) if mean_dict else None, None
+                    return None, error
+                except Exception as e:
+                     return None, f"خطا در محاسبه مقدار برای {farm_name} ({start}-{end}): {e}"
+            current_val, err_curr = get_mean_value(start_curr, end_curr)
+            if err_curr: errors.append(f"{farm_name} (هفته جاری): {err_curr}")
+            previous_val, err_prev = get_mean_value(start_prev, end_prev)
+            if err_prev: errors.append(f"{farm_name} (هفته قبل): {err_prev}")
+            change = None
+            if current_val is not None and previous_val is not None:
+                try: change = current_val - previous_val
+                except TypeError: change = None
+            results.append({
+                'مزرعه': farm_name, 'کانال': farm.get('کانال', 'N/A'), 'اداره': farm.get('اداره', 'N/A'),
+                f'{index_name} (هفته جاری)': current_val, f'{index_name} (هفته قبل)': previous_val, 'تغییر': change
+            })
+            progress_bar.progress((i + 1) / total_farms)
+        progress_bar.empty()
+        return pd.DataFrame(results), errors
 
+    ranking_df, calculation_errors = calculate_weekly_indices(
+        filtered_farms_df, selected_index,
+        start_date_current_str, end_date_current_str,
+        start_date_previous_str, end_date_previous_str
+    )
 
-                    if selected_farm_name == "همه مزارع":
-                        for idx_farm, farm_row in filtered_farms_df.iterrows():
-                            folium.Marker(
-                                location=[farm_row['عرض جغرافیایی'], farm_row['طول جغرافیایی']],
-                                popup=f"<b>مزرعه:</b> {farm_row['مزرعه']}<br><b>کانال:</b> {farm_row.get('کانال', 'N/A')}<br><b>اداره:</b> {farm_row.get('اداره', 'N/A')}",
-                                tooltip=farm_row['مزرعه'], icon=folium.Icon(color='blue', icon='info-sign', prefix='fa')
-                            ).add_to(m)
-                        if selected_farm_geom: m.center_object(selected_farm_geom, zoom=INITIAL_ZOOM)
-                    else:
-                        folium.Marker(
-                            location=[lat, lon], tooltip=selected_farm_name,
-                            popup=f"<b>مزرعه:</b> {selected_farm_name}",
-                            icon=folium.Icon(color='red', icon='star', prefix='fa')
-                        ).add_to(m)
-                        if selected_farm_geom: m.center_object(selected_farm_geom.buffer(200), zoom=15) # Zoom closer for single farm
-                    m.add_layer_control()
-                except Exception as map_err:
-                    st.error(f"خطا در افزودن لایه به نقشه: {map_err}\n{traceback.format_exc()}")
-            else:
-                st.warning(f"تصویری برای نمایش روی نقشه یافت نشد. {error_msg_current}")
-            
-            # Use st_folium for interactivity
-            st_folium(m, width='100%', height=550, use_container_width=True) # use_container_width was false
-            st.caption("برای مشاهده جزئیات روی مارکرها کلیک کنید. از کنترل لایه‌ها (بالا سمت راست نقشه) برای تغییر نقشه پایه استفاده کنید.")
+    if calculation_errors:
+        st.warning("⚠️ برخی خطاها در حین محاسبه شاخص‌ها رخ داد:")
+        for error in calculation_errors[:5]: st.caption(f"- {error}") # Show limited errors
+        if len(calculation_errors) > 5: st.caption(f"... و {len(calculation_errors) - 5} خطای دیگر.")
+
+    ranking_df_sorted = pd.DataFrame() # Initialize to avoid NameError if ranking_df is empty
+    if not ranking_df.empty:
+        ascending_sort = selected_index in ['MSI']
+        ranking_df_sorted = ranking_df.sort_values(
+            by=f'{selected_index} (هفته جاری)', ascending=ascending_sort, na_position='last'
+        ).reset_index(drop=True)
+        ranking_df_sorted.index = ranking_df_sorted.index + 1
+        ranking_df_sorted.index.name = 'رتبه'
+
+        def determine_status(row, index_name):
+            if pd.isna(row['تغییر']) or pd.isna(row[f'{index_name} (هفته جاری)']) or pd.isna(row[f'{index_name} (هفته قبل)']):
+                return "بدون داده"
+            if index_name in ['NDVI', 'EVI', 'LAI', 'CVI']:
+                if row['تغییر'] > 0.05: return "رشد مثبت"
+                elif row['تغییر'] < -0.05: return "تنش/کاهش"
+                else: return "ثابت"
+            elif index_name in ['MSI', 'NDMI']: # NDMI was missing, MSI logic might need adjustment
+                if row['تغییر'] < -0.05: return "بهبود" # Lower MSI/NDMI is better, so negative change is improvement
+                elif row['تغییر'] > 0.05: return "تنش/بدتر شدن"
+                else: return "ثابت"
+            return "نامشخص"
+
+        ranking_df_sorted['وضعیت'] = ranking_df_sorted.apply(lambda row: determine_status(row, selected_index), axis=1)
+        cols_to_format = [f'{selected_index} (هفته جاری)', f'{selected_index} (هفته قبل)', 'تغییر']
+        for col_format in cols_to_format:
+            if col_format in ranking_df_sorted.columns:
+                 ranking_df_sorted[col_format] = ranking_df_sorted[col_format].map(lambda x: f"{x:.3f}" if pd.notna(x) else "N/A")
+        st.dataframe(ranking_df_sorted, use_container_width=True)
+
+        st.subheader("📊 خلاصه وضعیت مزارع")
+        status_counts = ranking_df_sorted['وضعیت'].value_counts()
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            count_positive = status_counts.get("رشد مثبت", 0) + status_counts.get("بهبود", 0)
+            st.metric("🟢 بهبود/رشد", count_positive)
+        with col2:
+            st.metric("⚪ ثابت", status_counts.get("ثابت", 0))
+        with col3:
+            count_negative = status_counts.get("تنش/کاهش", 0) + status_counts.get("تنش/بدتر شدن", 0)
+            st.metric("🔴 تنش/کاهش", count_negative)
+        with col4:
+            st.metric("❔ بدون داده", status_counts.get("بدون داده", 0))
+
+        st.info("""
+        **توضیحات وضعیت:**
+        - **🟢 رشد مثبت/بهبود**: مزارعی که نسبت به هفته قبل بهبود قابل توجهی داشته‌اند (افزایش در شاخص‌های مثبت مانند NDVI، یا کاهش در شاخص‌های تنش مانند MSI).
+        - **⚪ ثابت**: مزارعی که تغییر معناداری نداشته‌اند.
+        - **🔴 تنش/کاهش**: مزارعی که نسبت به هفته قبل وضعیت بدتری داشته‌اند.
+        - **❔ بدون داده**: اطلاعات کافی برای ارزیابی وضعیت موجود نیست.
+        """)
+
+        csv_data = ranking_df_sorted.to_csv(index=True).encode('utf-8')
+        st.download_button(
+            label="📥 دانلود جدول رتبه‌بندی (CSV)", data=csv_data,
+            file_name=f'ranking_{selected_index}_{selected_day}_{end_date_current_str}.csv', mime='text/csv',
+        )
+    else:
+        st.info(f"داده‌ای برای جدول رتبه‌بندی بر اساس {selected_index} در این بازه زمانی یافت نشد.")
+
+with tab2:
+    st.subheader("🗺️ نقشه وضعیت مزارع")
+    vis_params = {
+        'NDVI': {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']},
+        'EVI': {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']},
+        'NDMI': {'min': -1, 'max': 1, 'palette': ['brown', 'white', 'blue']},
+        'LAI': {'min': 0, 'max': 6, 'palette': ['white', 'lightgreen', 'darkgreen']},
+        'MSI': {'min': 0, 'max': 3, 'palette': ['blue', 'white', 'brown']}, # Low MSI = high moisture (blue), High MSI = low moisture (brown)
+        'CVI': {'min': 0, 'max': 20, 'palette': ['yellow', 'lightgreen', 'darkgreen']},
+    }
+    map_center_lat = lat if selected_farm_name != "همه مزارع" else INITIAL_LAT
+    map_center_lon = lon if selected_farm_name != "همه مزارع" else INITIAL_LON
+    initial_zoom_map = 14 if selected_farm_name != "همه مزارع" else INITIAL_ZOOM
+
+    m = geemap.Map(location=[map_center_lat, map_center_lon], zoom=initial_zoom_map, add_google_map=False)
+    m.add_basemap("HYBRID")
+
+    if selected_farm_geom:
+        gee_image_current, error_msg_current = get_processed_image(
+            selected_farm_geom, start_date_current_str, end_date_current_str, selected_index
+        )
+        if gee_image_current:
+            try:
+                m.addLayer(
+                    gee_image_current,
+                    vis_params.get(selected_index, {'min': 0, 'max': 1, 'palette': ['red', 'yellow', 'green']}),
+                    f"{selected_index} ({start_date_current_str} to {end_date_current_str})"
+                )
+                # Custom Legend
+                legend_html_content = ""
+                if selected_index in ['NDVI', 'EVI', 'LAI', 'CVI']:
+                    legend_html_content = '<p style="margin: 0; color: red;">بحرانی/پایین</p><p style="margin: 0; color: yellow;">متوسط</p><p style="margin: 0; color: green;">سالم/بالا</p>'
+                elif selected_index == 'NDMI': # NDMI: Blue for wet, brown for dry
+                     legend_html_content = '<p style="margin: 0; color: brown;">خشک</p><p style="margin: 0; color: white;">متوسط</p><p style="margin: 0; color: blue;">مرطوب</p>'
+                elif selected_index == 'MSI': # MSI: Brown for high stress (dry), Blue for low stress (wet)
+                     legend_html_content = '<p style="margin: 0; color: blue;">رطوبت بالا / تنش کم</p><p style="margin: 0; color: white;">متوسط</p><p style="margin: 0; color: brown;">رطوبت پایین / تنش زیاد</p>'
+
+                if legend_html_content:
+                    legend_html = f'''
+                    <div style="position: fixed; bottom: 50px; left: 10px; z-index: 1000; background-color: white; padding: 10px; border: 1px solid grey; border-radius: 5px; font-family: Vazirmatn, sans-serif;">
+                        <p style="margin: 0; font-weight: bold;">راهنمای {selected_index}</p>
+                        {legend_html_content}
+                    </div>
+                    '''
+                    m.get_root().html.add_child(folium.Element(legend_html))
+
+                if selected_farm_name == "همه مزارع":
+                     for idx_farm, farm_row in filtered_farms_df.iterrows():
+                         folium.Marker(
+                             location=[farm_row['عرض جغرافیایی'], farm_row['طول جغرافیایی']],
+                             popup=f"مزرعه: {farm_row['مزرعه']}<br>کانال: {farm_row['کانال']}<br>اداره: {farm_row['اداره']}",
+                             tooltip=farm_row['مزرعه'], icon=folium.Icon(color='blue', icon='info-sign')
+                         ).add_to(m)
+                     m.center_object(selected_farm_geom, zoom=INITIAL_ZOOM)
+                else:
+                     folium.Marker(
+                         location=[lat, lon], tooltip=selected_farm_name,
+                         icon=folium.Icon(color='red', icon='star')
+                     ).add_to(m)
+                     m.center_object(selected_farm_geom, zoom=14)
+                m.add_layer_control()
+            except Exception as map_err:
+                st.error(f"خطا در افزودن لایه به نقشه: {map_err}\n{traceback.format_exc()}")
         else:
-            st.warning("هندسه مزرعه برای نمایش نقشه انتخاب نشده است.")
-        st.markdown('</div>', unsafe_allow_html=True)
+            st.warning(f"تصویری برای نمایش روی نقشه یافت نشد. {error_msg_current}")
+        st_folium(m, width=None, height=500, use_container_width=True)
+        st.caption("برای مشاهده جزئیات روی مارکرها کلیک کنید. از کنترل لایه‌ها برای تغییر نقشه پایه استفاده کنید.")
+    else:
+        st.warning("هندسه مزرعه برای نمایش نقشه انتخاب نشده است.")
+
 
     st.markdown("---")
-    with st.container():
-        st.markdown('<div class="custom-panel">', unsafe_allow_html=True)
-        st.subheader(f"📈 نمودار روند زمانی شاخص {selected_index}")
-        if selected_farm_name == "همه مزارع":
-            st.info("لطفاً یک مزرعه خاص را از پنل کناری انتخاب کنید تا نمودار روند زمانی آن نمایش داده شود.")
-        elif selected_farm_geom:
-            is_point_geom = False
-            try:
-                if selected_farm_geom.type().getInfo() == 'Point': is_point_geom = True
-            except Exception:
-                if isinstance(selected_farm_geom, ee.geometry.Point): is_point_geom = True
+    st.subheader(f"📈 نمودار روند زمانی شاخص {selected_index}")
+    if selected_farm_name == "همه مزارع":
+        st.info("لطفاً یک مزرعه خاص را از پنل کناری انتخاب کنید تا نمودار روند زمانی آن نمایش داده شود.")
+    elif selected_farm_geom:
+        # Check if the geometry is a Point
+        is_point_geom = False
+        try:
+            if selected_farm_geom.type().getInfo() == 'Point':
+                is_point_geom = True
+        except Exception: # Fallback for non-EE geometry or error in getInfo
+            if isinstance(selected_farm_geom, ee.geometry.Point):
+                 is_point_geom = True
 
-            if is_point_geom:
-                timeseries_end_date = today.strftime('%Y-%m-%d')
-                timeseries_start_date = (today - datetime.timedelta(days=365*2)).strftime('%Y-%m-%d') # 2 years
-                
-                ts_df, ts_error = get_index_time_series(
-                    selected_farm_geom, selected_index,
-                    start_date=timeseries_start_date, end_date=timeseries_end_date
-                )
-                if ts_error:
-                    st.warning(f"خطا در دریافت داده‌های سری زمانی: {ts_error}")
-                elif not ts_df.empty:
-                    fig = px.line(ts_df, y=selected_index, markers=True,
-                                  title=f"روند زمانی {selected_index} برای {selected_farm_name} (2 سال اخیر)")
-                    fig.update_layout(
-                        xaxis_title="تاریخ", yaxis_title=selected_index, 
-                        font=dict(family="Vazirmatn, sans-serif"),
-                        plot_bgcolor='rgba(245,245,245,1)', paper_bgcolor='rgba(255,255,255,1)',
-                        xaxis=dict(gridcolor='rgba(220,220,220,0.5)'),
-                        yaxis=dict(gridcolor='rgba(220,220,220,0.5)'),
-                    )
-                    fig.update_traces(line=dict(width=2.5, color='#007bff'), marker=dict(size=6, color='#0056b3'))
-                    st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.info(f"داده‌ای برای نمایش نمودار سری زمانی {selected_index} در بازه مشخص شده یافت نشد.")
+
+        if is_point_geom:
+            timeseries_end_date = today.strftime('%Y-%m-%d')
+            timeseries_start_date = (today - datetime.timedelta(days=365*2)).strftime('%Y-%m-%d') # 2 years of data
+            ts_df, ts_error = get_index_time_series(
+                selected_farm_geom, selected_index,
+                start_date=timeseries_start_date, end_date=timeseries_end_date
+            )
+            if ts_error:
+                st.warning(f"خطا در دریافت داده‌های سری زمانی: {ts_error}")
+            elif not ts_df.empty:
+                fig = px.line(ts_df, y=selected_index, title=f"روند زمانی {selected_index} برای {selected_farm_name}")
+                fig.update_layout(xaxis_title="تاریخ", yaxis_title=selected_index, font=dict(family="Vazirmatn"))
+                st.plotly_chart(fig, use_container_width=True)
+                st.caption(f"نمودار تغییرات شاخص {selected_index} برای مزرعه {selected_farm_name} در 2 سال گذشته.")
             else:
-                st.warning("نمودار سری زمانی فقط برای مزارع منفرد (نقطه‌ای) قابل نمایش است.")
+                st.info(f"داده‌ای برای نمایش نمودار سری زمانی {selected_index} در بازه مشخص شده یافت نشد.")
         else:
-            st.warning("هندسه مزرعه برای نمودار سری زمانی در دسترس نیست.")
-        st.markdown('</div>', unsafe_allow_html=True)
+            st.warning("نمودار سری زمانی فقط برای مزارع منفرد (نقطه‌ای) قابل نمایش است.")
+    else:
+        st.warning("هندسه مزرعه برای نمودار سری زمانی در دسترس نیست.")
 
 
-with tab_gemini: # Was tab3
+with tab3:
     st.header("💡 تحلیل هوشمند با Gemini")
     st.markdown("""
-    <div class="custom-panel" style="background-color: #e6f7ff; border-left: 5px solid #007bff;">
-    <p style="font-weight: 500;">توجه:</p>
-    <p>پاسخ‌های ارائه شده توسط هوش مصنوعی Gemini بر اساس داده‌های موجود و الگوهای کلی تولید می‌شوند و نباید جایگزین نظر کارشناسان کشاورزی شوند. همیشه برای تصمیم‌گیری‌های مهم با متخصصین مشورت کنید. برای استفاده از این بخش، نیاز به کلید API معتبر از Google AI Studio دارید.</p>
-    </div>
-    """, unsafe_allow_html=True)
+    **توجه:** پاسخ‌های ارائه شده توسط هوش مصنوعی Gemini بر اساس داده‌های موجود و الگوهای کلی تولید می‌شوند و نباید جایگزین نظر کارشناسان کشاورزی شوند. همیشه برای تصمیم‌گیری‌های مهم با متخصصین مشورت کنید.
+    """)
 
     if not gemini_model:
-        st.warning("⚠️ برای استفاده از قابلیت‌های هوشمند، لطفاً کلید API جمینای معتبر را در کد برنامه وارد کنید.")
+        st.warning("⚠️ برای استفاده از قابلیت‌های هوشمند، لطفاً کلید API جمینای خود را در نوار کناری وارد کنید.")
     else:
-        tab_gemini_qna, tab_gemini_report, tab_gemini_trend, tab_gemini_actions, tab_gemini_general = st.tabs([
-            "💬 پرسش و پاسخ", "📄 گزارش هفتگی", "📉 تحلیل روند", "🌱 پیشنهادات", "🗣️ سوالات عمومی"
-        ])
-
-        with tab_gemini_qna:
-            with st.container():
-                st.markdown('<div class="custom-panel">', unsafe_allow_html=True)
-                st.subheader("💬 پاسخ هوشمند به سوالات در مورد داده‌های مزارع")
-                user_farm_q = st.text_input("سوال خود را در مورد مزرعه انتخاب شده یا وضعیت کلی مزارع بپرسید:", key="gemini_farm_q", placeholder="مثلا: وضعیت مزرعه X چگونه است؟ یا کدام مزارع نیاز به توجه بیشتری دارند؟")
-                if st.button("✉️ ارسال سوال به Gemini", key="btn_gemini_farm_q"):
-                    if not user_farm_q:
-                        st.info("لطفاً سوال خود را وارد کنید.")
+        st.subheader("💬 پاسخ هوشمند به سوالات در مورد داده‌های مزارع")
+        user_farm_q = st.text_input("سوال خود را در مورد مزرعه انتخاب شده یا وضعیت کلی مزارع بپرسید:", key="gemini_farm_q")
+        if st.button("✉️ ارسال سوال به Gemini", key="btn_gemini_farm_q"):
+            if not user_farm_q:
+                st.info("لطفاً سوال خود را وارد کنید.")
+            else:
+                prompt = ""
+                context_data = ""
+                if selected_farm_name != "همه مزارع" and selected_farm_details is not None and not ranking_df_sorted.empty:
+                    farm_data_for_prompt = ranking_df_sorted[ranking_df_sorted['مزرعه'] == selected_farm_name]
+                    if not farm_data_for_prompt.empty:
+                        current_val_str = farm_data_for_prompt[f'{selected_index} (هفته جاری)'].iloc[0]
+                        prev_val_str = farm_data_for_prompt[f'{selected_index} (هفته قبل)'].iloc[0]
+                        change_str = farm_data_for_prompt['تغییر'].iloc[0]
+                        status_str = farm_data_for_prompt['وضعیت'].iloc[0]
+                        context_data = f"داده‌های مزرعه '{selected_farm_name}' برای شاخص {selected_index} (هفته منتهی به {end_date_current_str}):\n" \
+                                       f"- مقدار هفته جاری: {current_val_str}\n" \
+                                       f"- مقدار هفته قبل: {prev_val_str}\n" \
+                                       f"- تغییر نسبت به هفته قبل: {change_str}\n" \
+                                       f"- وضعیت کلی: {status_str}\n"
+                        prompt = f"شما یک دستیار هوشمند برای تحلیل داده‌های کشاورزی نیشکر هستید. کاربر در مورد مزرعه '{selected_farm_name}' سوالی پرسیده است: '{user_farm_q}'.\n{context_data}\nلطفاً بر اساس این داده‌ها و سوال کاربر، یک پاسخ جامع و مفید به زبان فارسی ارائه دهید."
                     else:
-                        prompt = ""
-                        context_data = ""
-                        if selected_farm_name != "همه مزارع" and selected_farm_details is not None and not ranking_df_sorted.empty:
-                            farm_data_for_prompt = ranking_df_sorted[ranking_df_sorted['مزرعه'] == selected_farm_name]
-                            if not farm_data_for_prompt.empty:
-                                current_val_str = farm_data_for_prompt[f'{selected_index} (هفته جاری)'].iloc[0]
-                                prev_val_str = farm_data_for_prompt[f'{selected_index} (هفته قبل)'].iloc[0]
-                                change_str = farm_data_for_prompt['تغییر'].iloc[0]
-                                status_str = farm_data_for_prompt['وضعیت'].iloc[0] # This is HTML, need original
-                                # Get original status for prompt
-                                original_status_str = ranking_df_sorted[ranking_df_sorted['مزرعه'] == selected_farm_name]['وضعیت'].iloc[0]
+                        prompt = f"شما یک دستیار هوشمند برای تحلیل داده‌های کشاورزی نیشکر هستید. کاربر در مورد مزرعه '{selected_farm_name}' سوالی پرسیده است: '{user_farm_q}'. داده‌های رتبه‌بندی برای این مزرعه در دسترس نیست. لطفاً به صورت کلی و بر اساس سوال کاربر پاسخ دهید. پاسخ به زبان فارسی."
 
-                                context_data = f"داده‌های مزرعه '{selected_farm_name}' برای شاخص {selected_index} (هفته منتهی به {end_date_current_str}):\n" \
-                                            f"- مقدار هفته جاری: {current_val_str}\n" \
-                                            f"- مقدار هفته قبل: {prev_val_str}\n" \
-                                            f"- تغییر نسبت به هفته قبل: {change_str}\n" \
-                                            f"- وضعیت کلی (بر اساس تحلیل داده): {original_status_str}\n" # Use original status
-                                prompt = f"شما یک دستیار هوشمند برای تحلیل داده‌های کشاورزی نیشکر هستید. کاربر در مورد مزرعه '{selected_farm_name}' سوالی پرسیده است: '{user_farm_q}'.\n{context_data}\nلطفاً بر اساس این داده‌ها و سوال کاربر، یک پاسخ جامع و مفید به زبان فارسی ارائه دهید."
-                            else:
-                                prompt = f"شما یک دستیار هوشمند برای تحلیل داده‌های کشاورزی نیشکر هستید. کاربر در مورد مزرعه '{selected_farm_name}' سوالی پرسیده است: '{user_farm_q}'. داده‌های رتبه‌بندی برای این مزرعه در دسترس نیست. لطفاً به صورت کلی و بر اساس سوال کاربر پاسخ دهید. پاسخ به زبان فارسی."
+                else: # "همه مزارع" or no specific farm data
+                    context_data = f"وضعیت کلی مزارع برای روز '{selected_day}' و شاخص '{selected_index}' در حال بررسی است. تعداد {len(filtered_farms_df)} مزرعه در این روز فیلتر شده‌اند."
+                    if not ranking_df_sorted.empty:
+                        context_data += f"\nخلاصه وضعیت مزارع بر اساس شاخص {selected_index}:\n"
+                        status_counts = ranking_df_sorted['وضعیت'].value_counts()
+                        context_data += f"- تعداد مزارع با بهبود/رشد: {status_counts.get('رشد مثبت', 0) + status_counts.get('بهبود', 0)}\n"
+                        context_data += f"- تعداد مزارع با وضعیت ثابت: {status_counts.get('ثابت', 0)}\n"
+                        context_data += f"- تعداد مزارع با تنش/کاهش: {status_counts.get('تنش/کاهش', 0) + status_counts.get('تنش/بدتر شدن', 0)}\n"
+                        context_data += f"- تعداد مزارع بدون داده: {status_counts.get('بدون داده', 0)}\n"
 
-                        else: # "همه مزارع" or no specific farm data
-                            context_data = f"وضعیت کلی مزارع برای روز '{selected_day}' و شاخص '{selected_index}' در حال بررسی است. تعداد {len(filtered_farms_df)} مزرعه در این روز فیلتر شده‌اند."
-                            if not ranking_df_sorted.empty:
-                                context_data += f"\nخلاصه وضعیت مزارع بر اساس شاخص {selected_index}:\n"
-                                status_counts = ranking_df_sorted['وضعیت'].value_counts() # Use original status_counts
-                                
-                                positive_statuses = ["رشد مثبت", "بهبود (تنش کمتر)", "افزایش رطوبت"]
-                                negative_statuses = ["کاهش/تنش", "بدتر شدن (تنش بیشتر)", "کاهش رطوبت"]
-                                count_positive = sum(status_counts.get(s, 0) for s in positive_statuses)
-                                count_negative = sum(status_counts.get(s, 0) for s in negative_statuses)
+                    prompt = f"شما یک دستیار هوشمند برای تحلیل داده‌های کشاورزی نیشکر هستید. کاربر سوالی در مورد وضعیت کلی مزارع پرسیده است: '{user_farm_q}'.\n{context_data}\nلطفاً بر اساس این اطلاعات و سوال کاربر، یک پاسخ جامع و مفید به زبان فارسی ارائه دهید."
 
-                                context_data += f"- تعداد مزارع با بهبود/رشد: {count_positive}\n"
-                                context_data += f"- تعداد مزارع با وضعیت ثابت: {status_counts.get('ثابت', 0)}\n"
-                                context_data += f"- تعداد مزارع با تنش/کاهش: {count_negative}\n"
-                                context_data += f"- تعداد مزارع بدون داده: {status_counts.get('بدون داده', 0)}\n"
+                with st.spinner("در حال پردازش پاسخ با Gemini..."):
+                    response = ask_gemini(prompt)
+                    st.markdown(response)
+        st.markdown("---")
 
-                            prompt = f"شما یک دستیار هوشمند برای تحلیل داده‌های کشاورزی نیشکر هستید. کاربر سوالی در مورد وضعیت کلی مزارع پرسیده است: '{user_farm_q}'.\n{context_data}\nلطفاً بر اساس این اطلاعات و سوال کاربر، یک پاسخ جامع و مفید به زبان فارسی ارائه دهید."
+        st.subheader("📄 تولید گزارش خودکار هفتگی برای مزرعه")
+        if selected_farm_name == "همه مزارع":
+            st.info("لطفاً یک مزرعه خاص را برای تولید گزارش انتخاب کنید.")
+        elif selected_farm_details is None:
+            st.info(f"داده‌های جزئی برای مزرعه {selected_farm_name} یافت نشد.")
+        elif ranking_df_sorted.empty:
+            st.info(f"داده‌های رتبه‌بندی برای مزرعه {selected_farm_name} جهت تولید گزارش موجود نیست.")
+        else:
+            if st.button(f"📝 تولید گزارش برای مزرعه '{selected_farm_name}'", key="btn_gemini_report"):
+                farm_data_for_report = ranking_df_sorted[ranking_df_sorted['مزرعه'] == selected_farm_name]
+                if not farm_data_for_report.empty:
+                    current_val_str = farm_data_for_report[f'{selected_index} (هفته جاری)'].iloc[0]
+                    prev_val_str = farm_data_for_report[f'{selected_index} (هفته قبل)'].iloc[0]
+                    change_str = farm_data_for_report['تغییر'].iloc[0]
+                    status_str = farm_data_for_report['وضعیت'].iloc[0]
+                    area_str = f"{selected_farm_details.get('مساحت', 'N/A'):,.2f}" if pd.notna(selected_farm_details.get('مساحت')) else "N/A"
+                    variety_str = selected_farm_details.get('واریته', 'N/A')
 
-                        with st.spinner("⏳ در حال پردازش پاسخ با Gemini..."):
-                            response = ask_gemini(prompt)
-                            st.markdown(response, unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
-        
-        with tab_gemini_report:
-            with st.container():
-                st.markdown('<div class="custom-panel">', unsafe_allow_html=True)
-                st.subheader("📄 تولید گزارش خودکار هفتگی برای مزرعه")
-                if selected_farm_name == "همه مزارع":
-                    st.info("لطفاً یک مزرعه خاص را برای تولید گزارش انتخاب کنید.")
-                elif selected_farm_details is None:
-                    st.info(f"داده‌های جزئی برای مزرعه {selected_farm_name} یافت نشد.")
-                elif ranking_df_sorted.empty:
-                    st.info(f"داده‌های رتبه‌بندی برای مزرعه {selected_farm_name} جهت تولید گزارش موجود نیست.")
+                    prompt = f"شما یک دستیار هوشمند برای تهیه گزارش‌های کشاورزی هستید. لطفاً یک گزارش توصیفی و ساختاریافته به زبان فارسی در مورد وضعیت مزرعه '{selected_farm_name}' برای هفته منتهی به {end_date_current_str} تهیه کنید.\n" \
+                             f"اطلاعات مزرعه:\n" \
+                             f"- مساحت: {area_str} هکتار\n" \
+                             f"- واریته: {variety_str}\n" \
+                             f"- شاخص مورد بررسی: {selected_index} ({index_options[selected_index]})\n" \
+                             f"- مقدار شاخص در هفته جاری: {current_val_str}\n" \
+                             f"- مقدار شاخص در هفته قبل: {prev_val_str}\n" \
+                             f"- تغییر نسبت به هفته قبل: {change_str}\n" \
+                             f"- وضعیت کلی بر اساس تغییرات: {status_str}\n\n" \
+                             f"در گزارش به موارد فوق اشاره کنید، تحلیل مختصری از وضعیت ارائه دهید و در صورت امکان، پیشنهادهای کلی (نه تخصصی) برای بهبود یا حفظ وضعیت مطلوب بیان کنید. گزارش باید رسمی و قابل فهم برای مدیران کشاورزی باشد."
+
+                    with st.spinner("در حال تولید گزارش با Gemini..."):
+                        response = ask_gemini(prompt, temperature=0.6, top_p=0.9)
+                        st.markdown(f"### گزارش هفتگی مزرعه {selected_farm_name} (شاخص {selected_index})")
+                        st.markdown(f"**تاریخ گزارش:** {datetime.date.today().strftime('%Y-%m-%d')}")
+                        st.markdown(f"**بازه زمانی مورد بررسی:** {start_date_current_str} الی {end_date_current_str}")
+                        st.markdown(response)
                 else:
-                    if st.button(f"📝 تولید گزارش برای مزرعه '{selected_farm_name}'", key="btn_gemini_report"):
-                        farm_data_for_report = ranking_df_sorted[ranking_df_sorted['مزرعه'] == selected_farm_name]
-                        if not farm_data_for_report.empty:
-                            current_val_str = farm_data_for_report[f'{selected_index} (هفته جاری)'].iloc[0]
-                            prev_val_str = farm_data_for_report[f'{selected_index} (هفته قبل)'].iloc[0]
-                            change_str = farm_data_for_report['تغییر'].iloc[0]
-                            original_status_str = farm_data_for_report['وضعیت'].iloc[0] # Get original status
+                    st.error(f"داده‌های کافی برای تولید گزارش برای مزرعه {selected_farm_name} یافت نشد.")
+        st.markdown("---")
 
-                            area_str = f"{selected_farm_details.get('مساحت', 'N/A'):,.2f}" if pd.notna(selected_farm_details.get('مساحت')) else "N/A"
-                            variety_str = selected_farm_details.get('واریته', 'N/A')
+        st.subheader(f"📉 تحلیل تغییرات شاخص {selected_index} (سری زمانی)")
+        if selected_farm_name == "همه مزارع":
+            st.info("لطفاً یک مزرعه خاص را برای تحلیل سری زمانی انتخاب کنید.")
+        elif selected_farm_geom:
+            is_point_geom_gemini = False
+            try:
+                if selected_farm_geom.type().getInfo() == 'Point': is_point_geom_gemini = True
+            except Exception:
+                if isinstance(selected_farm_geom, ee.geometry.Point): is_point_geom_gemini = True
 
-                            prompt = f"شما یک دستیار هوشمند برای تهیه گزارش‌های کشاورزی هستید. لطفاً یک گزارش توصیفی و ساختاریافته به زبان فارسی در مورد وضعیت مزرعه '{selected_farm_name}' برای هفته منتهی به {end_date_current_str} تهیه کنید.\n" \
-                                    f"اطلاعات مزرعه:\n" \
-                                    f"- مساحت: {area_str} هکتار\n" \
-                                    f"- واریته: {variety_str}\n" \
-                                    f"- شاخص مورد بررسی: {selected_index} ({index_options[selected_index]})\n" \
-                                    f"- مقدار شاخص در هفته جاری: {current_val_str}\n" \
-                                    f"- مقدار شاخص در هفته قبل: {prev_val_str}\n" \
-                                    f"- تغییر نسبت به هفته قبل: {change_str}\n" \
-                                    f"- وضعیت کلی بر اساس تغییرات: {original_status_str}\n\n" \
-                                    f"در گزارش به موارد فوق اشاره کنید، تحلیل مختصری از وضعیت ارائه دهید و در صورت امکان، پیشنهادهای کلی (نه تخصصی و قطعی) برای بررسی‌های بیشتر یا بهبود و حفظ وضعیت مطلوب بیان کنید. گزارش باید رسمی و قابل فهم برای مدیران کشاورزی باشد. از لیست‌ها و عنوان‌بندی برای خوانایی بهتر استفاده کنید."
-
-                            with st.spinner("⏳ در حال تولید گزارش با Gemini..."):
-                                response = ask_gemini(prompt, temperature=0.6, top_p=0.9)
-                                st.markdown(f"### گزارش هفتگی مزرعه {selected_farm_name} (شاخص {selected_index})")
-                                st.markdown(f"**تاریخ گزارش:** {datetime.date.today().strftime('%Y-%m-%d')}")
-                                st.markdown(f"**بازه زمانی مورد بررسی:** {start_date_current_str} الی {end_date_current_str}")
-                                st.markdown(response, unsafe_allow_html=True)
-                        else:
-                            st.error(f"داده‌های کافی برای تولید گزارش برای مزرعه {selected_farm_name} یافت نشد.")
-                st.markdown('</div>', unsafe_allow_html=True)
-
-        with tab_gemini_trend:
-            with st.container():
-                st.markdown('<div class="custom-panel">', unsafe_allow_html=True)
-                st.subheader(f"📉 تحلیل تغییرات شاخص {selected_index} (سری زمانی)")
-                if selected_farm_name == "همه مزارع":
-                    st.info("لطفاً یک مزرعه خاص را برای تحلیل سری زمانی انتخاب کنید.")
-                elif selected_farm_geom:
-                    is_point_geom_gemini = False
-                    try:
-                        if selected_farm_geom.type().getInfo() == 'Point': is_point_geom_gemini = True
-                    except Exception:
-                        if isinstance(selected_farm_geom, ee.geometry.Point): is_point_geom_gemini = True
-
-                    if is_point_geom_gemini:
-                        if st.button(f"🔍 تحلیل روند زمانی {selected_index} برای '{selected_farm_name}'", key="btn_gemini_timeseries"):
-                            timeseries_end_date_gemini = today.strftime('%Y-%m-%d')
-                            timeseries_start_date_gemini = (today - datetime.timedelta(days=180)).strftime('%Y-%m-%d') # Last 6 months
-                            ts_df_gemini, ts_error_gemini = get_index_time_series(
-                                selected_farm_geom, selected_index,
-                                start_date=timeseries_start_date_gemini, end_date=timeseries_end_date_gemini
-                            )
-                            if ts_error_gemini:
-                                st.error(f"خطا در دریافت داده‌های سری زمانی برای Gemini: {ts_error_gemini}")
-                            elif not ts_df_gemini.empty:
-                                ts_summary = f"داده‌های نمونه از سری زمانی شاخص {selected_index} برای مزرعه '{selected_farm_name}' در 6 ماه گذشته (از {timeseries_start_date_gemini} تا {timeseries_end_date_gemini}):\n"
-                                # Sample fewer points if too many, ensure first and last are included
-                                if len(ts_df_gemini) > 10:
-                                    sample_indices = list(range(0, len(ts_df_gemini), len(ts_df_gemini)//7))
-                                    if len(ts_df_gemini)-1 not in sample_indices: sample_indices.append(len(ts_df_gemini)-1)
-                                    ts_sample_df = ts_df_gemini.iloc[sorted(list(set(sample_indices)))]
-                                else:
-                                    ts_sample_df = ts_df_gemini
-                                ts_summary += ts_sample_df.to_string(header=True, index=True)
-                                ts_summary += f"\nمقدار اولیه حدود {ts_df_gemini[selected_index].iloc[0]:.3f} و مقدار نهایی حدود {ts_df_gemini[selected_index].iloc[-1]:.3f} بوده است. تعداد کل نقاط داده: {len(ts_df_gemini)}."
-                                
-                                prompt = f"شما یک تحلیلگر داده‌های کشاورزی سنجش از دور هستید. بر اساس داده‌های سری زمانی زیر برای شاخص {selected_index} ({index_options[selected_index]}) مزرعه '{selected_farm_name}' طی 6 ماه گذشته:\n{ts_summary}\n" \
-                                        f"۱. روند کلی تغییرات شاخص (افزایشی، کاهشی، نوسانی، ثابت) را به تفصیل توصیف کنید.\n" \
-                                        f"۲. آیا نقاط عطف، دوره‌های رشد سریع، کاهش ناگهانی یا تغییرات قابل توجه دیگری در روند مشاهده می‌شود؟ آنها را شناسایی و زمان تقریبی وقوعشان را ذکر کنید.\n" \
-                                        f"۳. دلایل احتمالی کلی (مانند تغییرات فصلی طبیعی، مراحل مختلف رشد گیاه نیشکر، عملیات زراعی احتمالی، یا تنش‌های محیطی عمومی) برای این روندها و تغییرات چه می‌تواند باشد؟\n" \
-                                        f"پاسخ به زبان فارسی، کاملاً ساختاریافته، تحلیلی و دقیق باشد. از لیست‌ها و توضیحات واضح استفاده کنید."
-                                with st.spinner(f"⏳ در حال تحلیل روند زمانی {selected_index} با Gemini..."):
-                                    response = ask_gemini(prompt, temperature=0.5)
-                                    st.markdown(response, unsafe_allow_html=True)
-                            else:
-                                st.info(f"داده‌ای برای تحلیل سری زمانی {selected_index} برای مزرعه {selected_farm_name} یافت نشد.")
+            if is_point_geom_gemini:
+                if st.button(f"🔍 تحلیل روند زمانی {selected_index} برای '{selected_farm_name}'", key="btn_gemini_timeseries"):
+                    timeseries_end_date_gemini = today.strftime('%Y-%m-%d')
+                    timeseries_start_date_gemini = (today - datetime.timedelta(days=180)).strftime('%Y-%m-%d') # Last 6 months
+                    ts_df_gemini, ts_error_gemini = get_index_time_series(
+                        selected_farm_geom, selected_index,
+                        start_date=timeseries_start_date_gemini, end_date=timeseries_end_date_gemini
+                    )
+                    if ts_error_gemini:
+                        st.error(f"خطا در دریافت داده‌های سری زمانی برای Gemini: {ts_error_gemini}")
+                    elif not ts_df_gemini.empty:
+                        # Prepare a summary of time series for the prompt
+                        ts_summary = f"داده‌های سری زمانی شاخص {selected_index} برای مزرعه '{selected_farm_name}' در 6 ماه گذشته (از {timeseries_start_date_gemini} تا {timeseries_end_date_gemini}):\n"
+                        ts_summary += ts_df_gemini.iloc[::len(ts_df_gemini)//5 if len(ts_df_gemini)>5 else 1].to_string(header=True, index=True) # Sample ~5 points
+                        ts_summary += f"\nمقدار اولیه حدود {ts_df_gemini[selected_index].iloc[0]:.3f} و مقدار نهایی حدود {ts_df_gemini[selected_index].iloc[-1]:.3f} بوده است."
+                        
+                        prompt = f"شما یک تحلیلگر داده‌های کشاورزی هستید. بر اساس داده‌های سری زمانی زیر برای شاخص {selected_index} مزرعه '{selected_farm_name}' طی 6 ماه گذشته:\n{ts_summary}\n" \
+                                 f"۱. روند کلی تغییرات شاخص (افزایشی، کاهشی، نوسانی، ثابت) را توصیف کنید.\n" \
+                                 f"۲. نقاط عطف یا تغییرات قابل توجه در روند را شناسایی کنید (اگر وجود دارد).\n" \
+                                 f"۳. دلایل احتمالی کلی (مانند تغییرات فصلی، مراحل رشد گیاه، تنش‌های محیطی عمومی) برای این روندها چه می‌تواند باشد؟\n" \
+                                 f"پاسخ به زبان فارسی، ساختاریافته و تحلیلی باشد."
+                        with st.spinner(f"در حال تحلیل روند زمانی {selected_index} با Gemini..."):
+                            response = ask_gemini(prompt, temperature=0.5)
+                            st.markdown(response)
                     else:
-                        st.info("تحلیل سری زمانی فقط برای مزارع منفرد (نقطه‌ای) امکان‌پذیر است.")
-                st.markdown('</div>', unsafe_allow_html=True)
+                        st.info(f"داده‌ای برای تحلیل سری زمانی {selected_index} برای مزرعه {selected_farm_name} یافت نشد.")
+            else:
+                st.info("تحلیل سری زمانی فقط برای مزارع منفرد (نقطه‌ای) امکان‌پذیر است.")
+        st.markdown("---")
 
-        with tab_gemini_actions:
-            with st.container():
-                st.markdown('<div class="custom-panel">', unsafe_allow_html=True)
-                st.subheader("🌱 پیشنهاد اقدامات کشاورزی")
-                if selected_farm_name == "همه مزارع":
-                    st.info("لطفاً یک مزرعه خاص را برای دریافت پیشنهادات انتخاب کنید.")
-                elif selected_farm_details is None or ranking_df_sorted.empty :
-                    st.info(f"داده‌های کافی برای ارائه پیشنهاد برای مزرعه {selected_farm_name} موجود نیست.")
+        st.subheader("🌱 پیشنهاد اقدامات کشاورزی")
+        if selected_farm_name == "همه مزارع":
+            st.info("لطفاً یک مزرعه خاص را برای دریافت پیشنهادات انتخاب کنید.")
+        elif selected_farm_details is None or ranking_df_sorted.empty :
+             st.info(f"داده‌های کافی برای ارائه پیشنهاد برای مزرعه {selected_farm_name} موجود نیست.")
+        else:
+            if st.button(f"💡 دریافت پیشنهادات برای مزرعه '{selected_farm_name}'", key="btn_gemini_actions"):
+                farm_data_for_actions = ranking_df_sorted[ranking_df_sorted['مزرعه'] == selected_farm_name]
+                if not farm_data_for_actions.empty:
+                    current_val_str = farm_data_for_actions[f'{selected_index} (هفته جاری)'].iloc[0]
+                    status_str = farm_data_for_actions['وضعیت'].iloc[0]
+
+                    prompt = f"شما یک مشاور کشاورزی هوشمند هستید. برای مزرعه '{selected_farm_name}'، شاخص {selected_index} ({index_options[selected_index]}) در هفته جاری مقدار {current_val_str} را نشان می‌دهد و وضعیت کلی آن '{status_str}' ارزیابی شده است.\n" \
+                             f"بر اساس این اطلاعات:\n" \
+                             f"۱. تفسیر مختصری از مقدار فعلی شاخص {selected_index} ارائه دهید (مثلاً اگر NDVI پایین است، یعنی چه؟ اگر MSI بالاست یعنی چه؟).\n" \
+                             f"۲. با توجه به مقدار شاخص و وضعیت، چه نوع بررسی‌ها یا اقدامات عمومی کشاورزی (مانند بررسی آبیاری، نیاز به عناصر غذایی، پایش آفات و بیماری‌ها، مدیریت بقایا) ممکن است لازم باشد؟ لطفاً پیشنهادات کلی و غیر تخصصی ارائه دهید.\n" \
+                             f"پاسخ به زبان فارسی و به صورت عملیاتی باشد."
+
+                    with st.spinner("در حال دریافت پیشنهادات کشاورزی با Gemini..."):
+                        response = ask_gemini(prompt, temperature=0.8, top_k=30)
+                        st.markdown(response)
                 else:
-                    if st.button(f"💡 دریافت پیشنهادات برای مزرعه '{selected_farm_name}'", key="btn_gemini_actions"):
-                        farm_data_for_actions = ranking_df_sorted[ranking_df_sorted['مزرعه'] == selected_farm_name]
-                        if not farm_data_for_actions.empty:
-                            current_val_str = farm_data_for_actions[f'{selected_index} (هفته جاری)'].iloc[0]
-                            original_status_str = farm_data_for_actions['وضعیت'].iloc[0] # Get original status
+                    st.error(f"داده‌های رتبه‌بندی برای مزرعه {selected_farm_name} جهت ارائه پیشنهاد یافت نشد.")
+        st.markdown("---")
 
-                            prompt = f"شما یک مشاور کشاورزی هوشمند برای مزارع نیشکر هستید. برای مزرعه '{selected_farm_name}'، شاخص {selected_index} ({index_options[selected_index]}) در هفته جاری مقدار {current_val_str} را نشان می‌دهد و وضعیت کلی آن '{original_status_str}' ارزیابی شده است.\n" \
-                                    f"بر اساس این اطلاعات:\n" \
-                                    f"۱. تفسیر مختصری از مقدار فعلی شاخص {selected_index} و معنای آن برای سلامت و وضعیت گیاه نیشکر ارائه دهید (مثلاً اگر NDVI پایین است، یعنی چه؟ اگر MSI بالاست یعنی چه؟ ارتباط آن با نیاز آبی یا غذایی چیست؟).\n" \
-                                    f"۲. با توجه به مقدار شاخص و وضعیت '{original_status_str}'، چه نوع بررسی‌های میدانی دقیق‌تر یا اقدامات عمومی کشاورزی (مانند تنظیم آبیاری، بررسی نیاز به عناصر غذایی خاص، پایش دقیق آفات و بیماری‌ها، مدیریت بقایای گیاهی، یا بررسی فشردگی خاک) ممکن است لازم باشد؟ لطفاً پیشنهادات کلی، عملی و اولویت‌بندی شده (در صورت امکان) ارائه دهید. تاکید کنید که اینها پیشنهادهای اولیه هستند و نیاز به بررسی کارشناسی دارند.\n" \
-                                    f"پاسخ به زبان فارسی، به صورت عملیاتی، و با لحنی مشاوره‌ای و مفید باشد."
+        st.subheader("🗣️ پاسخ به سوالات عمومی کاربران")
+        user_general_q = st.text_input("سوال عمومی خود را در مورد مفاهیم کشاورزی، شاخص‌های سنجش از دور یا این سامانه بپرسید:", key="gemini_general_q")
+        if st.button("❓ پرسیدن سوال از Gemini", key="btn_gemini_general_q"):
+            if not user_general_q:
+                st.info("لطفاً سوال خود را وارد کنید.")
+            else:
+                prompt = f"شما یک دانشنامه هوشمند در زمینه کشاورزی و سنجش از دور هستید. لطفاً به سوال زیر که توسط یک کاربر سامانه پایش نیشکر پرسیده شده است، به زبان فارسی پاسخ دهید. سعی کنید پاسخ شما ساده، قابل فهم و دقیق باشد.\n\nسوال کاربر: '{user_general_q}'"
+                if "مزرعه من قرمز شده" in user_general_q or "مزرعه قرمز" in user_general_q: # Heuristic
+                     if selected_farm_name != "همه مزارع" and not ranking_df_sorted.empty:
+                        farm_data_color = ranking_df_sorted[ranking_df_sorted['مزرعه'] == selected_farm_name]
+                        if not farm_data_color.empty and selected_index in ['NDVI', 'EVI', 'LAI', 'CVI']: # Indices where red is bad
+                            current_val_color = farm_data_color[f'{selected_index} (هفته جاری)'].iloc[0]
+                            prompt = f"شما یک دانشنامه هوشمند در زمینه کشاورزی و سنجش از دور هستید. کاربر پرسیده: '{user_general_q}'. در این سامانه، رنگ قرمز روی نقشه برای شاخص‌هایی مانند NDVI معمولاً نشان‌دهنده مقدار پایین و وضعیت نامطلوب پوشش گیاهی است. برای مزرعه '{selected_farm_name}'، مقدار فعلی شاخص {selected_index} برابر {current_val_color} است. لطفاً توضیح دهید که چه عواملی می‌توانند باعث پایین بودن این شاخص و 'قرمز' دیده شدن مزرعه در نقشه شوند و چه بررسی‌هایی ممکن است لازم باشد. پاسخ به زبان فارسی."
 
-                            with st.spinner("⏳ در حال دریافت پیشنهادات کشاورزی با Gemini..."):
-                                response = ask_gemini(prompt, temperature=0.8, top_k=30)
-                                st.markdown(response, unsafe_allow_html=True)
-                        else:
-                            st.error(f"داده‌های رتبه‌بندی برای مزرعه {selected_farm_name} جهت ارائه پیشنهاد یافت نشد.")
-                st.markdown('</div>', unsafe_allow_html=True)
 
-        with tab_gemini_general:
-            with st.container():
-                st.markdown('<div class="custom-panel">', unsafe_allow_html=True)
-                st.subheader("🗣️ پاسخ به سوالات عمومی کاربران")
-                user_general_q = st.text_input("سوال عمومی خود را در مورد مفاهیم کشاورزی، شاخص‌های سنجش از دور یا این سامانه بپرسید:", key="gemini_general_q", placeholder="مثلا: شاخص NDVI چیست و چه کاربردی دارد؟ یا چگونه می‌توانم از این سامانه بهتر استفاده کنم؟")
-                if st.button("❓ پرسیدن سوال از Gemini", key="btn_gemini_general_q"):
-                    if not user_general_q:
-                        st.info("لطفاً سوال خود را وارد کنید.")
-                    else:
-                        prompt_base = f"شما یک دانشنامه هوشمند در زمینه کشاورزی نیشکر، سنجش از دور و کار با سامانه‌های پایش کشاورزی هستید. لطفاً به سوال زیر که توسط یک کاربر سامانه پایش نیشکر پرسیده شده است، به زبان فارسی پاسخ دهید. سعی کنید پاسخ شما ساده، قابل فهم، دقیق و کاربردی باشد.\n\nسوال کاربر: '{user_general_q}'"
-                        
-                        # Contextual enhancement for common questions
-                        context_specific = ""
-                        if "مزرعه من قرمز شده" in user_general_q.lower() or "مزرعه قرمز" in user_general_q.lower() or "رنگ قرمز" in user_general_q.lower():
-                            if selected_farm_name != "همه مزارع" and not ranking_df_sorted.empty:
-                                farm_data_color = ranking_df_sorted[ranking_df_sorted['مزرعه'] == selected_farm_name]
-                                if not farm_data_color.empty and selected_index in ['NDVI', 'EVI', 'LAI', 'CVI']: # Indices where red is bad
-                                    current_val_color = farm_data_color[f'{selected_index} (هفته جاری)'].iloc[0]
-                                    context_specific = f"\n\nاطلاعات تکمیلی برای پاسخ دقیق‌تر: در این سامانه، رنگ قرمز روی نقشه برای شاخص‌هایی مانند NDVI، EVI، LAI و CVI معمولاً نشان‌دهنده مقدار پایین و وضعیت نامطلوب پوشش گیاهی است. برای مزرعه '{selected_farm_name}' (که ممکن است کاربر به آن اشاره داشته باشد)، مقدار فعلی شاخص {selected_index} برابر {current_val_color} است. لطفاً در پاسخ خود به این نکته توجه کنید و توضیح دهید که چه عواملی می‌توانند باعث پایین بودن این شاخص و 'قرمز' دیده شدن مزرعه در نقشه شوند و چه بررسی‌های کلی ممکن است لازم باشد."
-                        
-                        prompt = prompt_base + context_specific
-                        
-                        with st.spinner("⏳ در حال جستجو برای پاسخ با Gemini..."):
-                            response = ask_gemini(prompt, temperature=0.4) # Slightly lower temp for factual Qs
-                            st.markdown(response, unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
+                with st.spinner("در حال جستجو برای پاسخ با Gemini..."):
+                    response = ask_gemini(prompt, temperature=0.3)
+                    st.markdown(response)
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("<p style='text-align: center; font-size: 0.85em; color: #777;'>ساخته شده با 💻 توسط <strong>اسماعیل کیانی</strong></p>", unsafe_allow_html=True)
-st.sidebar.markdown("<p style='text-align: center; font-size: 0.8em; color: #888;'>با استفاده از Streamlit, GEE, Geemap و Gemini API</p>", unsafe_allow_html=True)
-
-# --- Parallax Background & Logo ---
-BACKGROUND_IMAGE_URL = "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80"  # نمای ماهواره‌ای کشاورزی
-
-# --- Parallax Background HTML ---
-# The st.markdown block for parallax CSS (original lines 1082-1097) is removed.
-# The st.markdown block for the parallax div (original lines 1098-1099) is removed.
-# --- Header with Logo and Sugarcane Icon ---
-# The st.markdown block for the header (original lines 1102-1110) is removed as it has been moved to the top.
-# --- Sidebar Logo ---
-st.sidebar.markdown(f"""
-    <div class="sidebar-logo">
-        <img src="{LOGO_PATH}" alt="لوگو" />
-        <span style='font-size:1.1em; color:#009688; font-weight:700;'>دهخدا</span>
-    </div>
-""", unsafe_allow_html=True)
-
-# حذف هدر تکراری قبلی (در صورت وجود)
-# st.sidebar.markdown("<h1 ...") و مشابه آن را حذف یا کامنت کنید
-
-# --- بهبود ساختار پنل‌ها (نمونه برای یک پنل) ---
-# برای هر پنل اصلی، یک آیکون و عنوان با ساختار جدید اضافه کنید (در صورت نیاز، نمونه کد برای یک پنل داده می‌شود)
-# مثال:
-# st.markdown(f"""
-# <div class='custom-panel'>
-#   <div style='display:flex;align-items:center;gap:10px;'>
-#     <span>{SUGARCANE_SVG}</span>
-#     <h2 style='margin:0;color:#009688;'>جزئیات مزرعه</h2>
-#   </div>
-#   ...
-# </div>
-# """, unsafe_allow_html=True)
-# (در صورت نیاز، برای سایر پنل‌ها هم این ساختار را تکرار کنید)
+st.sidebar.markdown("ساخته شده با 💻 توسط [اسماعیل کیانی] با استفاده از Streamlit, Google Earth Engine, geemap و Gemini API")
+st.sidebar.markdown("🌾 شرکت کشت و صنعت دهخدا")
