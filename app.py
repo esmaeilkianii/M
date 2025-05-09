@@ -579,7 +579,7 @@ with tab_dashboard: # Was tab1
                  st.markdown(f"""
                     **کانال:** {selected_farm_details.get('کانال', 'N/A')} | 
                     **اداره:** {selected_farm_details.get('اداره', 'N/A')} <br>
-                    **مختصات:** {lat:.5f}, {lon:.5f}
+                    <span>**مختصات:**</span> {lat:.5f}, {lon:.5f}
                  """, unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
