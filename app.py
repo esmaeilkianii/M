@@ -211,14 +211,22 @@ st.markdown("""
         }
     </style>
 """, unsafe_allow_html=True)
-
 # Inserted Header (moved from near the end of the file)
+
+# Define SUGARCANE_SVG and LOGO_PATH here as they are used in the markdown below.
+# These definitions are copied from their original location later in the file
+# to resolve the NameError caused by moving this header block.
+# Consider consolidating these definitions if they are duplicated elsewhere.
+LOGO_PATH = "logo (1).png"
+SUGARCANE_SVG = '''<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><g><rect width="32" height="32" rx="16" fill="#e0f7fa"/><path d="M16 26C16 26 13 19 13 13C13 8 16 6 16 6C16 6 19 8 19 13C19 19 16 26 16 26Z" stroke="#43a047" stroke-width="2" fill="#a5d6a7"/><path d="M16 13C16 13 14 11 14 9" stroke="#388e3c" stroke-width="1.5" stroke-linecap="round"/><path d="M16 13C16 13 18 11 18 9" stroke="#388e3c" stroke-width="1.5" stroke-linecap="round"/></g></svg>'''
+
 st.markdown(f"""
     <div class="header-logo" style="margin-top: 1rem; margin-bottom: 1rem; padding-right: 1rem; padding-left: 1rem;">
         <span class="sugarcane-icon">{SUGARCANE_SVG}</span>
         <h1 style='margin:0 10px 0 0; font-size:2.2em; color:#0d3c47; font-weight:800; display:inline;'>سامانه پایش هوشمند نیشکر</h1>
         <img src="{LOGO_PATH}" alt="لوگو" />
     </div>
+""", unsafe_allow_html=True)
 """, unsafe_allow_html=True)
 
 # --- Configuration ---
