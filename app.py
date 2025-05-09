@@ -1,4 +1,4 @@
-import streamlit as st
+mport streamlit as st
 import pandas as pd
 import ee
 import geemap.foliumap as geemap
@@ -38,212 +38,162 @@ if GEMINI_API_KEY == "AIzaSyC6ntMs3XDa3JTk07-6_BRRCduiQaRmQFQ":
 # --- Custom CSS for Modern Look and Animations ---
 st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700&display=swap');
-        
+        @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700&display=swap');
         body {
             font-family: 'Vazirmatn', sans-serif;
-            background-color: #f4f6f9; /* Light grey background for a softer look */
+            background: linear-gradient(135deg, #e0f7fa 0%, #f8fafc 100%);
+            min-height: 100vh;
         }
-        
-        /* Main container subtle fade-in */
-        .main > div { 
-            animation: fadeInAnimation ease-in 0.8s;
-            animation-iteration-count: 1;
-            animation-fill-mode: forwards;
+        /* Fade-in and slide-in animation for main container */
+        .main > div {
+            animation: fadeSlideIn 1s cubic-bezier(.4,0,.2,1);
+            animation-fill-mode: both;
         }
-        @keyframes fadeInAnimation {
-            0% {
-                opacity: 0;
-                transform: translateY(15px);
-            }
-            100% {
-                opacity: 1;
-                transform: translateY(0);
-            }
+        @keyframes fadeSlideIn {
+            0% { opacity: 0; transform: translateY(30px); }
+            100% { opacity: 1; transform: translateY(0); }
         }
-
         /* Headers */
         h1, h2, h3 {
             font-family: 'Vazirmatn', sans-serif;
-            color: #1a2534; /* Darker, more modern header color */
+            color: #0d3c47;
             text-align: right;
         }
-        h1 {
-            font-weight: 700;
-        }
-        h2 {
-            font-weight: 600;
-            margin-top: 1.5em;
-            margin-bottom: 0.8em;
-            border-bottom: 2px solid #e0e0e0;
-            padding-bottom: 0.3em;
-        }
-        h3 {
-            font-weight: 500;
-            color: #2c3e50;
-        }
-        
-        /* Metric Cards Styling */
+        h1 { font-weight: 700; }
+        h2 { font-weight: 600; border-bottom: 2px solid #b2ebf2; padding-bottom: 0.3em; }
+        h3 { font-weight: 500; color: #009688; }
+        /* Metric Cards */
         div[data-testid="stMetric"] {
-            background-color: #ffffff !important;
-            border: 1px solid #e8e8e8;
-            border-left: 6px solid #007bff !important; /* Primary blue for left border */
-            border-radius: 12px;
-            padding: 1.2rem 1.5rem;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.07);
-            transition: transform 0.25s ease-in-out, box-shadow 0.25s ease-in-out;
+            background: linear-gradient(120deg, #e0f2f1 60%, #fff 100%);
+            border: none;
+            border-radius: 18px;
+            padding: 1.3rem 1.7rem;
+            box-shadow: 0 6px 24px rgba(0, 188, 212, 0.10);
+            transition: transform 0.22s, box-shadow 0.22s;
             font-family: 'Vazirmatn', sans-serif;
         }
         div[data-testid="stMetric"]:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+            transform: translateY(-5px) scale(1.03);
+            box-shadow: 0 10px 32px rgba(0, 188, 212, 0.18);
         }
-        div[data-testid="stMetric"] label { /* Metric label */
-            font-weight: 500;
-            color: #555;
-            font-size: 0.95em;
+        div[data-testid="stMetric"] label {
+            font-weight: 500; color: #009688; font-size: 1em;
         }
-        div[data-testid="stMetric"] div[data-testid="stMetricValue"] { /* Metric value */
-            font-size: 2.2em;
-            font-weight: 700;
-            color: #0056b3; /* Darker blue for value */
+        div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
+            font-size: 2.3em; font-weight: 700; color: #0d47a1;
         }
-        div[data-testid="stMetric"] div[data-testid="stMetricDelta"] { /* Metric delta */
-            font-weight: 500;
-            font-size: 0.9em;
-        }
-        /* Custom colors for delta based on positive/negative - Streamlit handles this, but can be overridden */
-        /* .stMetricDelta > div[class*="Positive"] { color: #28a745 !important; } */
-        /* .stMetricDelta > div[class*="Negative"] { color: #dc3545 !important; } */
-
         /* Tabs */
         .stTabs [data-baseweb="tab-list"] {
-            gap: 5px; /* Space between tabs */
-            direction: rtl;
-            border-bottom: 2px solid #dee2e6; /* Underline for the tab bar */
+            gap: 7px; direction: rtl; border-bottom: 2px solid #b2ebf2;
         }
         .stTabs [data-baseweb="tab"] {
-            height: 55px;
-            padding: 12px 25px;
-            background-color: transparent; /* Cleaner look */
-            border-radius: 8px 8px 0 0;
+            height: 56px; padding: 13px 30px;
+            background: linear-gradient(90deg, #e0f7fa 60%, #fff 100%);
+            border-radius: 12px 12px 0 0;
             font-family: 'Vazirmatn', sans-serif;
-            font-weight: 600;
-            font-size: 1.05em;
-            color: #495057;
-            border: none; /* Remove default borders */
-            border-bottom: 4px solid transparent; /* For active state */
-            transition: color 0.2s ease, border-bottom-color 0.2s ease;
+            font-weight: 600; font-size: 1.08em; color: #009688;
+            border: none; border-bottom: 4px solid transparent;
+            transition: color 0.2s, border-bottom-color 0.2s, background 0.2s;
         }
         .stTabs [data-baseweb="tab"]:hover {
-            background-color: #e9ecef;
-            color: #0056b3;
+            background: #b2ebf2; color: #ff9800;
         }
         .stTabs [data-baseweb="tab"][aria-selected="true"] {
-            background-color: #ffffff; /* Slightly different bg for active tab */
-            color: #007bff; /* Primary color for active tab text */
-            border-bottom: 4px solid #007bff; /* Prominent underline for active tab */
-            box-shadow: 0 -3px 5px rgba(0,0,0,0.03);
+            background: #fff; color: #0d47a1; border-bottom: 4px solid #ff9800;
+            box-shadow: 0 -3px 8px rgba(0,188,212,0.07);
         }
-        
         /* Tables */
         .dataframe {
             font-family: 'Vazirmatn', sans-serif;
             text-align: right;
-            border-radius: 8px;
-            overflow: hidden; /* Ensures border-radius is applied to table */
+            border-radius: 12px;
+            overflow: hidden;
+            background: #fff;
+            box-shadow: 0 2px 12px rgba(0,188,212,0.07);
         }
         .dataframe thead th {
-            background-color: #e9ecef;
-            color: #343a40;
-            font-weight: 600;
+            background: #b2ebf2;
+            color: #0d3c47;
+            font-weight: 700;
+            position: sticky; top: 0; z-index: 2;
         }
-        
+        .dataframe tbody tr:nth-child(even) { background: #f1f8e9; }
+        .dataframe tbody tr:nth-child(odd) { background: #fff; }
         /* Sidebar */
-        .css-1d391kg { /* Streamlit's default sidebar class, adjust if different */
+        .css-1d391kg, .st-emotion-cache-1d391kg {
             font-family: 'Vazirmatn', sans-serif;
             direction: rtl;
-            background-color: #ffffff; /* White sidebar background */
-            padding: 1.5rem 1rem;
-            box-shadow: 2px 0 10px rgba(0,0,0,0.05);
+            background: linear-gradient(135deg, #b2ebf2 0%, #fff 100%);
+            padding: 2rem 1.2rem 1.2rem 1.2rem;
+            box-shadow: 2px 0 18px rgba(0,188,212,0.08);
+            border-radius: 0 18px 18px 0;
         }
         .css-1d391kg .stSelectbox label, .css-1d391kg .stTextInput label {
-             font-weight: 600;
-             color: #333;
+            font-weight: 600; color: #0d3c47;
         }
-        
-        /* Custom status badges */
+        /* Status badges */
         .status-badge {
-            padding: 5px 10px;
-            border-radius: 18px;
-            font-size: 0.85em;
-            font-weight: 500;
-            display: inline-block;
+            padding: 6px 14px; border-radius: 20px; font-size: 0.95em; font-weight: 600; display: inline-block;
         }
-        .status-positive { /* رشد مثبت, بهبود */
-            background-color: #d1f7e0; /* Lighter green */
-            color: #126b39;
-            border: 1px solid #a3e9c1;
-        }
-        .status-neutral { /* ثابت */
-            background-color: #feefc9; /* Lighter yellow */
-            color: #7a5b0c;
-            border: 1px solid #fddc93;
-        }
-        .status-negative { /* تنش/کاهش, تنش/بدتر شدن */
-            background-color: #fddde2; /* Lighter red */
-            color: #8b1e2c;
-            border: 1px solid #fbbbc3;
-        }
-        .status-no-data { /* بدون داده */
-            background-color: #e9ecef;
-            color: #495057;
-            border: 1px solid #ced4da;
-        }
-
+        .status-positive { background: #e0f2f1; color: #00796b; border: 1px solid #b2dfdb; }
+        .status-neutral { background: #fffde7; color: #fbc02d; border: 1px solid #ffe082; }
+        .status-negative { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
+        .status-no-data { background: #eceff1; color: #607d8b; border: 1px solid #b0bec5; }
         /* Buttons */
         .stButton > button {
-            border-radius: 25px; /* More rounded */
-            padding: 10px 22px;
-            font-weight: 600;
+            border-radius: 30px;
+            padding: 12px 28px;
+            font-weight: 700;
             border: none;
-            background-color: #007bff;
+            background: linear-gradient(90deg, #00bcd4 60%, #009688 100%);
             color: white;
-            transition: background-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
-            box-shadow: 0 3px 6px rgba(0,123,255,0.2);
+            font-size: 1.08em;
+            box-shadow: 0 4px 16px rgba(0,188,212,0.13);
+            transition: background 0.2s, transform 0.18s, box-shadow 0.2s;
         }
         .stButton > button:hover {
-            background-color: #0056b3;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 10px rgba(0,86,179,0.3);
+            background: linear-gradient(90deg, #ff9800 60%, #00bcd4 100%);
+            transform: translateY(-2px) scale(1.04);
+            box-shadow: 0 8px 24px rgba(255,152,0,0.13);
         }
         .stButton > button:active {
-            transform: translateY(0px);
-            box-shadow: 0 2px 4px rgba(0,123,255,0.2);
+            transform: translateY(0px) scale(0.98);
+            box-shadow: 0 2px 6px rgba(0,188,212,0.10);
         }
-
         /* Input fields */
         .stTextInput input, .stSelectbox div[data-baseweb="select"] > div, .stDateInput input {
-            border-radius: 8px;
-            border: 1px solid #ced4da;
-            padding: 10px 12px;
-            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            border-radius: 10px;
+            border: 1.5px solid #b2ebf2;
+            padding: 12px 14px;
             font-family: 'Vazirmatn', sans-serif;
+            font-size: 1.05em;
+            transition: border-color 0.2s, box-shadow 0.2s;
         }
-        .stTextInput input:focus, 
-        .stSelectbox div[data-baseweb="select"] > div:focus-within,
-        .stDateInput input:focus {
-            border-color: #80bdff;
-            box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+        .stTextInput input:focus, .stSelectbox div[data-baseweb="select"] > div:focus-within, .stDateInput input:focus {
+            border-color: #00bcd4;
+            box-shadow: 0 0 0 0.18rem rgba(0,188,212,.18);
         }
-        
-        /* Styling for containers or panels */
+        /* Custom panel/card */
         .custom-panel {
-            background-color: #ffffff;
-            padding: 25px;
-            border-radius: 15px;
-            box-shadow: 0 6px 18px rgba(0,0,0,0.08);
-            margin-bottom: 25px;
+            background: rgba(255,255,255,0.92);
+            padding: 28px 22px;
+            border-radius: 18px;
+            box-shadow: 0 8px 32px rgba(0,188,212,0.10);
+            margin-bottom: 28px;
+            animation: fadeSlideIn 0.8s cubic-bezier(.4,0,.2,1);
+        }
+        /* Add subtle hover effect to custom panels */
+        .custom-panel:hover {
+            box-shadow: 0 12px 36px rgba(255,152,0,0.10);
+            transform: scale(1.01);
+        }
+        /* Scrollbar styling */
+        ::-webkit-scrollbar { width: 10px; background: #e0f7fa; }
+        ::-webkit-scrollbar-thumb { background: #b2ebf2; border-radius: 8px; }
+        /* Responsive tweaks */
+        @media (max-width: 900px) {
+            .custom-panel { padding: 16px 6px; }
+            .stTabs [data-baseweb="tab"] { padding: 10px 10px; font-size: 0.98em; }
         }
     </style>
 """, unsafe_allow_html=True)
