@@ -1052,3 +1052,69 @@ with tab_gemini: # Was tab3
 st.sidebar.markdown("---")
 st.sidebar.markdown("<p style='text-align: center; font-size: 0.85em; color: #777;'>ساخته شده با 💻 توسط <strong>اسماعیل کیانی</strong></p>", unsafe_allow_html=True)
 st.sidebar.markdown("<p style='text-align: center; font-size: 0.8em; color: #888;'>با استفاده از Streamlit, GEE, Geemap و Gemini API</p>", unsafe_allow_html=True)
+
+# --- Parallax Background & Logo ---
+BACKGROUND_IMAGE_URL = "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80"  # نمای ماهواره‌ای کشاورزی
+LOGO_PATH = "logo (1).png"  # مسیر لوگوی پروژه
+SUGARCANE_SVG = '''<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><g><rect width="32" height="32" rx="16" fill="#e0f7fa"/><path d="M16 26C16 26 13 19 13 13C13 8 16 6 16 6C16 6 19 8 19 13C19 19 16 26 16 26Z" stroke="#43a047" stroke-width="2" fill="#a5d6a7"/><path d="M16 13C16 13 14 11 14 9" stroke="#388e3c" stroke-width="1.5" stroke-linecap="round"/><path d="M16 13C16 13 18 11 18 9" stroke="#388e3c" stroke-width="1.5" stroke-linecap="round"/></g></svg>'''
+
+# --- Parallax Background HTML ---
+st.markdown(f"""
+    <style>
+    .parallax-bg {{
+        position: fixed;
+        top: 0; left: 0; width: 100vw; height: 350px;
+        background: url('{BACKGROUND_IMAGE_URL}') center center/cover no-repeat;
+        z-index: -10;
+        animation: moveBg 30s linear infinite alternate;
+        filter: brightness(0.85) blur(0.5px);
+    }}
+    @keyframes moveBg {{
+        0% {{ background-position: center 0; }}
+        100% {{ background-position: center 60px; }}
+    }}
+    .header-logo {{
+        display: flex; align-items: center; justify-content: flex-end;
+        gap: 12px; margin-bottom: 10px;
+    }}
+    .header-logo img {{ height: 54px; border-radius: 12px; box-shadow: 0 2px 8px #b2ebf2; }}
+    .header-logo .sugarcane-icon {{ margin-left: 8px; }}
+    .sidebar-logo {{ display: flex; flex-direction: column; align-items: center; margin-bottom: 18px; }}
+    .sidebar-logo img {{ height: 70px; border-radius: 16px; box-shadow: 0 2px 12px #b2ebf2; margin-bottom: 6px; }}
+    </style>
+    <div class="parallax-bg"></div>
+""", unsafe_allow_html=True)
+
+# --- Header with Logo and Sugarcane Icon ---
+st.markdown(f"""
+    <div class="header-logo">
+        <span class="sugarcane-icon">{SUGARCANE_SVG}</span>
+        <h1 style='margin:0 10px 0 0; font-size:2.2em; color:#0d3c47; font-weight:800; display:inline;'>سامانه پایش هوشمند نیشکر</h1>
+        <img src="{LOGO_PATH}" alt="لوگو" />
+    </div>
+""", unsafe_allow_html=True)
+
+# --- Sidebar Logo ---
+st.sidebar.markdown(f"""
+    <div class="sidebar-logo">
+        <img src="{LOGO_PATH}" alt="لوگو" />
+        <span style='font-size:1.1em; color:#009688; font-weight:700;'>دهخدا</span>
+    </div>
+""", unsafe_allow_html=True)
+
+# حذف هدر تکراری قبلی (در صورت وجود)
+# st.sidebar.markdown("<h1 ...") و مشابه آن را حذف یا کامنت کنید
+
+# --- بهبود ساختار پنل‌ها (نمونه برای یک پنل) ---
+# برای هر پنل اصلی، یک آیکون و عنوان با ساختار جدید اضافه کنید (در صورت نیاز، نمونه کد برای یک پنل داده می‌شود)
+# مثال:
+# st.markdown(f"""
+# <div class='custom-panel'>
+#   <div style='display:flex;align-items:center;gap:10px;'>
+#     <span>{SUGARCANE_SVG}</span>
+#     <h2 style='margin:0;color:#009688;'>جزئیات مزرعه</h2>
+#   </div>
+#   ...
+# </div>
+# """, unsafe_allow_html=True)
+# (در صورت نیاز، برای سایر پنل‌ها هم این ساختار را تکرار کنید)
