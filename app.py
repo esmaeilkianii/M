@@ -231,6 +231,8 @@ INITIAL_ZOOM = 12
 # --- File Paths (Relative to the script location in Hugging Face) ---
 CSV_FILE_PATH = 'cleaned_output.csv'
 SERVICE_ACCOUNT_FILE = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json'
+LOGO_PATH = "logo (1).png"  # مسیر لوگوی پروژه
+SUGARCANE_SVG = '''<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><g><rect width="32" height="32" rx="16" fill="#e0f7fa"/><path d="M16 26C16 26 13 19 13 13C13 8 16 6 16 6C16 6 19 8 19 13C19 19 16 26 16 26Z" stroke="#43a047" stroke-width="2" fill="#a5d6a7"/><path d="M16 13C16 13 14 11 14 9" stroke="#388e3c" stroke-width="1.5" stroke-linecap="round"/><path d="M16 13C16 13 18 11 18 9" stroke="#388e3c" stroke-width="1.5" stroke-linecap="round"/></g></svg>'''
 
 # --- GEE Authentication ---
 @st.cache_resource # Cache the GEE initialization
@@ -1078,8 +1080,6 @@ st.sidebar.markdown("<p style='text-align: center; font-size: 0.8em; color: #888
 
 # --- Parallax Background & Logo ---
 BACKGROUND_IMAGE_URL = "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80"  # نمای ماهواره‌ای کشاورزی
-LOGO_PATH = "logo (1).png"  # مسیر لوگوی پروژه
-SUGARCANE_SVG = '''<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><g><rect width="32" height="32" rx="16" fill="#e0f7fa"/><path d="M16 26C16 26 13 19 13 13C13 8 16 6 16 6C16 6 19 8 19 13C19 19 16 26 16 26Z" stroke="#43a047" stroke-width="2" fill="#a5d6a7"/><path d="M16 13C16 13 14 11 14 9" stroke="#388e3c" stroke-width="1.5" stroke-linecap="round"/><path d="M16 13C16 13 18 11 18 9" stroke="#388e3c" stroke-width="1.5" stroke-linecap="round"/></g></svg>'''
 
 # --- Parallax Background HTML ---
 # The st.markdown block for parallax CSS (original lines 1082-1097) is removed.
