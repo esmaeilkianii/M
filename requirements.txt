@@ -8,3 +8,4 @@ plotly
 requests
 streamlit-folium
 google-generativeai
+streamlit_lottie
