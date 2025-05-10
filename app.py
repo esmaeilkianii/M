@@ -13,6 +13,7 @@ import traceback
 from streamlit_folium import st_folium
 import base64
 import google.generativeai as genai # Added for Gemini
+from streamlit_lottie import st_lottie
 
 # --- Custom CSS ---
 st.set_page_config(
@@ -20,6 +21,14 @@ st.set_page_config(
     page_icon="🌾",
     layout="wide"
 )
+
+def load_lottiefile(filepath: str):
+    if not os.path.exists(filepath):
+        return None
+    with open(filepath, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+lottie_header = load_lottiefile("animation.json")
 
 # Custom CSS for Persian text alignment and professional styling
 st.markdown("""
@@ -173,8 +182,9 @@ if farm_data_df is None:
 # ==============================================================================
 # Gemini API Configuration
 # ==============================================================================
+HARDCODED_GEMINI_API_KEY = "AIzaSyC6ntMs3XDa3JTk07-6_BRRCduiQaRmQFQ"  # کلید جمینای خود را اینجا قرار دهید
 st.sidebar.subheader("✨ تنظیمات هوش مصنوعی Gemini")
-GEMINI_API_KEY = st.sidebar.text_input("🔑 کلید API جمینای خود را وارد کنید:", type="password", help="برای استفاده از قابلیت‌های هوشمند، کلید API خود را از Google AI Studio دریافت و وارد کنید.")
+GEMINI_API_KEY = HARDCODED_GEMINI_API_KEY
 
 gemini_model = None
 if GEMINI_API_KEY:
@@ -186,7 +196,7 @@ if GEMINI_API_KEY:
         st.sidebar.error(f"خطا در اتصال به Gemini: {e}")
         gemini_model = None
 else:
-    st.sidebar.info("قابلیت‌های هوشمند Gemini با وارد کردن کلید API فعال می‌شوند.")
+    st.sidebar.warning("کلید API جمینای به صورت پیش‌فرض تنظیم نشده است. لطفاً مقدار آن را در کد قرار دهید.")
 
 def ask_gemini(prompt_text, temperature=0.7, top_p=1.0, top_k=40):
     """Sends a prompt to Gemini and returns the response."""
@@ -372,6 +382,10 @@ def get_index_time_series(_point_geom, index_name, start_date='2023-01-01', end_
 tab1, tab2, tab3 = st.tabs(["📊 داشبورد اصلی", "🗺️ نقشه و نمودارها", "💡 تحلیل هوشمند با Gemini"])
 
 with tab1:
+    if lottie_header:
+        st_lottie(lottie_header, speed=1, reverse=False, loop=True, quality="high", height=180, key="header")
+    else:
+        st.info("برای داشتن هدر متحرک، یک فایل animation.json از سایت lottiefiles.com دانلود و کنار app.py قرار دهید.")
     st.header(APP_TITLE)
     st.subheader(APP_SUBTITLE)
 
