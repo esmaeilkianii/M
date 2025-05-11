@@ -464,7 +464,7 @@ with st.sidebar:
     )
     if selected_theme_name_sidebar != st.session_state.selected_theme_name:
         st.session_state.selected_theme_name = selected_theme_name_sidebar
-        st.experimental_rerun() # Rerun to apply new theme CSS
+        st.rerun() # Rerun to apply new theme CSS
 
     st.markdown("---")
     st.header("⚙️ تنظیمات نمایش")
