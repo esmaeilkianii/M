@@ -993,18 +993,15 @@ with tab3:
         farm_details_for_gemini_tab3 = ""
         analysis_basis_str_gemini_tab3 = "تحلیل بر اساس نقطه مرکزی مزرعه از داده‌های CSV انجام می‌شود."
         if active_farm_name_display != "همه مزارع":
-            farm_details_for_gemini_tab3 = f"مزرعه مورد نظر: '{active_farm_name_display}'.
-"
+            farm_details_for_gemini_tab3 = f"مزرعه مورد نظر: '{active_farm_name_display}'.\n"
             if active_farm_area_ha_display: # This is from initial farm selection, should be okay
-                farm_details_for_gemini_tab3 += f"مساحت ثبت شده در CSV: {active_farm_area_ha_display:,.2f} هکتار.
-"
+                farm_details_for_gemini_tab3 += f"مساحت ثبت شده در CSV: {active_farm_area_ha_display:,.2f} هکتار.\n"
             
             # Get Varete from filtered_farms_df (original source)
             if filtered_farms_df is not None and not filtered_farms_df.empty:
                  csv_farm_details_tab3_series = filtered_farms_df[filtered_farms_df['مزرعه'] == active_farm_name_display]
                  if not csv_farm_details_tab3_series.empty:
-                     farm_details_for_gemini_tab3 += f"واریته (از CSV): {csv_farm_details_tab3_series.iloc[0].get('واریته', 'N/A')}.
-"
+                     farm_details_for_gemini_tab3 += f"واریته (از CSV): {csv_farm_details_tab3_series.iloc[0].get('واریته', 'N/A')}.\n"
 
 
         # --- 1. Intelligent Q&A ---
@@ -1019,8 +1016,7 @@ with tab3:
                 if not user_farm_q_gemini:
                     st.info("لطفاً سوال خود را وارد کنید.")
                 else:
-                    prompt_gemini_q = f"شما یک دستیار هوشمند برای تحلیل داده‌های کشاورزی نیشکر هستید. {analysis_basis_str_gemini_tab3}
-"
+                    prompt_gemini_q = f"شما یک دستیار هوشمند برای تحلیل داده‌های کشاورزی نیشکر هستید. {analysis_basis_str_gemini_tab3}\n"
                     context_data_gemini_q = ""
                     if active_farm_name_display != "همه مزارع":
                         context_data_gemini_q += farm_details_for_gemini_tab3
@@ -1036,38 +1032,26 @@ with tab3:
                             change_str_gemini_q = f"{current_farm_data['تغییر']:.3f}" if pd.notna(current_farm_data['تغییر']) else "N/A"
                             
                             context_data_gemini_q += (
-                                f"داده‌های مزرعه '{active_farm_name_display}' برای شاخص {index_options[selected_index]} (هفته منتهی به {end_date_current_str}):
-"
-                                f"- مقدار هفته جاری: {current_val_str_gemini_q}
-- مقدار هفته قبل: {prev_val_str_gemini_q}
-"
-                                f"- تغییر: {change_str_gemini_q}
-- وضعیت کلی: {status_text_gemini_q}
-"
+                                f"داده‌های مزرعه '{active_farm_name_display}' برای شاخص {index_options[selected_index]} (هفته منتهی به {end_date_current_str}):\n"
+                                f"- مقدار هفته جاری: {current_val_str_gemini_q}\n"
+                                f"- مقدار هفته قبل: {prev_val_str_gemini_q}\n"
+                                f"- تغییر: {change_str_gemini_q}\n"
+                                f"- وضعیت کلی: {status_text_gemini_q}\n"
                             )
                         else:
-                            context_data_gemini_q += f"داده‌های عددی هفتگی برای شاخص '{selected_index}' جهت مزرعه '{active_farm_name_display}' در جدول رتبه‌بندی یافت نشد.
-"
-                        prompt_gemini_q += f"کاربر در مورد '{active_farm_name_display}' پرسیده: '{user_farm_q_gemini}'.
-{context_data_gemini_q}
-پاسخ جامع و مفید به فارسی ارائه دهید."
+                            context_data_gemini_q += f"داده‌های عددی هفتگی برای شاخص '{selected_index}' جهت مزرعه '{active_farm_name_display}' در جدول رتبه‌بندی یافت نشد.\n"
+                        prompt_gemini_q += f"کاربر در مورد '{active_farm_name_display}' پرسیده: '{user_farm_q_gemini}'.\n{context_data_gemini_q}پاسخ جامع و مفید به فارسی ارائه دهید."
                     else: # "همه مزارع"
                         context_data_gemini_q = f"وضعیت کلی مزارع برای روز '{selected_day}' و شاخص '{index_options[selected_index]}'. تعداد {len(filtered_farms_df) if filtered_farms_df is not None else 0} مزرعه فیلتر شده‌اند."
                         if not ranking_df_sorted_tab3.empty:
                             context_data_gemini_q += (
-                                f"
-خلاصه وضعیت مزارع (نقاط مرکزی CSV) برای شاخص {selected_index}:
-"
-                                f"- بهبود/رشد: {count_positive_summary_tab3}
-- ثابت: {count_neutral_summary_tab3}
-"
-                                f"- تنش/کاهش: {count_negative_summary_tab3}
-- بدون داده/خطا: {count_nodata_summary_tab3}
-"
+                                f"\nخلاصه وضعیت مزارع (نقاط مرکزی CSV) برای شاخص {selected_index}:\n"
+                                f"- بهبود/رشد: {count_positive_summary_tab3}\n"
+                                f"- ثابت: {count_neutral_summary_tab3}\n"
+                                f"- تنش/کاهش: {count_negative_summary_tab3}\n"
+                                f"- بدون داده/خطا: {count_nodata_summary_tab3}\n"
                             )
-                        prompt_gemini_q += f"کاربر در مورد وضعیت کلی مزارع پرسیده: '{user_farm_q_gemini}'.
-{context_data_gemini_q}
-پاسخ جامع و مفید به فارسی ارائه دهید."
+                        prompt_gemini_q += f"کاربر در مورد وضعیت کلی مزارع پرسیده: '{user_farm_q_gemini}'.\n{context_data_gemini_q}پاسخ جامع و مفید به فارسی ارائه دهید."
                     
                     with st.spinner("⏳ در حال پردازش پاسخ با Gemini..."):
                         response_gemini_q = ask_gemini(prompt_gemini_q)
@@ -1094,23 +1078,15 @@ with tab3:
                     status_text_rep = current_farm_report_data['وضعیت']
                     
                     report_context_gemini += (
-                        f"داده‌های شاخص {index_options[selected_index]} برای '{active_farm_name_display}' (هفته منتهی به {end_date_current_str}):
-"
-                        f"- جاری: {current_val_str_rep}
-- قبلی: {prev_val_str_rep}
-"
-                        f"- تغییر: {change_str_rep}
-- وضعیت: {status_text_rep}
-"
+                        f"داده‌های شاخص {index_options[selected_index]} برای '{active_farm_name_display}' (هفته منتهی به {end_date_current_str}):\n"
+                        f"- جاری: {current_val_str_rep}\n"
+                        f"- قبلی: {prev_val_str_rep}\n"
+                        f"- تغییر: {change_str_rep}\n"
+                        f"- وضعیت: {status_text_rep}\n"
                     )
                     prompt_rep = (
-                        f"شما یک دستیار هوشمند برای تهیه گزارش‌های کشاورزی هستید. لطفاً یک گزارش توصیفی و ساختاریافته به زبان فارسی در مورد وضعیت '{active_farm_name_display}' برای هفته منتهی به {end_date_current_str} تهیه کنید.
-"
-                        f"اطلاعات موجود:
-{report_context_gemini}
-{analysis_basis_str_gemini_tab3}
-
-"
+                        f"شما یک دستیار هوشمند برای تهیه گزارش‌های کشاورزی هستید. لطفاً یک گزارش توصیفی و ساختاریافته به زبان فارسی در مورد وضعیت '{active_farm_name_display}' برای هفته منتهی به {end_date_current_str} تهیه کنید.\n"
+                        f"اطلاعات موجود:\n{report_context_gemini}{analysis_basis_str_gemini_tab3}\n"
                         f"در گزارش به موارد فوق اشاره کنید، تحلیل مختصری از وضعیت (با توجه به شاخص {selected_index}) ارائه دهید و در صورت امکان، پیشنهادهای کلی (نه تخصصی و قطعی) برای بهبود یا حفظ وضعیت مطلوب بیان کنید. گزارش باید رسمی، دارای عنوان، تاریخ، و بخش‌های مشخص (مقدمه، وضعیت فعلی، تحلیل، پیشنهادات) و قابل فهم برای مدیران کشاورزی باشد."
                     )
                     with st.spinner(f"⏳ در حال تولید گزارش برای '{active_farm_name_display}'..."):
@@ -1193,39 +1169,25 @@ with tab3:
                     if ts_error_gemini_ts:
                         st.error(f"خطا در دریافت داده‌های سری زمانی برای Gemini: {ts_error_gemini_ts}")
                     elif not ts_df_gemini_ts.empty:
-                        ts_summary_gemini = f"داده‌های سری زمانی شاخص {index_options[selected_index]} برای '{active_farm_name_display}' در 6 ماه گذشته ({ts_start_date_gemini_ts} تا {ts_end_date_gemini_ts}):
-"
+                        ts_summary_gemini = f"داده‌های سری زمانی شاخص {index_options[selected_index]} برای '{active_farm_name_display}' در 6 ماه گذشته ({ts_start_date_gemini_ts} تا {ts_end_date_gemini_ts}):\n"
                         # Sample data for conciseness in prompt, but provide key stats
                         sample_freq_gemini = max(1, len(ts_df_gemini_ts) // 10) # Max 10 samples + ends
                         ts_sampled_data_str = ts_df_gemini_ts.iloc[::sample_freq_gemini][selected_index].to_string(header=True, index=True)
                         if len(ts_df_gemini_ts) > 1:
-                             ts_sampled_data_str += f"
-...
-{ts_df_gemini_ts[[selected_index]].iloc[-1].to_string(header=False)}" # Ensure last point is included
+                             ts_sampled_data_str += f"\n...\n{ts_df_gemini_ts[[selected_index]].iloc[-1].to_string(header=False)}" # Ensure last point is included
 
                         ts_summary_gemini += ts_sampled_data_str
-                        ts_summary_gemini += f"
-مقدار اولیه حدود {ts_df_gemini_ts[selected_index].iloc[0]:.3f} و نهایی حدود {ts_df_gemini_ts[selected_index].iloc[-1]:.3f}."
-                        ts_summary_gemini += f"
- میانگین: {ts_df_gemini_ts[selected_index].mean():.3f}, کمترین: {ts_df_gemini_ts[selected_index].min():.3f}, بیشترین: {ts_df_gemini_ts[selected_index].max():.3f}."
+                        ts_summary_gemini += f"\nمقدار اولیه حدود {ts_df_gemini_ts[selected_index].iloc[0]:.3f} و نهایی حدود {ts_df_gemini_ts[selected_index].iloc[-1]:.3f}."
+                        ts_summary_gemini += f"\n میانگین: {ts_df_gemini_ts[selected_index].mean():.3f}, کمترین: {ts_df_gemini_ts[selected_index].min():.3f}, بیشترین: {ts_df_gemini_ts[selected_index].max():.3f}."
                         
                         prompt_ts_an = (
-                            f"شما یک تحلیلگر داده‌های کشاورزی خبره هستید. {analysis_basis_str_gemini_tab3}
-"
-                            f" بر اساس داده‌های سری زمانی زیر برای شاخص {index_options[selected_index]} مزرعه '{active_farm_name_display}' طی 6 ماه گذشته:
-{ts_summary_gemini}
-
-"
-                            f"وظایف تحلیلگر:
-"
-                            f"۱. روند کلی تغییرات شاخص را توصیف کنید (مثلاً صعودی، نزولی، نوسانی، ثابت).
-"
-                            f"۲. آیا دوره‌های خاصی از رشد قابل توجه، کاهش شدید یا ثبات طولانی مدت مشاهده می‌شود؟ اگر بله، به تاریخ‌های تقریبی اشاره کنید.
-"
-                            f"۳. با توجه به ماهیت شاخص '{selected_index}' ({'مقدار بالاتر بهتر است' if selected_index not in ['MSI'] else 'مقدار بالاتر بدتر است (تنش بیشتر)'}) و روند مشاهده شده، چه تفسیرهای اولیه‌ای در مورد سلامت و وضعیت گیاه می‌توان داشت؟
-"
-                            f"۴. چه نوع مشاهدات میدانی یا اطلاعات تکمیلی می‌تواند به درک بهتر این روند و تأیید تحلیل شما کمک کند?
-"
+                            f"شما یک تحلیلگر داده‌های کشاورزی خبره هستید. {analysis_basis_str_gemini_tab3}\n"
+                            f" بر اساس داده‌های سری زمانی زیر برای شاخص {index_options[selected_index]} مزرعه '{active_farm_name_display}' طی 6 ماه گذشته:\n{ts_summary_gemini}\n"
+                            f"وظایف تحلیلگر:\n"
+                            f"۱. روند کلی تغییرات شاخص را توصیف کنید (مثلاً صعودی، نزولی، نوسانی، ثابت).\n"
+                            f"۲. آیا دوره‌های خاصی از رشد قابل توجه، کاهش شدید یا ثبات طولانی مدت مشاهده می‌شود؟ اگر بله، به تاریخ‌های تقریبی اشاره کنید.\n"
+                            f"۳. با توجه به ماهیت شاخص '{selected_index}' ({'مقدار بالاتر بهتر است' if selected_index not in ['MSI'] else 'مقدار بالاتر بدتر است (تنش بیشتر)'}) و روند مشاهده شده، چه تفسیرهای اولیه‌ای در مورد سلامت و وضعیت گیاه می‌توان داشت؟\n"
+                            f"۴. چه نوع مشاهدات میدانی یا اطلاعات تکمیلی می‌تواند به درک بهتر این روند و تأیید تحلیل شما کمک کند?\n"
                             f"پاسخ به فارسی، ساختاریافته، تحلیلی و کاربردی باشد."
                         )
                         with st.spinner(f"⏳ در حال تحلیل روند زمانی {selected_index} با Gemini..."):
@@ -1251,9 +1213,7 @@ with tab3:
                     prompt_gen_q = (
                         f"شما یک دانشنامه هوشمند در زمینه کشاورزی (با تمرکز بر نیشکر) و سنجش از دور هستید. "
                         f"لطفاً به سوال زیر که توسط یک کاربر سامانه پایش نیشکر پرسیده شده است، به زبان فارسی پاسخ دهید. "
-                        f"سعی کنید پاسخ شما ساده، قابل فهم، دقیق و در حد امکان جامع باشد.
-
-"
+                        f"سعی کنید پاسخ شما ساده، قابل فهم، دقیق و در حد امکان جامع باشد.\n"
                         f"سوال کاربر: '{user_general_q_gemini}'"
                     )
                     with st.spinner("⏳ در حال جستجو برای پاسخ با Gemini..."):
