@@ -9,3 +9,4 @@ requests
 streamlit-folium
 google-generativeai
 streamlit_lottie
+pyproj
