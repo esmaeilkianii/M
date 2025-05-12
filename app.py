@@ -640,7 +640,7 @@ with st.sidebar:
         st.stop()
     
     st.markdown("---")
-    st.markdown("<div style='text-align:center; font-size:0.9em;'>ساخته شده با 💻 توسط <strong>اسماعیل کیانی</strong></div>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:center; font-size:0.9em;'>Developed by Esmaeil Kiani<strong>اسماعیل کیانی</strong></div>", unsafe_allow_html=True)
     st.markdown("<div style='text-align:center; font-size:0.95em;'>🌾 شرکت کشت و صنعت دهخدا</div>", unsafe_allow_html=True)
 
 
@@ -975,7 +975,7 @@ with tab1:
             if 'تنش کمتر' in html_badge: return 'بهبود (تنش کمتر)'
             if 'ثابت' in html_badge: return 'ثابت'
             if 'تنش/کاهش' in html_badge: return 'تنش/کاهش'
-            if 'تنش بیشتر' in html_badge: return 'تنش بیشتر'
+            if 'تنش شدید' in html_badge: return 'تنش شدید'
             if 'بدون داده' in html_badge: return 'بدون داده'
             if 'خطا در داده' in html_badge: return 'خطا در داده'
             return 'نامشخص'
