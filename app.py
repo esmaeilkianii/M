@@ -366,7 +366,8 @@ INITIAL_LON = 48.724416
 INITIAL_ZOOM = 12
 
 # --- File Paths (Relative to the script location in Hugging Face) ---
-CSV_FILE_PATH = 'cleaned_output.csv'
+# CSV_FILE_PATH = 'cleaned_output.csv' # OLD
+CSV_FILE_PATH = 'merged_farm_data_renamed (1).csv' # NEW
 SERVICE_ACCOUNT_FILE = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json'
 
 
@@ -389,26 +390,56 @@ def initialize_gee():
 def load_farm_data(csv_path=CSV_FILE_PATH):
     try:
         df = pd.read_csv(csv_path)
-        required_cols = ['مزرعه', 'طول جغرافیایی', 'عرض جغرافیایی', 'روزهای هفته', 'coordinates_missing']
+        # IMPORTANT: Assumes these columns will contain WGS84 geographic coordinates.
+        # The current merged_farm_data_renamed (1).csv appears to have projected coordinates.
+        # GEE requires geographic coordinates. This code will LIKELY FAIL if they are projected.
+        # Please ensure your lonN, latN columns are in WGS84 decimal degrees.
+        coordinate_cols = []
+        for i in range(1, 5): # Assuming up to 4 points: lon1, lat1, lon2, lat2, ...
+            coordinate_cols.extend([f'lon{i}', f'lat{i}'])
+
+        # 'روز ' (with a space) is from the new CSV header.
+        # 'مزرعه' is the farm identifier.
+        required_cols = ['مزرعه', 'روز '] + coordinate_cols
+        
         if not all(col in df.columns for col in required_cols):
-            st.error(f"❌ فایل CSV باید شامل ستون‌های ضروری باشد: {', '.join(required_cols)}")
+            missing = [col for col in required_cols if col not in df.columns]
+            st.error(f"❌ فایل CSV باید شامل ستون‌های ضروری باشد. ستون‌های یافت نشده: {', '.join(missing)}")
+            st.error(f"ستون‌های موجود فعلی: {', '.join(df.columns.tolist())}")
+            # Try to infer from common naming mistakes for lat/lon
+            if 'lat1' in missing and 'Lat1' in df.columns:
+                 st.info("نکته: به نظر میرسد ستون 'Lat1' وجود دارد، شاید منظور 'lat1' بوده؟ (حساس به بزرگی و کوچکی حروف)")
             return None
-        df['طول جغرافیایی'] = pd.to_numeric(df['طول جغرافیایی'], errors='coerce')
-        df['عرض جغرافیایی'] = pd.to_numeric(df['عرض جغرافیایی'], errors='coerce')
-        df['coordinates_missing'] = df['coordinates_missing'].fillna(False).astype(bool)
-        df = df.dropna(subset=['طول جغرافیایی', 'عرض جغرافیایی'])
-        df = df[~df['coordinates_missing']]
+
+        for col in coordinate_cols:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        # Drop rows where ANY of the essential coordinate values are missing
+        df = df.dropna(subset=coordinate_cols, how='any')
+
         if df.empty:
-            st.warning("⚠️ داده معتبری برای مزارع یافت نشد.")
+            st.warning("⚠️ داده معتبری برای مزارع (با تمام مختصات چهارگوشه) یافت نشد.")
             return None
-        df['روزهای هفته'] = df['روزهای هفته'].astype(str).str.strip()
-        st.success(f"✅ داده‌های {len(df)} مزرعه بارگذاری شد.")
+        
+        # Handle 'روز ' column, stripping any extra spaces from day names
+        df['روز '] = df['روز '].astype(str).str.strip()
+
+        # Calculate centroids for each farm polygon (simple average of corners for pandas df)
+        # GEE's .centroid() is used for actual GEE operations later.
+        df['centroid_lon'] = df[[f'lon{i}' for i in range(1,5)]].mean(axis=1)
+        df['centroid_lat'] = df[[f'lat{i}' for i in range(1,5)]].mean(axis=1)
+        
+        # Ensure 'مساحت' column exists, if not, add it as N/A, GEE can calculate it later if needed.
+        if 'مساحت' not in df.columns:
+            df['مساحت'] = pd.NA # Or some other placeholder like 0 or np.nan
+
+        st.success(f"✅ داده‌های {len(df)} مزرعه (با هندسه چندضلعی) بارگذاری شد.")
         return df
     except FileNotFoundError:
         st.error(f"❌ فایل '{csv_path}' یافت نشد.")
         return None
     except Exception as e:
-        st.error(f"❌ خطا در بارگذاری CSV: {e}")
+        st.error(f"❌ خطا در بارگذاری CSV: {e}\n{traceback.format_exc()}")
         return None
 
 if initialize_gee():
@@ -477,13 +508,15 @@ with st.sidebar:
         st.success("✅ اتصال به Gemini برقرار است.")
 
 
-    available_days = sorted(farm_data_df['روزهای هفته'].unique())
+    # available_days = sorted(farm_data_df['روزهای هفته'].unique()) # OLD
+    available_days = sorted(farm_data_df['روز '].unique()) # NEW: Using 'روز ' (with space)
     selected_day = st.selectbox(
         "📅 روز هفته:", options=available_days, index=0,
         help="داده‌های مزارع بر اساس این روز فیلتر می‌شوند."
     )
 
-    filtered_farms_df = farm_data_df[farm_data_df['روزهای هفته'] == selected_day].copy()
+    # filtered_farms_df = farm_data_df[farm_data_df['روزهای هفته'] == selected_day].copy() # OLD
+    filtered_farms_df = farm_data_df[farm_data_df['روز '] == selected_day].copy() # NEW
 
     if filtered_farms_df.empty:
         st.warning(f"⚠️ هیچ مزرعه‌ای برای روز '{selected_day}' یافت نشد.")
@@ -631,20 +664,83 @@ def get_index_time_series(_point_geom, index_name, start_date_str, end_date_str)
 # Determine active farm geometry
 # ==============================================================================
 active_farm_geom = None
+active_farm_centroid_for_point_ops = None # For operations needing a point (e.g., time series)
 active_farm_name_display = selected_farm_name
-active_farm_area_ha_display = None
+active_farm_area_ha_display = "N/A" # Default, as 'مساحت' might not be in CSV or calculated yet
+
+def get_farm_polygon_ee(farm_row):
+    """
+    Creates an ee.Geometry.Polygon from a DataFrame row containing lon1, lat1, ... lon4, lat4.
+    IMPORTANT: Assumes lonN, latN are geographic WGS84 and form a valid polygon.
+    Coordinates should be ordered (e.g., clockwise) and the polygon is closed by repeating the first point.
+    """
+    try:
+        coords = []
+        for i in range(1, 5): # Iterate through lon1,lat1 to lon4,lat4
+            lon = farm_row.get(f'lon{i}')
+            lat = farm_row.get(f'lat{i}')
+            if pd.isna(lon) or pd.isna(lat):
+                # This should ideally be caught by dropna in load_farm_data
+                # st.caption(f"هشدار: مختصات ناقص برای مزرعه {farm_row.get('مزرعه', 'ناشناخته')} در نقطه {i}")
+                return None 
+            coords.append([float(lon), float(lat)])
+        
+        if len(coords) < 3: # Need at least 3 unique points for a polygon
+            # st.caption(f"هشدار: تعداد نقاط کافی برای ایجاد پولیگون برای مزرعه {farm_row.get('مزرعه', 'ناشناخته')} نیست.")
+            return None
+        
+        coords.append(coords[0]) # Close the polygon by repeating the first point
+        return ee.Geometry.Polygon(coords)
+    except Exception as e:
+        # st.caption(f"خطا در ایجاد GEE polygon برای مزرعه {farm_row.get('مزرعه', 'ناشناخته')}: {e}")
+        return None
 
 if selected_farm_name == "همه مزارع":
-    min_lon_df, min_lat_df = filtered_farms_df['طول جغرافیایی'].min(), filtered_farms_df['عرض جغرافیایی'].min()
-    max_lon_df, max_lat_df = filtered_farms_df['طول جغرافیایی'].max(), filtered_farms_df['عرض جغرافیایی'].max()
-    active_farm_geom = ee.Geometry.Rectangle([min_lon_df, min_lat_df, max_lon_df, max_lat_df])
-else:
-    selected_farm_details_active = filtered_farms_df[filtered_farms_df['مزرعه'] == selected_farm_name].iloc[0]
-    lat_active = selected_farm_details_active['عرض جغرافیایی']
-    lon_active = selected_farm_details_active['طول جغرافیایی']
-    active_farm_geom = ee.Geometry.Point([lon_active, lat_active])
-    if 'مساحت' in selected_farm_details_active and pd.notna(selected_farm_details_active['مساحت']):
-        active_farm_area_ha_display = selected_farm_details_active['مساحت']
+    if not filtered_farms_df.empty:
+        # For "همه مزارع", use a bounding box of the centroids of all farms in the filtered list
+        # These centroids ('centroid_lon', 'centroid_lat') were calculated in load_farm_data
+        min_lon_df = filtered_farms_df['centroid_lon'].min()
+        min_lat_df = filtered_farms_df['centroid_lat'].min()
+        max_lon_df = filtered_farms_df['centroid_lon'].max()
+        max_lat_df = filtered_farms_df['centroid_lat'].max()
+        
+        if pd.notna(min_lon_df) and pd.notna(min_lat_df) and pd.notna(max_lon_df) and pd.notna(max_lat_df):
+            try:
+                active_farm_geom = ee.Geometry.Rectangle([min_lon_df, min_lat_df, max_lon_df, max_lat_df])
+                active_farm_centroid_for_point_ops = active_farm_geom.centroid(maxError=1)
+            except Exception as e_bbox:
+                st.error(f"خطا در ایجاد محدوده کلی مزارع: {e_bbox}")
+                active_farm_geom = None
+                active_farm_centroid_for_point_ops = None
+else: # A single farm is selected
+    selected_farm_details_active_df = filtered_farms_df[filtered_farms_df['مزرعه'] == selected_farm_name]
+    if not selected_farm_details_active_df.empty:
+        farm_row_active = selected_farm_details_active_df.iloc[0]
+        active_farm_geom = get_farm_polygon_ee(farm_row_active) # This is now an ee.Geometry.Polygon
+        
+        if active_farm_geom:
+            active_farm_centroid_for_point_ops = active_farm_geom.centroid(maxError=1)
+            try:
+                # Try to calculate area using GEE for the selected polygon
+                area_m2 = active_farm_geom.area(maxError=1).getInfo()
+                if area_m2 is not None:
+                    active_farm_area_ha_display = area_m2 / 10000.0
+                else:
+                    active_farm_area_ha_display = "محاسبه نشد" # GEE returned None for area
+            except Exception as e_area:
+                # st.caption(f"نتوانست مساحت را برای {active_farm_name_display} محاسبه کند: {e_area}")
+                active_farm_area_ha_display = "خطا در محاسبه" # Error during GEE call
+        else:
+            # st.warning(f"نتوانست هندسه معتبری برای مزرعه '{selected_farm_name}' ایجاد کند. مختصات را بررسی کنید.")
+            active_farm_area_ha_display = "هندسه نامعتبر"
+            
+        # If 'مساحت' column was directly in CSV and preferred:
+        # area_from_csv = farm_row_active.get('مساحت')
+        # if pd.notna(area_from_csv):
+        # active_farm_area_ha_display = float(area_from_csv)
+            
+    else: # Should not happen if farm name is from dropdown
+        st.warning(f"جزئیات مزرعه '{selected_farm_name}' در لیست فیلتر شده یافت نشد.")
 
 # ==============================================================================
 # Main Panel Display
@@ -671,12 +767,15 @@ with tab1:
             st.subheader(f"📋 جزئیات مزرعه: {selected_farm_name} (روز: {selected_day})")
             cols_details = st.columns([1,1,1])
             with cols_details[0]:
-                area_val = selected_farm_details_tab1.get('مساحت', "N/A")
-                st.metric("مساحت (هکتار)", f"{area_val:,.2f}" if pd.notna(area_val) and isinstance(area_val, (int, float)) else "N/A")
+                # Use the active_farm_area_ha_display which is either from GEE calculation or "N/A"
+                st.metric("مساحت (هکتار)", f"{active_farm_area_ha_display:,.2f}" if isinstance(active_farm_area_ha_display, (int, float)) else active_farm_area_ha_display)
             with cols_details[1]:
                 st.metric("واریته", f"{selected_farm_details_tab1.get('واریته', 'N/A')}")
             with cols_details[2]:
-                st.metric("کانال", f"{selected_farm_details_tab1.get('کانال', 'N/A')}")
+                # 'کانال' is not in new CSV. Using 'اداره' or 'گروه' if available.
+                admin_val = selected_farm_details_tab1.get('اداره', 'N/A')
+                group_val = selected_farm_details_tab1.get('گروه', 'N/A')
+                st.metric("اداره/گروه", f"{admin_val} / {group_val}")
         st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='section-container'>", unsafe_allow_html=True)
@@ -693,7 +792,22 @@ with tab1:
         for i, (idx, farm) in enumerate(_farms_df.iterrows()):
             prog_bar.progress((i + 1) / total_farms, text=f"پردازش مزرعه {i+1}/{total_farms}: {farm['مزرعه']}")
             farm_name_calc = farm['مزرعه']
-            point_geom_calc = ee.Geometry.Point([farm['طول جغرافیایی'], farm['عرض جغرافیایی']])
+            
+            # Create polygon and then get centroid for point-based GEE analysis
+            farm_polygon_for_calc = get_farm_polygon_ee(farm)
+            if not farm_polygon_for_calc:
+                errors.append(f"خطا در ایجاد هندسه برای {farm_name_calc} در جدول رتبه‌بندی.")
+                results.append({
+                    'مزرعه': farm_name_calc, 
+                    'اداره': farm.get('اداره', 'N/A'), 
+                    'گروه': farm.get('گروه', 'N/A'),
+                    f'{index_name_calc} (هفته جاری)': None, 
+                    f'{index_name_calc} (هفته قبل)': None, 
+                    'تغییر': None
+                })
+                continue
+            
+            point_geom_calc = farm_polygon_for_calc.centroid(maxError=1) # Use centroid for GEE's reduceRegion
 
             def get_mean_value(start_dt, end_dt):
                 try:
@@ -712,8 +826,12 @@ with tab1:
             if err_prev: errors.append(f"{farm_name_calc} (قبلی): {err_prev}")
             change = float(current_val) - float(previous_val) if current_val is not None and previous_val is not None else None
             results.append({
-                'مزرعه': farm_name_calc, 'کانال': farm.get('کانال', 'N/A'), 'اداره': farm.get('اداره', 'N/A'),
-                f'{index_name_calc} (هفته جاری)': current_val, f'{index_name_calc} (هفته قبل)': previous_val, 'تغییر': change
+                'مزرعه': farm_name_calc, 
+                'اداره': farm.get('اداره', 'N/A'), # 'اداره' is in new CSV
+                'گروه': farm.get('گروه', 'N/A'),   # 'گروه' is in new CSV
+                f'{index_name_calc} (هفته جاری)': current_val, 
+                f'{index_name_calc} (هفته قبل)': previous_val, 
+                'تغییر': change
             })
         prog_bar.empty()
         return pd.DataFrame(results), errors
@@ -819,16 +937,18 @@ with tab2:
     }
     
     map_center_lat_folium, map_center_lon_folium, initial_zoom_map_val_folium = INITIAL_LAT, INITIAL_LON, INITIAL_ZOOM
-    if active_farm_geom:
+    if active_farm_geom: # This is now a polygon for single farm, or bounding box for all
         try:
-            if active_farm_geom.type().getInfo() == 'Point':
-                coords_folium = active_farm_geom.coordinates().getInfo()
-                map_center_lon_folium, map_center_lat_folium = coords_folium[0], coords_folium[1]
-                initial_zoom_map_val_folium = 15
-            else:
-                centroid_folium = active_farm_geom.centroid(maxError=1).coordinates().getInfo()
-                map_center_lon_folium, map_center_lat_folium = centroid_folium[0], centroid_folium[1]
-        except Exception: pass
+            # Center map on the centroid of the active geometry (polygon or bounding box)
+            if active_farm_geom.coordinates(): # Check if coordinates exist (it might be an empty geometry if creation failed)
+                 centroid_coords = active_farm_geom.centroid(maxError=1).coordinates().getInfo()
+                 map_center_lon_folium, map_center_lat_folium = centroid_coords[0], centroid_coords[1]
+            
+            if selected_farm_name != "همه مزارع": # Single farm selected (polygon)
+                 initial_zoom_map_val_folium = 15 # Zoom closer for a single farm polygon
+            # else: "همه مزارع" (bounding box), use default INITIAL_ZOOM or adjust based on bounds
+
+        except Exception: pass # Keep initial map center on error (e.g. if getInfo fails)
 
     m = geemap.Map(location=[map_center_lat_folium, map_center_lon_folium], zoom=initial_zoom_map_val_folium, add_google_map=True)
     m.add_basemap("HYBRID")
@@ -871,17 +991,26 @@ with tab2:
 
                 if active_farm_name_display == "همه مزارع":
                      for _, farm_row_map in filtered_farms_df.iterrows():
+                         # Display marker at centroid for "همه مزارع" view
+                         # Centroids were pre-calculated in load_farm_data for pandas df
+                         centroid_lon_map = farm_row_map.get('centroid_lon')
+                         centroid_lat_map = farm_row_map.get('centroid_lat')
+                         if pd.notna(centroid_lon_map) and pd.notna(centroid_lat_map):
+                             folium.Marker(
+                                 location=[centroid_lat_map, centroid_lon_map],
+                                 popup=f"<b>{farm_row_map['مزرعه']}</b><br>اداره: {farm_row_map.get('اداره', 'N/A')}<br>گروه: {farm_row_map.get('گروه', 'N/A')}",
+                                 tooltip=farm_row_map['مزرعه'], icon=folium.Icon(color='royalblue', icon='leaf', prefix='fa')
+                             ).add_to(m)
+                # For a single selected farm, its boundary is drawn. A marker at centroid can also be added if desired.
+                elif selected_farm_name != "همه مزارع" and active_farm_centroid_for_point_ops:
+                     try:
+                         point_coords_map = active_farm_centroid_for_point_ops.coordinates().getInfo()
                          folium.Marker(
-                             location=[farm_row_map['عرض جغرافیایی'], farm_row_map['طول جغرافیایی']],
-                             popup=f"<b>{farm_row_map['مزرعه']}</b><br>کانال: {farm_row_map['کانال']}",
-                             tooltip=farm_row_map['مزرعه'], icon=folium.Icon(color='royalblue', icon='leaf', prefix='fa')
+                             location=[point_coords_map[1], point_coords_map[0]], tooltip=f"مرکز مزرعه: {active_farm_name_display}",
+                             icon=folium.Icon(color='crimson', icon='map-marker', prefix='fa')
                          ).add_to(m)
-                elif active_farm_geom.type().getInfo() == 'Point':
-                     point_coords_map = active_farm_geom.coordinates().getInfo()
-                     folium.Marker(
-                         location=[point_coords_map[1], point_coords_map[0]], tooltip=f"مزرعه: {active_farm_name_display}",
-                         icon=folium.Icon(color='crimson', icon='map-marker', prefix='fa')
-                     ).add_to(m)
+                     except Exception as e_marker:
+                         st.caption(f"نکته: نتوانست نشانگر مرکز مزرعه را اضافه کند: {e_marker}")
                 m.add_layer_control()
             except Exception as map_err: st.error(f"خطا در افزودن لایه به نقشه: {map_err}\n{traceback.format_exc()}")
         else: st.warning(f"تصویری برای نمایش روی نقشه یافت نشد. {error_msg_current_map}")
@@ -893,7 +1022,8 @@ with tab2:
     st.subheader(f"📊 نمودار روند زمانی شاخص {index_options[selected_index]} برای '{active_farm_name_display}'")
     if active_farm_name_display == "همه مزارع":
         st.info("لطفاً یک مزرعه خاص را برای نمایش نمودار سری زمانی انتخاب کنید.")
-    elif active_farm_geom and active_farm_geom.type().getInfo() == 'Point':
+    # Check if a single farm is selected AND its centroid is available for GEE point operations
+    elif selected_farm_name != "همه مزارع" and active_farm_centroid_for_point_ops:
         ts_end_date_chart = today.strftime('%Y-%m-%d')
         ts_start_date_chart_user = st.date_input("تاریخ شروع برای سری زمانی:", 
             value=today - datetime.timedelta(days=365),
@@ -908,7 +1038,7 @@ with tab2:
 
             with st.spinner(f"⏳ در حال دریافت و ترسیم سری زمانی..."):
                 ts_df_chart, ts_error_chart = get_index_time_series(
-                    active_farm_geom, selected_index,
+                    active_farm_centroid_for_point_ops, selected_index, # Use centroid for time series
                     start_date_str=ts_start_date_chart_user.strftime('%Y-%m-%d'),
                     end_date_str=ts_end_date_chart
                 )
@@ -927,7 +1057,8 @@ with tab2:
                     fig_chart.update_traces(line=dict(color="var(--accent-color)", width=2.5), marker=dict(color="var(--primary-color)", size=6))
                     st.plotly_chart(fig_chart, use_container_width=True)
                 else: st.info(f"داده‌ای برای نمایش نمودار سری زمانی {selected_index} یافت نشد.")
-    else: st.warning("نمودار سری زمانی فقط برای مزارع منفرد (نقطه‌ای) قابل نمایش است.")
+    else: # Handles "همه مزارع" or if single farm's centroid could not be determined
+        st.warning("نمودار سری زمانی فقط برای مزارع منفرد (با مرکز هندسی معتبر) قابل نمایش است.")
     st.markdown("</div>", unsafe_allow_html=True)
 
 with tab3:
@@ -991,17 +1122,24 @@ with tab3:
 
         # --- Shared Context Strings for Gemini in Tab 3 ---
         farm_details_for_gemini_tab3 = ""
-        analysis_basis_str_gemini_tab3 = "تحلیل بر اساس نقطه مرکزی مزرعه از داده‌های CSV انجام می‌شود."
+        analysis_basis_str_gemini_tab3 = "تحلیل شاخص‌ها بر اساس مرکز هندسی (centroid) هر مزرعه انجام می‌شود. مختصات مزارع بصورت چهارنقطه‌ای (چندضلعی) در فایل ورودی موجود است." # Updated basis
         if active_farm_name_display != "همه مزارع":
             farm_details_for_gemini_tab3 = f"مزرعه مورد نظر: '{active_farm_name_display}'.\n"
-            if active_farm_area_ha_display: # This is from initial farm selection, should be okay
-                farm_details_for_gemini_tab3 += f"مساحت ثبت شده در CSV: {active_farm_area_ha_display:,.2f} هکتار.\n"
+            # active_farm_area_ha_display is now "N/A" or GEE calculated.
+            if isinstance(active_farm_area_ha_display, (int, float)):
+                farm_details_for_gemini_tab3 += f"مساحت محاسبه‌شده (تخمینی با GEE): {active_farm_area_ha_display:,.2f} هکتار.\n"
+            else: # Could be "N/A", "خطا در محاسبه", etc.
+                farm_details_for_gemini_tab3 += f"مساحت: {active_farm_area_ha_display}.\n"
             
-            # Get Varete from filtered_farms_df (original source)
+            # Get other details like 'واریته', 'اداره', 'گروه', 'سن' if available from filtered_farms_df
             if filtered_farms_df is not None and not filtered_farms_df.empty:
-                 csv_farm_details_tab3_series = filtered_farms_df[filtered_farms_df['مزرعه'] == active_farm_name_display]
-                 if not csv_farm_details_tab3_series.empty:
-                     farm_details_for_gemini_tab3 += f"واریته (از CSV): {csv_farm_details_tab3_series.iloc[0].get('واریته', 'N/A')}.\n"
+                 csv_farm_details_tab3_series_df = filtered_farms_df[filtered_farms_df['مزرعه'] == active_farm_name_display]
+                 if not csv_farm_details_tab3_series_df.empty:
+                     csv_farm_detail_row = csv_farm_details_tab3_series_df.iloc[0]
+                     farm_details_for_gemini_tab3 += f"واریته (از CSV): {csv_farm_detail_row.get('واریته', 'N/A')}.\n"
+                     farm_details_for_gemini_tab3 += f"اداره (از CSV): {csv_farm_detail_row.get('اداره', 'N/A')}.\n"
+                     farm_details_for_gemini_tab3 += f"گروه (از CSV): {csv_farm_detail_row.get('گروه', 'N/A')}.\n"
+                     farm_details_for_gemini_tab3 += f"سن (از CSV): {csv_farm_detail_row.get('سن', 'N/A')}.\n"
 
 
         # --- 1. Intelligent Q&A ---
@@ -1162,7 +1300,7 @@ with tab3:
                     with st.spinner(f"⏳ در حال دریافت داده‌های سری زمانی برای Gemini..."):
                         # get_index_time_series is cached
                         ts_df_gemini_ts, ts_error_gemini_ts = get_index_time_series(
-                            active_farm_geom, selected_index,
+                            active_farm_centroid_for_point_ops, selected_index, # Use centroid for time series
                             start_date_str=ts_start_date_gemini_ts, end_date_str=ts_end_date_gemini_ts
                         )
                     
