@@ -1,4 +1,5 @@
 import streamlit as st
+import pyproj # Added for coordinate transformation
 
 # --- Theme Selection Logic ---
 # MUST BE VERY EARLY, ideally after imports and before page_config
@@ -390,50 +391,79 @@ def initialize_gee():
 def load_farm_data(csv_path=CSV_FILE_PATH):
     try:
         df = pd.read_csv(csv_path)
-        # IMPORTANT: Assumes these columns will contain WGS84 geographic coordinates.
-        # The current merged_farm_data_renamed (1).csv appears to have projected coordinates.
-        # GEE requires geographic coordinates. This code will LIKELY FAIL if they are projected.
-        # Please ensure your lonN, latN columns are in WGS84 decimal degrees.
-        coordinate_cols = []
-        for i in range(1, 5): # Assuming up to 4 points: lon1, lat1, lon2, lat2, ...
-            coordinate_cols.extend([f'lon{i}', f'lat{i}'])
+        
+        # Define the source and destination CRS
+        # Assuming source is UTM Zone 39N (EPSG:32639) for Khuzestan, Iran
+        # Destination is WGS84 (EPSG:4326) for GEE
+        # IMPORTANT: If your source CRS is different, please specify the correct EPSG code.
+        source_crs = "EPSG:32639" # UTM Zone 39N
+        target_crs = "EPSG:4326"  # WGS84 (latitude/longitude)
+        transformer = pyproj.Transformer.from_crs(source_crs, target_crs, always_xy=True)
 
-        # 'روز ' (with a space) is from the new CSV header.
-        # 'مزرعه' is the farm identifier.
-        required_cols = ['مزرعه', 'روز '] + coordinate_cols
+        coordinate_cols_original_names = []
+        coordinate_cols_wgs84_names = []
+        for i in range(1, 5):
+            easting_col = f'lon{i}' # Original columns are Easting (lon) and Northing (lat)
+            northing_col = f'lat{i}'
+            wgs84_lon_col = f'wgs84_lon{i}' # New columns for WGS84 lon
+            wgs84_lat_col = f'wgs84_lat{i}' # New columns for WGS84 lat
+            
+            coordinate_cols_original_names.extend([easting_col, northing_col])
+            coordinate_cols_wgs84_names.extend([wgs84_lon_col, wgs84_lat_col])
+
+            # Convert to numeric, coercing errors
+            df[easting_col] = pd.to_numeric(df[easting_col], errors='coerce')
+            df[northing_col] = pd.to_numeric(df[northing_col], errors='coerce')
+
+        # Drop rows where original projected coordinates are missing
+        df = df.dropna(subset=coordinate_cols_original_names, how='any')
+        if df.empty:
+            st.warning(f"⚠️ داده معتبری برای مزارع (با تمام مختصات UTM اصلی) یافت نشد. فایل CSV در مسیر '{csv_path}' را بررسی کنید.")
+            return None
+
+        # Perform the transformation
+        for i in range(1, 5):
+            easting_col = f'lon{i}'
+            northing_col = f'lat{i}'
+            wgs84_lon_col = f'wgs84_lon{i}'
+            wgs84_lat_col = f'wgs84_lat{i}'
+            
+            # pyproj transform expects x (longitude/easting) then y (latitude/northing)
+            df[wgs84_lon_col], df[wgs84_lat_col] = transformer.transform(df[easting_col].values, df[northing_col].values)
+            
+            # Optional: Validate transformed coordinates (basic check)
+            # GEE expects longitude between -180 and 180, latitude between -90 and 90
+            if not (df[wgs84_lon_col].between(-180, 180).all() and df[wgs84_lat_col].between(-90, 90).all()):
+                st.error(f"❌ خطای تبدیل مختصات: به نظر می‌رسد مختصات تبدیل شده به WGS84 خارج از محدوده معتبر هستند. لطفاً سیستم مختصات مبدأ (source_crs='{source_crs}') را بررسی کنید.")
+                # You might want to see some problematic rows:
+                # problematic_rows = df[~(df[wgs84_lon_col].between(-180, 180) & df[wgs84_lat_col].between(-90, 90))]
+                # st.dataframe(problematic_rows[[easting_col, northing_col, wgs84_lon_col, wgs84_lat_col]].head())
+                return None
+
+        required_cols = ['مزرعه', 'روز '] + coordinate_cols_wgs84_names # Now GEE will use these WGS84 columns
         
         if not all(col in df.columns for col in required_cols):
-            missing = [col for col in required_cols if col not in df.columns]
-            st.error(f"❌ فایل CSV باید شامل ستون‌های ضروری باشد. ستون‌های یافت نشده: {', '.join(missing)}")
-            st.error(f"ستون‌های موجود فعلی: {', '.join(df.columns.tolist())}")
-            # Try to infer from common naming mistakes for lat/lon
-            if 'lat1' in missing and 'Lat1' in df.columns:
-                 st.info("نکته: به نظر میرسد ستون 'Lat1' وجود دارد، شاید منظور 'lat1' بوده؟ (حساس به بزرگی و کوچکی حروف)")
+            missing = [col for col in required_cols if col not in df.columns] # Should not happen if transform was successful
+            st.error(f"❌ فایل CSV پس از تبدیل باید شامل ستون‌های ضروری WGS84 باشد. ستون‌های یافت نشده: {', '.join(missing)}")
             return None
 
-        for col in coordinate_cols:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-        
-        # Drop rows where ANY of the essential coordinate values are missing
-        df = df.dropna(subset=coordinate_cols, how='any')
+        # Drop rows where ANY of the essential WGS84 coordinate values are missing (should be caught by previous checks)
+        df = df.dropna(subset=coordinate_cols_wgs84_names, how='any')
 
         if df.empty:
-            st.warning("⚠️ داده معتبری برای مزارع (با تمام مختصات چهارگوشه) یافت نشد.")
+            st.warning("⚠️ داده معتبری برای مزارع (با تمام مختصات چهارگوشه WGS84) پس از تبدیل یافت نشد.")
             return None
         
-        # Handle 'روز ' column, stripping any extra spaces from day names
         df['روز '] = df['روز '].astype(str).str.strip()
 
-        # Calculate centroids for each farm polygon (simple average of corners for pandas df)
-        # GEE's .centroid() is used for actual GEE operations later.
-        df['centroid_lon'] = df[[f'lon{i}' for i in range(1,5)]].mean(axis=1)
-        df['centroid_lat'] = df[[f'lat{i}' for i in range(1,5)]].mean(axis=1)
+        # Calculate centroids for each farm polygon using the new WGS84 coordinates
+        df['centroid_lon'] = df[[f'wgs84_lon{i}' for i in range(1,5)]].mean(axis=1)
+        df['centroid_lat'] = df[[f'wgs84_lat{i}' for i in range(1,5)]].mean(axis=1)
         
-        # Ensure 'مساحت' column exists, if not, add it as N/A, GEE can calculate it later if needed.
         if 'مساحت' not in df.columns:
-            df['مساحت'] = pd.NA # Or some other placeholder like 0 or np.nan
+            df['مساحت'] = pd.NA
 
-        st.success(f"✅ داده‌های {len(df)} مزرعه (با هندسه چندضلعی) بارگذاری شد.")
+        st.success(f"✅ داده‌های {len(df)} مزرعه (با هندسه چندضلعی WGS84) بارگذاری و تبدیل شد.")
         return df
     except FileNotFoundError:
         st.error(f"❌ فایل '{csv_path}' یافت نشد.")
@@ -676,29 +706,25 @@ def get_farm_polygon_ee(farm_row):
     """
     try:
         coords = []
-        for i in range(1, 5): # Iterate through lon1,lat1 to lon4,lat4
-            lon = farm_row.get(f'lon{i}')
-            lat = farm_row.get(f'lat{i}')
+        for i in range(1, 5): # Iterate through wgs84_lon1,wgs84_lat1 to wgs84_lon4,wgs84_lat4
+            lon = farm_row.get(f'wgs84_lon{i}') # Use WGS84 columns
+            lat = farm_row.get(f'wgs84_lat{i}') # Use WGS84 columns
             if pd.isna(lon) or pd.isna(lat):
-                # This should ideally be caught by dropna in load_farm_data
-                # st.caption(f"هشدار: مختصات ناقص برای مزرعه {farm_row.get('مزرعه', 'ناشناخته')} در نقطه {i}")
                 return None 
             coords.append([float(lon), float(lat)])
         
         if len(coords) < 3: # Need at least 3 unique points for a polygon
-            # st.caption(f"هشدار: تعداد نقاط کافی برای ایجاد پولیگون برای مزرعه {farm_row.get('مزرعه', 'ناشناخته')} نیست.")
             return None
         
         coords.append(coords[0]) # Close the polygon by repeating the first point
         return ee.Geometry.Polygon(coords)
     except Exception as e:
-        # st.caption(f"خطا در ایجاد GEE polygon برای مزرعه {farm_row.get('مزرعه', 'ناشناخته')}: {e}")
         return None
 
 if selected_farm_name == "همه مزارع":
     if not filtered_farms_df.empty:
         # For "همه مزارع", use a bounding box of the centroids of all farms in the filtered list
-        # These centroids ('centroid_lon', 'centroid_lat') were calculated in load_farm_data
+        # These centroids ('centroid_lon', 'centroid_lat') were calculated in load_farm_data using WGS84
         min_lon_df = filtered_farms_df['centroid_lon'].min()
         min_lat_df = filtered_farms_df['centroid_lat'].min()
         max_lon_df = filtered_farms_df['centroid_lon'].max()
@@ -728,16 +754,9 @@ else: # A single farm is selected
                 else:
                     active_farm_area_ha_display = "محاسبه نشد" # GEE returned None for area
             except Exception as e_area:
-                # st.caption(f"نتوانست مساحت را برای {active_farm_name_display} محاسبه کند: {e_area}")
                 active_farm_area_ha_display = "خطا در محاسبه" # Error during GEE call
         else:
-            # st.warning(f"نتوانست هندسه معتبری برای مزرعه '{selected_farm_name}' ایجاد کند. مختصات را بررسی کنید.")
             active_farm_area_ha_display = "هندسه نامعتبر"
-            
-        # If 'مساحت' column was directly in CSV and preferred:
-        # area_from_csv = farm_row_active.get('مساحت')
-        # if pd.notna(area_from_csv):
-        # active_farm_area_ha_display = float(area_from_csv)
             
     else: # Should not happen if farm name is from dropdown
         st.warning(f"جزئیات مزرعه '{selected_farm_name}' در لیست فیلتر شده یافت نشد.")
@@ -992,7 +1011,7 @@ with tab2:
                 if active_farm_name_display == "همه مزارع":
                      for _, farm_row_map in filtered_farms_df.iterrows():
                          # Display marker at centroid for "همه مزارع" view
-                         # Centroids were pre-calculated in load_farm_data for pandas df
+                         # Centroids were pre-calculated in load_farm_data for pandas df (now WGS84)
                          centroid_lon_map = farm_row_map.get('centroid_lon')
                          centroid_lat_map = farm_row_map.get('centroid_lat')
                          if pd.notna(centroid_lon_map) and pd.notna(centroid_lat_map):
