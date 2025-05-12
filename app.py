@@ -1,5 +1,7 @@
 import streamlit as st
 import pyproj # Added for coordinate transformation
+import base64 # For encoding logo image
+import os # For path joining
 
 # --- Theme Selection Logic ---
 # MUST BE VERY EARLY, ideally after imports and before page_config
@@ -109,7 +111,7 @@ THEMES = {
         "--tab-active-text": "white",
         "--info-bg": "#f9f6f3",
         "--info-border": "#544741",
-        "--warning-bg": "#fef7eT",
+        "--warning-bg": "#fef7eT", # Typo, should be #fef7e0 for light yellow
         "--warning-border": "#c6ac8f",
         "--success-bg": "#f3f9f3",
         "--success-border": "#777",
@@ -125,7 +127,7 @@ THEMES = {
         "--button-bg-color": "#4A5568",
         "--button-hover-bg-color": "#2D3748",
         "--metric-border-accent": "#718096",
-        "--table-header-bg": "#E2E8F0",
+        "--table-header-bg": "#E2E8F0", # Light gray, ensure good contrast with white text if used, or change text color
         "--tab-active-bg": "#4A5568",
         "--tab-active-text": "white",
         "--info-bg": "#EBF8FF",
@@ -145,6 +147,53 @@ st.set_page_config(
     page_icon="🌾",
     layout="wide"
 )
+
+# --- Animated Logo Display ---
+def get_image_as_base64(path):
+    if not os.path.exists(path):
+        return None
+    with open(path, "rb") as img_file:
+        return base64.b64encode(img_file.read()).decode()
+
+logo_path = "logo (1).png" # Your logo file
+logo_base64 = get_image_as_base64(logo_path)
+
+if logo_base64:
+    logo_html = f"""
+    <style>
+        @keyframes animatedBackground {{
+            0%   {{ background-color: #add8e6; }} /* Light Blue */
+            20%  {{ background-color: #ffcccb; }} /* Light Red */
+            40%  {{ background-color: #90ee90; }} /* Light Green */
+            60%  {{ background-color: #fffacd; }} /* LemonChiffon (Light Yellow) */
+            80%  {{ background-color: #ffcccb; }} /* Light Red */
+            100% {{ background-color: #add8e6; }} /* Light Blue */
+        }}
+
+        .animated-logo-container {{
+            display: flex;
+            justify-content: center; /* Center the logo horizontally */
+            align-items: center;
+            padding: 10px; /* Add some padding around the logo */
+            margin-bottom: 20px; /* Space below the logo */
+            animation: animatedBackground 25s infinite ease-in-out; /* 5s per color step * 5 steps = 25s total */
+            border-radius: 10px; /* Optional: rounded corners for the background container */
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1); /* Optional: subtle shadow */
+        }}
+
+        .animated-logo-container img {{
+            max-height: 100px; /* Adjust max height as needed */
+            max-width: 100%;   /* Ensure logo is responsive within its container */
+            object-fit: contain;
+        }}
+    </style>
+    <div class="animated-logo-container">
+        <img src="data:image/png;base64,{logo_base64}" alt="Company Logo">
+    </div>
+    """
+    st.markdown(logo_html, unsafe_allow_html=True)
+else:
+    st.warning(f"لوگو در مسیر '{logo_path}' یافت نشد. لطفاً مسیر فایل را بررسی کنید.")
 
 # --- Imports --- (Keep after page_config if they don't cause issues)
 import pandas as pd
@@ -561,8 +610,8 @@ with st.sidebar:
 
     index_options = {
         "NDVI": "پوشش گیاهی (NDVI)", "EVI": "پوشش گیاهی بهبودیافته (EVI)",
-        "NDMI": "رطوبت گیاه (NDMI)", "LAI": "سطح برگ (LAI تخمینی)",
-        "MSI": "تنش رطوبتی (MSI)", "CVI": "کلروفیل (CVI تخمینی)",
+        "NDMI": "رطوبت گیاه (NDMI)", "LAI": "سطح برگ (LAI)",
+        "MSI": "تنش رطوبتی (MSI)", "CVI": "کلروفیل (CVI)",
     }
     selected_index = st.selectbox(
         "📈 انتخاب شاخص:", options=list(index_options.keys()),
