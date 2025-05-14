@@ -439,7 +439,7 @@ def initialize_gee():
 @st.cache_data(show_spinner="در حال بارگذاری داده‌های مزارع از GEE...")
 def load_farm_data_from_gee():
     try:
-        asset_id = "projects/ee-esmaeilkiani13877/assets/Croplogging-Farm"
+        asset_id = "https://code.earthengine.google.com/?asset=projects/ee-esmaeilkiani13877/assets/Croplogging-Farm"
         farms_fc = ee.FeatureCollection(asset_id)
         features = farms_fc.getInfo()['features']
         farm_records = []
