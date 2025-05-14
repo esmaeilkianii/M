@@ -1,5 +1,3 @@
---- START OF FILE app (77).py ---
-
 import streamlit as st
 import pyproj # Added for coordinate transformation
 import base64 # For encoding logo image
