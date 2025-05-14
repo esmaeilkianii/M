@@ -369,15 +369,37 @@ st.markdown(f"""
             padding: 10px 20px;
             border-radius: 8px;
             font-weight: 500;
-            transition: background-color 0.2s, transform 0.1s;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            z-index: 1;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }}
+        
+        .stButton > button:before {{
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: all 0.5s;
+            z-index: -1;
+        }}
+        
         .stButton > button:hover {{
-            background-color: var(--button-hover-bg-color);
-            transform: translateY(-2px);
+            transform: translateY(-3px);
+            box-shadow: 0 7px 14px rgba(0,0,0,0.15);
         }}
+        
+        .stButton > button:hover:before {{
+            left: 100%;
+        }}
+        
         .stButton > button:active {{
-            background-color: color-mix(in srgb, var(--button-bg-color) 80%, black 20%);
-            transform: translateY(0px);
+            transform: translateY(1px);
+            box-shadow: 0 3px 8px rgba(0,0,0,0.15);
         }}
 
         /* Input fields */
@@ -400,9 +422,255 @@ st.markdown(f"""
         a:hover {{ text-decoration: underline; }}
 
         /* Custom Gemini response box styles */
-        .gemini-response-default {{ background-color: var(--info-bg); border-left: 5px solid var(--info-border); padding: 15px; border-radius: 5px; margin-top:15px; }}
-        .gemini-response-report {{ background-color: var(--success-bg); border-left: 5px solid var(--success-border); padding: 15px; border-radius: 5px; margin-top:15px; }}
-        .gemini-response-analysis {{ background-color: var(--warning-bg); border-left: 5px solid var(--warning-border); padding: 15px; border-radius: 5px; margin-top:15px; }}
+        .gemini-response-default {{ 
+            background-color: var(--info-bg); 
+            border-left: 5px solid var(--info-border); 
+            padding: 20px; 
+            border-radius: 10px; 
+            margin-top:20px; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }}
+        
+        .gemini-response-default:before {{
+            content: '💡';
+            font-size: 1.2em;
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            opacity: 0.5;
+        }}
+        
+        .gemini-response-default:hover {{
+            box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+            transform: translateY(-3px);
+        }}
+        
+        .gemini-response-report {{ 
+            background-color: var(--success-bg); 
+            border-left: 5px solid var(--success-border); 
+            padding: 20px; 
+            border-radius: 10px; 
+            margin-top:20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            transition: all 0.3s ease;
+            position: relative;
+        }}
+        
+        .gemini-response-report:before {{
+            content: '📊';
+            font-size: 1.2em;
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            opacity: 0.5;
+        }}
+        
+        .gemini-response-report:hover {{
+            box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+            transform: translateY(-3px);
+        }}
+        
+        .gemini-response-analysis {{ 
+            background-color: var(--warning-bg); 
+            border-left: 5px solid var(--warning-border); 
+            padding: 20px; 
+            border-radius: 10px; 
+            margin-top:20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            transition: all 0.3s ease;
+            position: relative;
+        }}
+        
+        .gemini-response-analysis:before {{
+            content: '🔍';
+            font-size: 1.2em;
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            opacity: 0.5;
+        }}
+        
+        .gemini-response-analysis:hover {{
+            box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+            transform: translateY(-3px);
+        }}
+        
+        /* Animated Gemini AI Tab */
+        .gemini-header {{
+            background: linear-gradient(-45deg, var(--primary-color), var(--secondary-color), var(--accent-color));
+            background-size: 400% 400%;
+            animation: gradient 15s ease infinite;
+            color: white;
+            padding: 15px 25px;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }}
+        
+        @keyframes gradient {{
+            0% {{ background-position: 0% 50%; }}
+            50% {{ background-position: 100% 50%; }}
+            100% {{ background-position: 0% 50%; }}
+        }}
+        
+        .pulse-animation {{
+            animation: pulse 2s infinite;
+        }}
+        
+        @keyframes pulse {{
+            0% {{ transform: scale(1); }
+            50% {{ transform: scale(1.05); }
+            100% {{ transform: scale(1); }
+        }}
+        
+        .fade-in {{
+            opacity: 0;
+            animation: fadeIn 1s forwards;
+        }}
+        
+        @keyframes fadeIn {{
+            from {{ opacity: 0; transform: translateY(20px); }}
+            to {{ opacity: 1; transform: translateY(0); }}
+        }}
+        
+        /* Animated AI Icon */
+        .ai-icon {{
+            display: flex;
+            justify-content: center;
+            margin-bottom: 15px;
+        }}
+        
+        .ai-icon-pulse {{
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background-color: var(--accent-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 30px;
+            box-shadow: 0 0 0 0 rgba(var(--accent-color), 0.5);
+            animation: ai-pulse 2s infinite;
+        }}
+        
+        @keyframes ai-pulse {{
+            0% {{ transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 123, 255, 0.7); }}
+            70% {{ transform: scale(1); box-shadow: 0 0 0 10px rgba(0, 123, 255, 0); }}
+            100% {{ transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 123, 255, 0); }}
+        }}
+        
+        /* Advanced Card Design for Gemini Sections */
+        .gemini-card {{
+            background-color: var(--container-background-color);
+            border-radius: 12px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 25px;
+            transition: all 0.3s ease;
+            border-top: 5px solid var(--accent-color);
+            position: relative;
+            overflow: hidden;
+        }}
+        
+        .gemini-card:hover {{
+            transform: translateY(-5px);
+            box-shadow: 0 15px 30px rgba(0,0,0,0.15);
+        }}
+        
+        .gemini-card::after {{
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 50%);
+            pointer-events: none;
+        }}
+        
+        .gemini-card-header {{
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+        }}
+        
+        .gemini-card-icon {{
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            background-color: var(--accent-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-left: 15px;
+            color: white;
+            font-weight: bold;
+            font-size: 20px;
+        }}
+        
+        .gemini-card-title {{
+            margin: 0;
+            font-size: 18px;
+            color: var(--primary-color);
+            font-weight: 600;
+        }}
+
+        /* Floating Action Button */
+        .fab-button {{
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background-color: var(--accent-color);
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 9999;
+        }}
+        
+        .fab-button:hover {{
+            transform: scale(1.1);
+            box-shadow: 0 6px 14px rgba(0,0,0,0.25);
+        }}
+        
+        /* Loading Animation */
+        .loading-animation {{
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }}
+        
+        .loading-dot {{
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: var(--accent-color);
+            margin: 0 5px;
+            animation: loading 1.4s infinite ease-in-out both;
+        }}
+        
+        .loading-dot:nth-child(1) {{ animation-delay: -0.32s; }}
+        .loading-dot:nth-child(2) {{ animation-delay: -0.16s; }}
+        
+        @keyframes loading {{
+            0%, 80%, 100% {{ transform: scale(0); }}
+            40% {{ transform: scale(1); }}
+        }}
 
     </style>
 """, unsafe_allow_html=True)
