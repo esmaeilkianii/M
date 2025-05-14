@@ -435,100 +435,52 @@ def initialize_gee():
         st.error(f"خطا در اتصال به GEE: {e}")
         st.stop()
 
-# --- Load Farm Data ---
-@st.cache_data(show_spinner="در حال بارگذاری داده‌های مزارع...")
-def load_farm_data(csv_path=CSV_FILE_PATH):
+# --- Load Farm Data from GEE FeatureCollection ---
+@st.cache_data(show_spinner="در حال بارگذاری داده‌های مزارع از GEE...")
+def load_farm_data_from_gee():
     try:
-        df = pd.read_csv(csv_path)
-        
-        # Define the source and destination CRS
-        # Assuming source is UTM Zone 39N (EPSG:32639) for Khuzestan, Iran
-        # Destination is WGS84 (EPSG:4326) for GEE
-        # IMPORTANT: If your source CRS is different, please specify the correct EPSG code.
-        source_crs = "EPSG:32639" # UTM Zone 39N
-        target_crs = "EPSG:4326"  # WGS84 (latitude/longitude)
-        transformer = pyproj.Transformer.from_crs(source_crs, target_crs, always_xy=True)
-
-        coordinate_cols_original_names = []
-        coordinate_cols_wgs84_names = []
-        for i in range(1, 5):
-            easting_col = f'lon{i}' # Original columns are Easting (lon) and Northing (lat)
-            northing_col = f'lat{i}'
-            wgs84_lon_col = f'wgs84_lon{i}' # New columns for WGS84 lon
-            wgs84_lat_col = f'wgs84_lat{i}' # New columns for WGS84 lat
-            
-            coordinate_cols_original_names.extend([easting_col, northing_col])
-            coordinate_cols_wgs84_names.extend([wgs84_lon_col, wgs84_lat_col])
-
-            # Convert to numeric, coercing errors
-            df[easting_col] = pd.to_numeric(df[easting_col], errors='coerce')
-            df[northing_col] = pd.to_numeric(df[northing_col], errors='coerce')
-
-        # Drop rows where original projected coordinates are missing
-        df = df.dropna(subset=coordinate_cols_original_names, how='any')
-        if df.empty:
-            st.warning(f"⚠️ داده معتبری برای مزارع (با تمام مختصات UTM اصلی) یافت نشد. فایل CSV در مسیر '{csv_path}' را بررسی کنید.")
-            return None
-
-        # Perform the transformation
-        for i in range(1, 5):
-            easting_col = f'lon{i}'
-            northing_col = f'lat{i}'
-            wgs84_lon_col = f'wgs84_lon{i}'
-            wgs84_lat_col = f'wgs84_lat{i}'
-            
-            # pyproj transform expects x (longitude/easting) then y (latitude/northing)
-            df[wgs84_lon_col], df[wgs84_lat_col] = transformer.transform(df[easting_col].values, df[northing_col].values)
-            
-            # Optional: Validate transformed coordinates (basic check)
-            # GEE expects longitude between -180 and 180, latitude between -90 and 90
-            if not (df[wgs84_lon_col].between(-180, 180).all() and df[wgs84_lat_col].between(-90, 90).all()):
-                st.error(f"❌ خطای تبدیل مختصات: به نظر می‌رسد مختصات تبدیل شده به WGS84 خارج از محدوده معتبر هستند. لطفاً سیستم مختصات مبدأ (source_crs='{source_crs}') را بررسی کنید.")
-                # You might want to see some problematic rows:
-                # problematic_rows = df[~(df[wgs84_lon_col].between(-180, 180) & df[wgs84_lat_col].between(-90, 90))]
-                # st.dataframe(problematic_rows[[easting_col, northing_col, wgs84_lon_col, wgs84_lat_col]].head())
-                return None
-
-        required_cols = ['مزرعه', 'روز '] + coordinate_cols_wgs84_names # Now GEE will use these WGS84 columns
-        
-        if not all(col in df.columns for col in required_cols):
-            missing = [col for col in required_cols if col not in df.columns] # Should not happen if transform was successful
-            st.error(f"❌ فایل CSV پس از تبدیل باید شامل ستون‌های ضروری WGS84 باشد. ستون‌های یافت نشده: {', '.join(missing)}")
-            return None
-
-        # Drop rows where ANY of the essential WGS84 coordinate values are missing (should be caught by previous checks)
-        df = df.dropna(subset=coordinate_cols_wgs84_names, how='any')
-
-        if df.empty:
-            st.warning("⚠️ داده معتبری برای مزارع (با تمام مختصات چهارگوشه WGS84) پس از تبدیل یافت نشد.")
-            return None
-        
-        df['روز '] = df['روز '].astype(str).str.strip()
-
-        # Calculate centroids for each farm polygon using the new WGS84 coordinates
-        df['centroid_lon'] = df[[f'wgs84_lon{i}' for i in range(1,5)]].mean(axis=1)
-        df['centroid_lat'] = df[[f'wgs84_lat{i}' for i in range(1,5)]].mean(axis=1)
-        
-        if 'مساحت' not in df.columns:
-            df['مساحت'] = pd.NA
-
-        st.success(f"✅ داده‌های {len(df)} مزرعه (با هندسه چندضلعی WGS84) بارگذاری و تبدیل شد.")
+        asset_id = "projects/ee-esmaeilkiani13877/assets/Croplogging-Farm"
+        farms_fc = ee.FeatureCollection(asset_id)
+        features = farms_fc.getInfo()['features']
+        farm_records = []
+        for f in features:
+            props = f['properties']
+            geom = f['geometry']
+            # محاسبه centroid
+            if geom['type'] == 'Polygon':
+                coords = geom['coordinates'][0]
+                centroid_lon = sum([pt[0] for pt in coords]) / len(coords)
+                centroid_lat = sum([pt[1] for pt in coords]) / len(coords)
+            else:
+                centroid_lon, centroid_lat = None, None
+            farm_records.append({
+                'مزرعه': props.get('farm', ''),
+                'گروه': props.get('group', ''),
+                'واریته': props.get('Variety', ''),
+                'سن': props.get('Age', ''),
+                'مساحت': props.get('Area', ''),
+                'روز ': props.get('Day', ''),
+                'Field': props.get('Field', ''),
+                'geometry': geom,
+                'centroid_lon': centroid_lon,
+                'centroid_lat': centroid_lat,
+            })
+        df = pd.DataFrame(farm_records)
+        st.success(f"✅ داده‌های {len(df)} مزرعه از GEE بارگذاری شد.")
         return df
-    except FileNotFoundError:
-        st.error(f"❌ فایل '{csv_path}' یافت نشد.")
-        return None
     except Exception as e:
-        st.error(f"❌ خطا در بارگذاری CSV: {e}\n{traceback.format_exc()}")
+        st.error(f"❌ خطا در بارگذاری داده از GEE: {e}")
         return None
 
+# --- Use GEE farm data instead of CSV ---
 if initialize_gee():
-    farm_data_df = load_farm_data()
+    farm_data_df = load_farm_data_from_gee()
 else:
     st.error("❌ اتصال به GEE ناموفق بود.")
     st.stop()
 
 if farm_data_df is None:
-    st.error("❌ بارگذاری داده مزارع ناموفق بود.")
+    st.error("❌ بارگذاری داده مزارع از GEE ناموفق بود.")
     st.stop()
 
 # ==============================================================================
@@ -748,25 +700,12 @@ active_farm_name_display = selected_farm_name
 active_farm_area_ha_display = "N/A" # Default, as 'مساحت' might not be in CSV or calculated yet
 
 def get_farm_polygon_ee(farm_row):
-    """
-    Creates an ee.Geometry.Polygon from a DataFrame row containing lon1, lat1, ... lon4, lat4.
-    IMPORTANT: Assumes lonN, latN are geographic WGS84 and form a valid polygon.
-    Coordinates should be ordered (e.g., clockwise) and the polygon is closed by repeating the first point.
-    """
     try:
-        coords = []
-        for i in range(1, 5): # Iterate through wgs84_lon1,wgs84_lat1 to wgs84_lon4,wgs84_lat4
-            lon = farm_row.get(f'wgs84_lon{i}') # Use WGS84 columns
-            lat = farm_row.get(f'wgs84_lat{i}') # Use WGS84 columns
-            if pd.isna(lon) or pd.isna(lat):
-                return None 
-            coords.append([float(lon), float(lat)])
-        
-        if len(coords) < 3: # Need at least 3 unique points for a polygon
-            return None
-        
-        coords.append(coords[0]) # Close the polygon by repeating the first point
-        return ee.Geometry.Polygon(coords)
+        geom = farm_row['geometry']
+        if geom['type'] == 'Polygon':
+            coords = geom['coordinates']
+            return ee.Geometry.Polygon(coords)
+        return None
     except Exception as e:
         return None
 
