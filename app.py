@@ -1,7 +1,4 @@
 import streamlit as st
-import pyproj # Added for coordinate transformation
-import base64 # For encoding logo image
-import os # For path joining
 
 # --- Theme Selection Logic ---
 # MUST BE VERY EARLY, ideally after imports and before page_config
@@ -111,7 +108,7 @@ THEMES = {
         "--tab-active-text": "white",
         "--info-bg": "#f9f6f3",
         "--info-border": "#544741",
-        "--warning-bg": "#fef7e0", # Typo, should be #fef7e0 for light yellow
+        "--warning-bg": "#fef7eT",
         "--warning-border": "#c6ac8f",
         "--success-bg": "#f3f9f3",
         "--success-border": "#777",
@@ -127,7 +124,7 @@ THEMES = {
         "--button-bg-color": "#4A5568",
         "--button-hover-bg-color": "#2D3748",
         "--metric-border-accent": "#718096",
-        "--table-header-bg": "#E2E8F0", # Light gray, ensure good contrast with white text if used, or change text color
+        "--table-header-bg": "#E2E8F0",
         "--tab-active-bg": "#4A5568",
         "--tab-active-text": "white",
         "--info-bg": "#EBF8FF",
@@ -147,53 +144,6 @@ st.set_page_config(
     page_icon="🌾",
     layout="wide"
 )
-
-# --- Animated Logo Display ---
-def get_image_as_base64(path):
-    if not os.path.exists(path):
-        return None
-    with open(path, "rb") as img_file:
-        return base64.b64encode(img_file.read()).decode()
-
-logo_path = "logo (1).png" # Your logo file
-logo_base64 = get_image_as_base64(logo_path)
-
-if logo_base64:
-    logo_html = f"""
-    <style>
-        @keyframes animatedBackground {{
-            0%   {{ background-color: #add8e6; }} /* Light Blue */
-            20%  {{ background-color: #ffcccb; }} /* Light Red */
-            40%  {{ background-color: #90ee90; }} /* Light Green */
-            60%  {{ background-color: #fffacd; }} /* LemonChiffon (Light Yellow) */
-            80%  {{ background-color: #ffcccb; }} /* Light Red */
-            100% {{ background-color: #add8e6; }} /* Light Blue */
-        }}
-
-        .animated-logo-container {{
-            display: flex;
-            justify-content: center; /* Center the logo horizontally */
-            align-items: center;
-            padding: 10px; /* Add some padding around the logo */
-            margin-bottom: 20px; /* Space below the logo */
-            animation: animatedBackground 25s infinite ease-in-out; /* 5s per color step * 5 steps = 25s total */
-            border-radius: 10px; /* Optional: rounded corners for the background container */
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1); /* Optional: subtle shadow */
-        }}
-
-        .animated-logo-container img {{
-            max-height: 100px; /* Adjust max height as needed */
-            max-width: 100%;   /* Ensure logo is responsive within its container */
-            object-fit: contain;
-        }}
-    </style>
-    <div class="animated-logo-container">
-        <img src="data:image/png;base64,{logo_base64}" alt="Company Logo">
-    </div>
-    """
-    st.markdown(logo_html, unsafe_allow_html=True)
-else:
-    st.warning(f"لوگو در مسیر '{logo_path}' یافت نشد. لطفاً مسیر فایل را بررسی کنید.")
 
 # --- Imports --- (Keep after page_config if they don't cause issues)
 import pandas as pd
@@ -369,37 +319,15 @@ st.markdown(f"""
             padding: 10px 20px;
             border-radius: 8px;
             font-weight: 500;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-            z-index: 1;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: background-color 0.2s, transform 0.1s;
         }}
-        
-        .stButton > button:before {{
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-            transition: all 0.5s;
-            z-index: -1;
-        }}
-        
         .stButton > button:hover {{
-            transform: translateY(-3px);
-            box-shadow: 0 7px 14px rgba(0,0,0,0.15);
+            background-color: var(--button-hover-bg-color);
+            transform: translateY(-2px);
         }}
-        
-        .stButton > button:hover:before {{
-            left: 100%;
-        }}
-        
         .stButton > button:active {{
-            transform: translateY(1px);
-            box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+            background-color: color-mix(in srgb, var(--button-bg-color) 80%, black 20%);
+            transform: translateY(0px);
         }}
 
         /* Input fields */
@@ -422,255 +350,10 @@ st.markdown(f"""
         a:hover {{ text-decoration: underline; }}
 
         /* Custom Gemini response box styles */
-        .gemini-response-default {{ 
-            background-color: var(--info-bg); 
-            border-left: 5px solid var(--info-border); 
-            padding: 20px; 
-            border-radius: 10px; 
-            margin-top:20px; 
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }}
-        
-        .gemini-response-default:before {{
-            content: '💡';
-            font-size: 1.2em;
-            position: absolute;
-            top: 10px;
-            right: 15px;
-            opacity: 0.5;
-        }}
-        
-        .gemini-response-default:hover {{
-            box-shadow: 0 6px 16px rgba(0,0,0,0.12);
-            transform: translateY(-3px);
-        }}
-        
-        .gemini-response-report {{ 
-            background-color: var(--success-bg); 
-            border-left: 5px solid var(--success-border); 
-            padding: 20px; 
-            border-radius: 10px; 
-            margin-top:20px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-            transition: all 0.3s ease;
-            position: relative;
-        }}
-        
-        .gemini-response-report:before {{
-            content: '📊';
-            font-size: 1.2em;
-            position: absolute;
-            top: 10px;
-            right: 15px;
-            opacity: 0.5;
-        }}
-        
-        .gemini-response-report:hover {{
-            box-shadow: 0 6px 16px rgba(0,0,0,0.12);
-            transform: translateY(-3px);
-        }}
-        
-        .gemini-response-analysis {{ 
-            background-color: var(--warning-bg); 
-            border-left: 5px solid var(--warning-border); 
-            padding: 20px; 
-            border-radius: 10px; 
-            margin-top:20px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-            transition: all 0.3s ease;
-            position: relative;
-        }}
-        
-        .gemini-response-analysis:before {{
-            content: '🔍';
-            font-size: 1.2em;
-            position: absolute;
-            top: 10px;
-            right: 15px;
-            opacity: 0.5;
-        }}
-        
-        .gemini-response-analysis:hover {{
-            box-shadow: 0 6px 16px rgba(0,0,0,0.12);
-            transform: translateY(-3px);
-        }}
-        
-        /* Animated Gemini AI Tab */
-        .gemini-header {{
-            background: linear-gradient(-45deg, var(--primary-color), var(--secondary-color), var(--accent-color));
-            background-size: 400% 400%;
-            animation: gradient 15s ease infinite;
-            color: white;
-            padding: 15px 25px;
-            border-radius: 12px;
-            text-align: center;
-            margin-bottom: 20px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        }}
-        
-        @keyframes gradient {{
-            0% {{ background-position: 0% 50%; }}
-            50% {{ background-position: 100% 50%; }}
-            100% {{ background-position: 0% 50%; }}
-        }}
-        
-        .pulse-animation {{
-            animation: pulse 2s infinite;
-        }}
-        
-        @keyframes pulse {{
-            0% {{ transform: scale(1); }
-            50% {{ transform: scale(1.05); }
-            100% {{ transform: scale(1); }
-        }}
-        
-        .fade-in {{
-            opacity: 0;
-            animation: fadeIn 1s forwards;
-        }}
-        
-        @keyframes fadeIn {{
-            from {{ opacity: 0; transform: translateY(20px); }}
-            to {{ opacity: 1; transform: translateY(0); }}
-        }}
-        
-        /* Animated AI Icon */
-        .ai-icon {{
-            display: flex;
-            justify-content: center;
-            margin-bottom: 15px;
-        }}
-        
-        .ai-icon-pulse {{
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            background-color: var(--accent-color);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            color: white;
-            font-size: 30px;
-            box-shadow: 0 0 0 0 rgba(var(--accent-color), 0.5);
-            animation: ai-pulse 2s infinite;
-        }}
-        
-        @keyframes ai-pulse {{
-            0% {{ transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 123, 255, 0.7); }}
-            70% {{ transform: scale(1); box-shadow: 0 0 0 10px rgba(0, 123, 255, 0); }}
-            100% {{ transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 123, 255, 0); }}
-        }}
-        
-        /* Advanced Card Design for Gemini Sections */
-        .gemini-card {
-            background-color: var(--container-background-color);
-            border-radius: 12px;
-            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
-            padding: 20px;
-            margin-bottom: 25px;
-            transition: all 0.3s ease;
-            border-top: 5px solid var(--accent-color);
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .gemini-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 30px rgba(0,0,0,0.15);
-        }
-        
-        .gemini-card::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 50%);
-            pointer-events: none;
-        }
-        
-        .gemini-card-header {
-            display: flex;
-            align-items: center;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid rgba(0,0,0,0.1);
-        }
-        
-        .gemini-card-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 8px;
-            background-color: var(--accent-color);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin-left: 15px;
-            color: white;
-            font-weight: bold;
-            font-size: 20px;
-        }
-        
-        .gemini-card-title {
-            margin: 0;
-            font-size: 18px;
-            color: var(--primary-color);
-            font-weight: 600;
-        }
+        .gemini-response-default {{ background-color: var(--info-bg); border-left: 5px solid var(--info-border); padding: 15px; border-radius: 5px; margin-top:15px; }}
+        .gemini-response-report {{ background-color: var(--success-bg); border-left: 5px solid var(--success-border); padding: 15px; border-radius: 5px; margin-top:15px; }}
+        .gemini-response-analysis {{ background-color: var(--warning-bg); border-left: 5px solid var(--warning-border); padding: 15px; border-radius: 5px; margin-top:15px; }}
 
-        /* Floating Action Button */
-        .fab-button {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            background-color: var(--accent-color);
-            color: white;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 24px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-            cursor: pointer;
-            transition: all 0.3s ease;
-            z-index: 9999;
-        }
-        
-        .fab-button:hover {
-            transform: scale(1.1);
-            box-shadow: 0 6px 14px rgba(0,0,0,0.25);
-        }
-        
-        /* Loading Animation */
-        .loading-animation {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-        }
-        
-        .loading-dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background-color: var(--accent-color);
-            margin: 0 5px;
-            animation: loading 1.4s infinite ease-in-out both;
-        }
-        
-        .loading-dot:nth-child(1) { animation-delay: -0.32s; }
-        .loading-dot:nth-child(2) { animation-delay: -0.16s; }
-        
-        @keyframes loading {
-            0%, 80%, 100% { transform: scale(0); }
-            40% { transform: scale(1); }
-        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -683,8 +366,7 @@ INITIAL_LON = 48.724416
 INITIAL_ZOOM = 12
 
 # --- File Paths (Relative to the script location in Hugging Face) ---
-# CSV_FILE_PATH = 'cleaned_output.csv' # OLD
-CSV_FILE_PATH = 'merged_farm_data_renamed (1).csv' # NEW
+CSV_FILE_PATH = 'cleaned_output.csv'
 SERVICE_ACCOUNT_FILE = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json'
 
 
@@ -702,69 +384,41 @@ def initialize_gee():
         st.error(f"خطا در اتصال به GEE: {e}")
         st.stop()
 
-# --- Load Farm Data from GEE FeatureCollection ---
-@st.cache_data(show_spinner="در حال بارگذاری داده‌های مزارع از GEE...")
-def load_farm_data_from_gee():
+# --- Load Farm Data ---
+@st.cache_data(show_spinner="در حال بارگذاری داده‌های مزارع...")
+def load_farm_data(csv_path=CSV_FILE_PATH):
     try:
-        farms_fc = ee.FeatureCollection("projects/ee-esmaeilkiani13877/assets/Croplogging-Farm")
-        features = farms_fc.getInfo()['features']
-        farm_records = []
-        for f in features:
-            props = f['properties']
-            geom = f['geometry']
-            
-            # Create EE geometry to calculate accurate area
-            ee_geom = None
-            if geom['type'] == 'Polygon':
-                ee_geom = ee.Geometry.Polygon(geom['coordinates'])
-                
-            # محاسبه centroid
-            if geom['type'] == 'Polygon':
-                coords = geom['coordinates'][0]
-                centroid_lon = sum([pt[0] for pt in coords]) / len(coords)
-                centroid_lat = sum([pt[1] for pt in coords]) / len(coords)
-            else:
-                centroid_lon, centroid_lat = None, None
-            
-            # محاسبه مساحت دقیق بر اساس هندسه
-            area_ha = None
-            if ee_geom:
-                try:
-                    area_m2 = ee_geom.area(maxError=1).getInfo()
-                    if area_m2 is not None:
-                        area_ha = area_m2 / 10000.0  # تبدیل به هکتار
-                except Exception:
-                    area_ha = None
-                
-            farm_records.append({
-                'مزرعه': props.get('farm', ''),
-                'گروه': props.get('group', ''),
-                'واریته': props.get('Variety', ''),
-                'سن': props.get('Age', ''),
-                'مساحت': area_ha if area_ha is not None else props.get('Area', ''),  # استفاده از مساحت محاسبه شده دقیق
-                'روز ': props.get('Day', ''),
-                'Field': props.get('Field', ''),
-                'geometry': geom,
-                'centroid_lon': centroid_lon,
-                'centroid_lat': centroid_lat,
-                'calculated_area_ha': area_ha,  # ذخیره مساحت محاسبه شده به عنوان ستون جداگانه
-            })
-        df = pd.DataFrame(farm_records)
-        st.success(f"✅ داده‌های {len(df)} مزرعه از GEE بارگذاری شد.")
+        df = pd.read_csv(csv_path)
+        required_cols = ['مزرعه', 'طول جغرافیایی', 'عرض جغرافیایی', 'روزهای هفته', 'coordinates_missing']
+        if not all(col in df.columns for col in required_cols):
+            st.error(f"❌ فایل CSV باید شامل ستون‌های ضروری باشد: {', '.join(required_cols)}")
+            return None
+        df['طول جغرافیایی'] = pd.to_numeric(df['طول جغرافیایی'], errors='coerce')
+        df['عرض جغرافیایی'] = pd.to_numeric(df['عرض جغرافیایی'], errors='coerce')
+        df['coordinates_missing'] = df['coordinates_missing'].fillna(False).astype(bool)
+        df = df.dropna(subset=['طول جغرافیایی', 'عرض جغرافیایی'])
+        df = df[~df['coordinates_missing']]
+        if df.empty:
+            st.warning("⚠️ داده معتبری برای مزارع یافت نشد.")
+            return None
+        df['روزهای هفته'] = df['روزهای هفته'].astype(str).str.strip()
+        st.success(f"✅ داده‌های {len(df)} مزرعه بارگذاری شد.")
         return df
+    except FileNotFoundError:
+        st.error(f"❌ فایل '{csv_path}' یافت نشد.")
+        return None
     except Exception as e:
-        st.error(f"❌ خطا در بارگذاری داده از GEE: {e}")
+        st.error(f"❌ خطا در بارگذاری CSV: {e}")
         return None
 
-# --- Use GEE farm data instead of CSV ---
 if initialize_gee():
-    farm_data_df = load_farm_data_from_gee()
+    farm_data_df = load_farm_data()
 else:
     st.error("❌ اتصال به GEE ناموفق بود.")
     st.stop()
 
 if farm_data_df is None:
-    st.error("❌ بارگذاری داده مزارع از GEE ناموفق بود.")
+    st.error("❌ بارگذاری داده مزارع ناموفق بود.")
     st.stop()
 
 # ==============================================================================
@@ -823,15 +477,13 @@ with st.sidebar:
         st.success("✅ اتصال به Gemini برقرار است.")
 
 
-    # available_days = sorted(farm_data_df['روزهای هفته'].unique()) # OLD
-    available_days = sorted(farm_data_df['روز '].unique()) # NEW: Using 'روز ' (with space)
+    available_days = sorted(farm_data_df['روزهای هفته'].unique())
     selected_day = st.selectbox(
         "📅 روز هفته:", options=available_days, index=0,
         help="داده‌های مزارع بر اساس این روز فیلتر می‌شوند."
     )
 
-    # filtered_farms_df = farm_data_df[farm_data_df['روزهای هفته'] == selected_day].copy() # OLD
-    filtered_farms_df = farm_data_df[farm_data_df['روز '] == selected_day].copy() # NEW
+    filtered_farms_df = farm_data_df[farm_data_df['روزهای هفته'] == selected_day].copy()
 
     if filtered_farms_df.empty:
         st.warning(f"⚠️ هیچ مزرعه‌ای برای روز '{selected_day}' یافت نشد.")
@@ -846,8 +498,8 @@ with st.sidebar:
 
     index_options = {
         "NDVI": "پوشش گیاهی (NDVI)", "EVI": "پوشش گیاهی بهبودیافته (EVI)",
-        "NDMI": "رطوبت گیاه (NDMI)", "LAI": "سطح برگ (LAI)",
-        "MSI": "تنش رطوبتی (MSI)", "CVI": "کلروفیل (CVI)",
+        "NDMI": "رطوبت گیاه (NDMI)", "LAI": "سطح برگ (LAI تخمینی)",
+        "MSI": "تنش رطوبتی (MSI)", "CVI": "کلروفیل (CVI تخمینی)",
     }
     selected_index = st.selectbox(
         "📈 انتخاب شاخص:", options=list(index_options.keys()),
@@ -876,7 +528,7 @@ with st.sidebar:
         st.stop()
     
     st.markdown("---")
-    st.markdown("<div style='text-align:center; font-size:0.9em;'>Developed by Esmaeil Kiani<strong>اسماعیل کیانی</strong></div>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:center; font-size:0.9em;'>ساخته شده با 💻 توسط <strong>اسماعیل کیانی</strong></div>", unsafe_allow_html=True)
     st.markdown("<div style='text-align:center; font-size:0.95em;'>🌾 شرکت کشت و صنعت دهخدا</div>", unsafe_allow_html=True)
 
 
@@ -939,10 +591,10 @@ def get_processed_image(_geometry, start_date, end_date, index_name):
         return None, f"خطای ناشناخته در پردازش GEE: {e}\n{traceback.format_exc()}"
 
 @st.cache_data(show_spinner="⏳ در حال دریافت سری زمانی شاخص...", persist=True)
-def get_index_time_series(_geometry, index_name, start_date_str, end_date_str):
+def get_index_time_series(_point_geom, index_name, start_date_str, end_date_str):
     try:
         s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-                     .filterBounds(_geometry)
+                     .filterBounds(_point_geom)
                      .filterDate(start_date_str, end_date_str)
                      .map(maskS2clouds)
                      .map(add_indices))
@@ -951,10 +603,7 @@ def get_index_time_series(_geometry, index_name, start_date_str, end_date_str):
             value = ee.Algorithms.If(
                 image.bandNames().contains(index_name),
                 image.reduceRegion(
-                    reducer=ee.Reducer.mean(), 
-                    geometry=_geometry, 
-                    scale=10,
-                    maxPixels=1e9
+                    reducer=ee.Reducer.first(), geometry=_point_geom, scale=10 
                 ).get(index_name),
                 None
             )
@@ -982,59 +631,20 @@ def get_index_time_series(_geometry, index_name, start_date_str, end_date_str):
 # Determine active farm geometry
 # ==============================================================================
 active_farm_geom = None
-active_farm_centroid_for_point_ops = None # For operations needing a point (e.g., time series)
 active_farm_name_display = selected_farm_name
-active_farm_area_ha_display = "N/A" # Default, as 'مساحت' might not be in CSV or calculated yet
-
-def get_farm_polygon_ee(farm_row):
-    try:
-        geom = farm_row['geometry']
-        if geom['type'] == 'Polygon':
-            coords = geom['coordinates']
-            return ee.Geometry.Polygon(coords)
-        return None
-    except Exception as e:
-        return None
+active_farm_area_ha_display = None
 
 if selected_farm_name == "همه مزارع":
-    if not filtered_farms_df.empty:
-        # For "همه مزارع", use a bounding box of the centroids of all farms in the filtered list
-        # These centroids ('centroid_lon', 'centroid_lat') were calculated in load_farm_data using WGS84
-        min_lon_df = filtered_farms_df['centroid_lon'].min()
-        min_lat_df = filtered_farms_df['centroid_lat'].min()
-        max_lon_df = filtered_farms_df['centroid_lon'].max()
-        max_lat_df = filtered_farms_df['centroid_lat'].max()
-        
-        if pd.notna(min_lon_df) and pd.notna(min_lat_df) and pd.notna(max_lon_df) and pd.notna(max_lat_df):
-            try:
-                active_farm_geom = ee.Geometry.Rectangle([min_lon_df, min_lat_df, max_lon_df, max_lat_df])
-                active_farm_centroid_for_point_ops = active_farm_geom.centroid(maxError=1)
-            except Exception as e_bbox:
-                st.error(f"خطا در ایجاد محدوده کلی مزارع: {e_bbox}")
-                active_farm_geom = None
-                active_farm_centroid_for_point_ops = None
-else: # A single farm is selected
-    selected_farm_details_active_df = filtered_farms_df[filtered_farms_df['مزرعه'] == selected_farm_name]
-    if not selected_farm_details_active_df.empty:
-        farm_row_active = selected_farm_details_active_df.iloc[0]
-        active_farm_geom = get_farm_polygon_ee(farm_row_active) # This is now an ee.Geometry.Polygon
-        
-        if active_farm_geom:
-            active_farm_centroid_for_point_ops = active_farm_geom.centroid(maxError=1)
-            try:
-                # Try to calculate area using GEE for the selected polygon
-                area_m2 = active_farm_geom.area(maxError=1).getInfo()
-                if area_m2 is not None:
-                    active_farm_area_ha_display = area_m2 / 10000.0
-                else:
-                    active_farm_area_ha_display = "محاسبه نشد" # GEE returned None for area
-            except Exception as e_area:
-                active_farm_area_ha_display = "خطا در محاسبه" # Error during GEE call
-        else:
-            active_farm_area_ha_display = "هندسه نامعتبر"
-            
-    else: # Should not happen if farm name is from dropdown
-        st.warning(f"جزئیات مزرعه '{selected_farm_name}' در لیست فیلتر شده یافت نشد.")
+    min_lon_df, min_lat_df = filtered_farms_df['طول جغرافیایی'].min(), filtered_farms_df['عرض جغرافیایی'].min()
+    max_lon_df, max_lat_df = filtered_farms_df['طول جغرافیایی'].max(), filtered_farms_df['عرض جغرافیایی'].max()
+    active_farm_geom = ee.Geometry.Rectangle([min_lon_df, min_lat_df, max_lon_df, max_lat_df])
+else:
+    selected_farm_details_active = filtered_farms_df[filtered_farms_df['مزرعه'] == selected_farm_name].iloc[0]
+    lat_active = selected_farm_details_active['عرض جغرافیایی']
+    lon_active = selected_farm_details_active['طول جغرافیایی']
+    active_farm_geom = ee.Geometry.Point([lon_active, lat_active])
+    if 'مساحت' in selected_farm_details_active and pd.notna(selected_farm_details_active['مساحت']):
+        active_farm_area_ha_display = selected_farm_details_active['مساحت']
 
 # ==============================================================================
 # Main Panel Display
@@ -1061,19 +671,12 @@ with tab1:
             st.subheader(f"📋 جزئیات مزرعه: {selected_farm_name} (روز: {selected_day})")
             cols_details = st.columns([1,1,1])
             with cols_details[0]:
-                # استفاده از مساحت دقیق محاسبه شده در GEE
-                farm_area_display = selected_farm_details_tab1.get('مساحت')
-                if pd.notna(farm_area_display) and isinstance(farm_area_display, (int, float)):
-                    st.metric("مساحت (هکتار)", f"{farm_area_display:,.2f}")
-                else:
-                    st.metric("مساحت (هکتار)", "N/A")
+                area_val = selected_farm_details_tab1.get('مساحت', "N/A")
+                st.metric("مساحت (هکتار)", f"{area_val:,.2f}" if pd.notna(area_val) and isinstance(area_val, (int, float)) else "N/A")
             with cols_details[1]:
                 st.metric("واریته", f"{selected_farm_details_tab1.get('واریته', 'N/A')}")
             with cols_details[2]:
-                # 'کانال' is not in new CSV. Using 'اداره' or 'گروه' if available.
-                admin_val = selected_farm_details_tab1.get('اداره', 'N/A')
-                group_val = selected_farm_details_tab1.get('گروه', 'N/A')
-                st.metric("اداره/گروه", f"{admin_val} / {group_val}")
+                st.metric("کانال", f"{selected_farm_details_tab1.get('کانال', 'N/A')}")
         st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='section-container'>", unsafe_allow_html=True)
@@ -1090,35 +693,14 @@ with tab1:
         for i, (idx, farm) in enumerate(_farms_df.iterrows()):
             prog_bar.progress((i + 1) / total_farms, text=f"پردازش مزرعه {i+1}/{total_farms}: {farm['مزرعه']}")
             farm_name_calc = farm['مزرعه']
-            
-            # Create polygon and then get centroid for point-based GEE analysis
-            farm_polygon_for_calc = get_farm_polygon_ee(farm)
-            if not farm_polygon_for_calc:
-                errors.append(f"خطا در ایجاد هندسه برای {farm_name_calc} در جدول رتبه‌بندی.")
-                results.append({
-                    'مزرعه': farm_name_calc, 
-                    'اداره': farm.get('اداره', 'N/A'), 
-                    'گروه': farm.get('گروه', 'N/A'),
-                    'مساحت (هکتار)': farm.get('مساحت', 'N/A'),
-                    f'{index_name_calc} (هفته جاری)': None, 
-                    f'{index_name_calc} (هفته قبل)': None, 
-                    'تغییر': None
-                })
-                continue
-            
-            # استفاده از هندسه کامل مزرعه برای محاسبه شاخص دقیق بجای نقطه مرکزی
-            farm_area_ha = farm.get('مساحت')
-            
+            point_geom_calc = ee.Geometry.Point([farm['طول جغرافیایی'], farm['عرض جغرافیایی']])
+
             def get_mean_value(start_dt, end_dt):
                 try:
-                    image_calc, error_calc = get_processed_image(farm_polygon_for_calc, start_dt, end_dt, index_name_calc)
+                    image_calc, error_calc = get_processed_image(point_geom_calc, start_dt, end_dt, index_name_calc)
                     if image_calc:
-                        # استفاده از کل پلیگون برای محاسبه میانگین بجای نقطه مرکزی
                         mean_dict = image_calc.reduceRegion(
-                            reducer=ee.Reducer.mean(), 
-                            geometry=farm_polygon_for_calc, 
-                            scale=10, 
-                            maxPixels=1e9
+                            reducer=ee.Reducer.mean(), geometry=point_geom_calc.buffer(15), scale=10, maxPixels=1e9
                         ).getInfo()
                         return mean_dict.get(index_name_calc), None
                     return None, error_calc
@@ -1130,13 +712,8 @@ with tab1:
             if err_prev: errors.append(f"{farm_name_calc} (قبلی): {err_prev}")
             change = float(current_val) - float(previous_val) if current_val is not None and previous_val is not None else None
             results.append({
-                'مزرعه': farm_name_calc, 
-                'اداره': farm.get('اداره', 'N/A'), # 'اداره' is in new CSV
-                'گروه': farm.get('گروه', 'N/A'),   # 'گروه' is in new CSV
-                'مساحت (هکتار)': farm_area_ha,
-                f'{index_name_calc} (هفته جاری)': current_val, 
-                f'{index_name_calc} (هفته قبل)': previous_val, 
-                'تغییر': change
+                'مزرعه': farm_name_calc, 'کانال': farm.get('کانال', 'N/A'), 'اداره': farm.get('اداره', 'N/A'),
+                f'{index_name_calc} (هفته جاری)': current_val, f'{index_name_calc} (هفته قبل)': previous_val, 'تغییر': change
             })
         prog_bar.empty()
         return pd.DataFrame(results), errors
@@ -1186,7 +763,7 @@ with tab1:
 
         ranking_df_sorted['وضعیت'] = ranking_df_sorted.apply(lambda row: determine_status_html(row, selected_index), axis=1)
         df_display = ranking_df_sorted.copy()
-        cols_to_format_display = [f'{selected_index} (هفته جاری)', f'{selected_index} (هفته قبل)', 'تغییر', 'مساحت (هکتار)']
+        cols_to_format_display = [f'{selected_index} (هفته جاری)', f'{selected_index} (هفته قبل)', 'تغییر']
         for col_fmt_dsp in cols_to_format_display:
             if col_fmt_dsp in df_display.columns:
                  df_display[col_fmt_dsp] = df_display[col_fmt_dsp].apply(lambda x: f"{float(x):.3f}" if pd.notna(x) and isinstance(x, (int, float)) else ("N/A" if pd.isna(x) else str(x)))
@@ -1212,7 +789,7 @@ with tab1:
             if 'تنش کمتر' in html_badge: return 'بهبود (تنش کمتر)'
             if 'ثابت' in html_badge: return 'ثابت'
             if 'تنش/کاهش' in html_badge: return 'تنش/کاهش'
-            if 'تنش شدید' in html_badge: return 'تنش شدید'
+            if 'تنش بیشتر' in html_badge: return 'تنش بیشتر'
             if 'بدون داده' in html_badge: return 'بدون داده'
             if 'خطا در داده' in html_badge: return 'خطا در داده'
             return 'نامشخص'
@@ -1242,18 +819,16 @@ with tab2:
     }
     
     map_center_lat_folium, map_center_lon_folium, initial_zoom_map_val_folium = INITIAL_LAT, INITIAL_LON, INITIAL_ZOOM
-    if active_farm_geom: # This is now a polygon for single farm, or bounding box for all
+    if active_farm_geom:
         try:
-            # Center map on the centroid of the active geometry (polygon or bounding box)
-            if active_farm_geom.coordinates(): # Check if coordinates exist (it might be an empty geometry if creation failed)
-                 centroid_coords = active_farm_geom.centroid(maxError=1).coordinates().getInfo()
-                 map_center_lon_folium, map_center_lat_folium = centroid_coords[0], centroid_coords[1]
-            
-            if selected_farm_name != "همه مزارع": # Single farm selected (polygon)
-                 initial_zoom_map_val_folium = 15 # Zoom closer for a single farm polygon
-            # else: "همه مزارع" (bounding box), use default INITIAL_ZOOM or adjust based on bounds
-
-        except Exception: pass # Keep initial map center on error (e.g. if getInfo fails)
+            if active_farm_geom.type().getInfo() == 'Point':
+                coords_folium = active_farm_geom.coordinates().getInfo()
+                map_center_lon_folium, map_center_lat_folium = coords_folium[0], coords_folium[1]
+                initial_zoom_map_val_folium = 15
+            else:
+                centroid_folium = active_farm_geom.centroid(maxError=1).coordinates().getInfo()
+                map_center_lon_folium, map_center_lat_folium = centroid_folium[0], centroid_folium[1]
+        except Exception: pass
 
     m = geemap.Map(location=[map_center_lat_folium, map_center_lon_folium], zoom=initial_zoom_map_val_folium, add_google_map=True)
     m.add_basemap("HYBRID")
@@ -1296,26 +871,17 @@ with tab2:
 
                 if active_farm_name_display == "همه مزارع":
                      for _, farm_row_map in filtered_farms_df.iterrows():
-                         # Display marker at centroid for "همه مزارع" view
-                         # Centroids were pre-calculated in load_farm_data for pandas df (now WGS84)
-                         centroid_lon_map = farm_row_map.get('centroid_lon')
-                         centroid_lat_map = farm_row_map.get('centroid_lat')
-                         if pd.notna(centroid_lon_map) and pd.notna(centroid_lat_map):
-                             folium.Marker(
-                                 location=[centroid_lat_map, centroid_lon_map],
-                                 popup=f"<b>{farm_row_map['مزرعه']}</b><br>اداره: {farm_row_map.get('اداره', 'N/A')}<br>گروه: {farm_row_map.get('گروه', 'N/A')}",
-                                 tooltip=farm_row_map['مزرعه'], icon=folium.Icon(color='royalblue', icon='leaf', prefix='fa')
-                             ).add_to(m)
-                # For a single selected farm, its boundary is drawn. A marker at centroid can also be added if desired.
-                elif selected_farm_name != "همه مزارع" and active_farm_centroid_for_point_ops:
-                     try:
-                         point_coords_map = active_farm_centroid_for_point_ops.coordinates().getInfo()
                          folium.Marker(
-                             location=[point_coords_map[1], point_coords_map[0]], tooltip=f"مرکز مزرعه: {active_farm_name_display}",
-                             icon=folium.Icon(color='crimson', icon='map-marker', prefix='fa')
+                             location=[farm_row_map['عرض جغرافیایی'], farm_row_map['طول جغرافیایی']],
+                             popup=f"<b>{farm_row_map['مزرعه']}</b><br>کانال: {farm_row_map['کانال']}",
+                             tooltip=farm_row_map['مزرعه'], icon=folium.Icon(color='royalblue', icon='leaf', prefix='fa')
                          ).add_to(m)
-                     except Exception as e_marker:
-                         st.caption(f"نکته: نتوانست نشانگر مرکز مزرعه را اضافه کند: {e_marker}")
+                elif active_farm_geom.type().getInfo() == 'Point':
+                     point_coords_map = active_farm_geom.coordinates().getInfo()
+                     folium.Marker(
+                         location=[point_coords_map[1], point_coords_map[0]], tooltip=f"مزرعه: {active_farm_name_display}",
+                         icon=folium.Icon(color='crimson', icon='map-marker', prefix='fa')
+                     ).add_to(m)
                 m.add_layer_control()
             except Exception as map_err: st.error(f"خطا در افزودن لایه به نقشه: {map_err}\n{traceback.format_exc()}")
         else: st.warning(f"تصویری برای نمایش روی نقشه یافت نشد. {error_msg_current_map}")
@@ -1327,8 +893,7 @@ with tab2:
     st.subheader(f"📊 نمودار روند زمانی شاخص {index_options[selected_index]} برای '{active_farm_name_display}'")
     if active_farm_name_display == "همه مزارع":
         st.info("لطفاً یک مزرعه خاص را برای نمایش نمودار سری زمانی انتخاب کنید.")
-    # Check if a single farm is selected AND its geometry is available for GEE operations
-    elif selected_farm_name != "همه مزارع" and active_farm_geom:
+    elif active_farm_geom and active_farm_geom.type().getInfo() == 'Point':
         ts_end_date_chart = today.strftime('%Y-%m-%d')
         ts_start_date_chart_user = st.date_input("تاریخ شروع برای سری زمانی:", 
             value=today - datetime.timedelta(days=365),
@@ -1343,7 +908,7 @@ with tab2:
 
             with st.spinner(f"⏳ در حال دریافت و ترسیم سری زمانی..."):
                 ts_df_chart, ts_error_chart = get_index_time_series(
-                    active_farm_geom, selected_index, # استفاده از کل پلیگون برای محاسبه دقیق
+                    active_farm_geom, selected_index,
                     start_date_str=ts_start_date_chart_user.strftime('%Y-%m-%d'),
                     end_date_str=ts_end_date_chart
                 )
@@ -1362,8 +927,7 @@ with tab2:
                     fig_chart.update_traces(line=dict(color="var(--accent-color)", width=2.5), marker=dict(color="var(--primary-color)", size=6))
                     st.plotly_chart(fig_chart, use_container_width=True)
                 else: st.info(f"داده‌ای برای نمایش نمودار سری زمانی {selected_index} یافت نشد.")
-    else: # Handles "همه مزارع" or if single farm's geometry could not be determined
-        st.warning("نمودار سری زمانی فقط برای مزارع منفرد (با هندسه معتبر) قابل نمایش است.")
+    else: st.warning("نمودار سری زمانی فقط برای مزارع منفرد (نقطه‌ای) قابل نمایش است.")
     st.markdown("</div>", unsafe_allow_html=True)
 
 with tab3:
@@ -1427,24 +991,17 @@ with tab3:
 
         # --- Shared Context Strings for Gemini in Tab 3 ---
         farm_details_for_gemini_tab3 = ""
-        analysis_basis_str_gemini_tab3 = "تحلیل شاخص‌ها بر اساس کل مساحت مزارع انجام می‌شود و از مرز دقیق هندسی هر مزرعه (چندضلعی) برای محاسبه استفاده می‌شود. این روش نسبت به استفاده از نقطه مرکزی، دقت بیشتری دارد." # Updated basis
+        analysis_basis_str_gemini_tab3 = "تحلیل بر اساس نقطه مرکزی مزرعه از داده‌های CSV انجام می‌شود."
         if active_farm_name_display != "همه مزارع":
             farm_details_for_gemini_tab3 = f"مزرعه مورد نظر: '{active_farm_name_display}'.\n"
-            # active_farm_area_ha_display is now "N/A" or GEE calculated.
-            if isinstance(active_farm_area_ha_display, (int, float)):
-                farm_details_for_gemini_tab3 += f"مساحت محاسبه‌شده (تخمینی با GEE): {active_farm_area_ha_display:,.2f} هکتار.\n"
-            else: # Could be "N/A", "خطا در محاسبه", etc.
-                farm_details_for_gemini_tab3 += f"مساحت: {active_farm_area_ha_display}.\n"
+            if active_farm_area_ha_display: # This is from initial farm selection, should be okay
+                farm_details_for_gemini_tab3 += f"مساحت ثبت شده در CSV: {active_farm_area_ha_display:,.2f} هکتار.\n"
             
-            # Get other details like 'واریته', 'اداره', 'گروه', 'سن' if available from filtered_farms_df
+            # Get Varete from filtered_farms_df (original source)
             if filtered_farms_df is not None and not filtered_farms_df.empty:
-                 csv_farm_details_tab3_series_df = filtered_farms_df[filtered_farms_df['مزرعه'] == active_farm_name_display]
-                 if not csv_farm_details_tab3_series_df.empty:
-                     csv_farm_detail_row = csv_farm_details_tab3_series_df.iloc[0]
-                     farm_details_for_gemini_tab3 += f"واریته (از CSV): {csv_farm_detail_row.get('واریته', 'N/A')}.\n"
-                     farm_details_for_gemini_tab3 += f"اداره (از CSV): {csv_farm_detail_row.get('اداره', 'N/A')}.\n"
-                     farm_details_for_gemini_tab3 += f"گروه (از CSV): {csv_farm_detail_row.get('گروه', 'N/A')}.\n"
-                     farm_details_for_gemini_tab3 += f"سن (از CSV): {csv_farm_detail_row.get('سن', 'N/A')}.\n"
+                 csv_farm_details_tab3_series = filtered_farms_df[filtered_farms_df['مزرعه'] == active_farm_name_display]
+                 if not csv_farm_details_tab3_series.empty:
+                     farm_details_for_gemini_tab3 += f"واریته (از CSV): {csv_farm_details_tab3_series.iloc[0].get('واریته', 'N/A')}.\n"
 
 
         # --- 1. Intelligent Q&A ---
@@ -1597,7 +1154,7 @@ with tab3:
             st.markdown(f"##### تحلیل روند زمانی شاخص '{index_options[selected_index]}' برای مزرعه '{active_farm_name_display}'.")
             if active_farm_name_display == "همه مزارع":
                 st.info("لطفاً یک مزرعه خاص را از سایدبار برای تحلیل سری زمانی انتخاب کنید.")
-            elif active_farm_geom:
+            elif active_farm_geom and active_farm_geom.type().getInfo() == 'Point':
                 if st.button(f"🔍 تحلیل روند زمانی {selected_index} برای '{active_farm_name_display}' با Gemini", key="btn_gemini_timeseries_an_tab3"):
                     ts_end_date_gemini_ts = today.strftime('%Y-%m-%d')
                     ts_start_date_gemini_ts = (today - datetime.timedelta(days=180)).strftime('%Y-%m-%d') # 6 months
@@ -1605,7 +1162,7 @@ with tab3:
                     with st.spinner(f"⏳ در حال دریافت داده‌های سری زمانی برای Gemini..."):
                         # get_index_time_series is cached
                         ts_df_gemini_ts, ts_error_gemini_ts = get_index_time_series(
-                            active_farm_geom, selected_index, # Use entire farm polygon
+                            active_farm_geom, selected_index,
                             start_date_str=ts_start_date_gemini_ts, end_date_str=ts_end_date_gemini_ts
                         )
                     
