@@ -185,6 +185,57 @@ st.markdown("""
         from { opacity: 1; }
         to { opacity: 0; visibility: hidden; }
     }
+
+    /* Animations optimization to improve performance */
+    .section-container:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 15px rgba(0,0,0,0.08);
+    }
+
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.12);
+    }
+
+    /* Reduce shadows for better performance */
+    .ai-dashboard-card, .ai-insight-card, .gemini-response-default,
+    .gemini-response-report, .gemini-response-analysis {
+        box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+    }
+
+    /* Optimize animations with GPU acceleration */
+    .section-container, .ai-dashboard-card, .ai-insight-card, .gemini-response-default,
+    .gemini-response-report, .gemini-response-analysis, .stButton > button {
+        will-change: transform;
+        transform: translateZ(0);
+    }
+
+    /* Simplify hover animations */
+    .ai-dashboard-card:hover, .ai-insight-card:hover, 
+    .gemini-response-default:hover, .gemini-response-report:hover, 
+    .gemini-response-analysis:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+    }
+
+    /* Remove ripple animation for better performance */
+    .stButton > button::after {
+        animation: none;
+    }
+
+    /* Optimize icon animations */
+    .icon-pulse {
+        animation: pulse 3s ease-in-out infinite;
+    }
+
+    .icon-rotate {
+        animation: rotate 5s linear infinite;
+    }
+
+    /* Optimize decorative elements */
+    .gradient-decor {
+        opacity: 0.05;
+    }
 </style>
 
 <script>
@@ -403,8 +454,8 @@ st.markdown(f"""
         }}
         
         .section-container:hover {{
-            transform: translateY(-5px);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.12);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(0,0,0,0.08);
         }}
 
         /* Styling for buttons */
@@ -424,8 +475,8 @@ st.markdown(f"""
         }}
         .stButton > button:hover {{
             background-color: var(--button-hover-bg-color);
-            transform: translateY(-3px) scale(1.02);
-            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.12);
         }}
         .stButton > button:active {{
             background-color: color-mix(in srgb, var(--button-bg-color) 80%, black 20%);
@@ -482,12 +533,12 @@ st.markdown(f"""
             padding: 18px; 
             border-radius: 12px; 
             margin-top:20px; 
-            box-shadow: 0 3px 10px rgba(0,0,0,0.05);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.06);
             transition: all 0.3s ease;
         }}
         .gemini-response-default:hover {{
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-            transform: translateY(-3px);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+            transform: translateY(-2px);
         }}
         .gemini-response-report {{ 
             background-color: var(--success-bg); 
@@ -495,12 +546,12 @@ st.markdown(f"""
             padding: 18px; 
             border-radius: 12px; 
             margin-top:20px; 
-            box-shadow: 0 3px 10px rgba(0,0,0,0.05);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.06);
             transition: all 0.3s ease;
         }}
         .gemini-response-report:hover {{
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-            transform: translateY(-3px);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+            transform: translateY(-2px);
         }}
         .gemini-response-analysis {{ 
             background-color: var(--warning-bg); 
@@ -508,12 +559,12 @@ st.markdown(f"""
             padding: 18px; 
             border-radius: 12px; 
             margin-top:20px; 
-            box-shadow: 0 3px 10px rgba(0,0,0,0.05);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.06);
             transition: all 0.3s ease;
         }}
         .gemini-response-analysis:hover {{
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-            transform: translateY(-3px);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+            transform: translateY(-2px);
         }}
 
         /* Custom AI Analysis Dashboard Styles */
@@ -570,13 +621,13 @@ st.markdown(f"""
             background-color: color-mix(in srgb, var(--container-background-color) 98%, var(--accent-color) 2%);
             border-radius: 12px;
             margin-bottom: 15px;
-            box-shadow: 0 3px 8px rgba(0,0,0,0.06);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.06);
             transition: all 0.3s ease;
             border-left: 4px solid var(--accent-color);
         }}
         .ai-insight-card:hover {{
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-            transform: translateY(-3px);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+            transform: translateY(-2px);
         }}
         .ai-insight-header {{
             display: flex;
@@ -597,7 +648,7 @@ st.markdown(f"""
         
         /* Animated icons for AI components */
         .icon-pulse {{
-            animation: pulse 2s infinite;
+            animation: pulse 3s ease-in-out infinite;
         }}
         @keyframes pulse {{
             0% {{ transform: scale(1); opacity: 1; }}
@@ -606,7 +657,7 @@ st.markdown(f"""
         }}
         
         .icon-rotate {{
-            animation: rotate 3s linear infinite;
+            animation: rotate 5s linear infinite;
         }}
         @keyframes rotate {{
             from {{ transform: rotate(0deg); }}
@@ -641,7 +692,7 @@ st.markdown(f"""
             height: 150px;
             border-radius: 50%;
             background: linear-gradient(135deg, var(--secondary-color) 0%, transparent 70%);
-            opacity: 0.1;
+            opacity: 0.05;
             z-index: 0;
         }}
         .decor-top-right {{
@@ -1346,3 +1397,31 @@ with st.sidebar:
         """, unsafe_allow_html=True)
     
     st.markdown("</div>", unsafe_allow_html=True)  # End of section-container for tab3
+
+@st.cache_data(show_spinner="⏳ در حال پردازش تصاویر ماهواره‌ای...", persist=True, ttl=3600)
+def get_processed_image(_geometry, start_date, end_date, index_name):
+    try:
+        s2_sr_col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+                     .filterBounds(_geometry)
+                     .filterDate(start_date, end_date)
+                     .map(maskS2clouds))
+        count = s2_sr_col.size().getInfo()
+        if count == 0:
+            return None, f"تصویر بدون ابری در بازه {start_date} تا {end_date} یافت نشد."
+        indexed_col = s2_sr_col.map(add_indices)
+        median_image = indexed_col.median()
+        if index_name not in median_image.bandNames().getInfo():
+             return None, f"شاخص '{index_name}' پس از پردازش در تصویر میانه یافت نشد."
+        output_image = median_image.select(index_name)
+        return output_image, None
+    except ee.EEException as e:
+        error_message = f"خطای Google Earth Engine: {e}"
+        error_details = e.args[0] if e.args else str(e)
+        if isinstance(error_details, str):
+            if 'computation timed out' in error_details.lower():
+                 error_message += "\n(احتمالاً به دلیل حجم بالای پردازش یا بازه زمانی طولانی)"
+            elif 'user memory limit exceeded' in error_details.lower():
+                 error_message += "\n(احتمالاً به دلیل پردازش منطقه بزرگ یا عملیات پیچیده)"
+        return None, error_message
+    except Exception as e:
+        return None, f"خطای ناشناخته در پردازش GEE: {e}\n{traceback.format_exc()}"
