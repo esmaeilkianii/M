@@ -565,7 +565,7 @@ st.markdown(f"""
         }}
         
         /* Advanced Card Design for Gemini Sections */
-        .gemini-card {{
+        .gemini-card {
             background-color: var(--container-background-color);
             border-radius: 12px;
             box-shadow: 0 10px 20px rgba(0,0,0,0.1);
@@ -575,14 +575,14 @@ st.markdown(f"""
             border-top: 5px solid var(--accent-color);
             position: relative;
             overflow: hidden;
-        }}
+        }
         
-        .gemini-card:hover {{
+        .gemini-card:hover {
             transform: translateY(-5px);
             box-shadow: 0 15px 30px rgba(0,0,0,0.15);
-        }}
+        }
         
-        .gemini-card::after {{
+        .gemini-card::after {
             content: '';
             position: absolute;
             top: 0;
@@ -591,17 +591,17 @@ st.markdown(f"""
             height: 100%;
             background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 50%);
             pointer-events: none;
-        }}
+        }
         
-        .gemini-card-header {{
+        .gemini-card-header {
             display: flex;
             align-items: center;
             margin-bottom: 15px;
             padding-bottom: 10px;
             border-bottom: 1px solid rgba(0,0,0,0.1);
-        }}
+        }
         
-        .gemini-card-icon {{
+        .gemini-card-icon {
             width: 40px;
             height: 40px;
             border-radius: 8px;
@@ -613,17 +613,17 @@ st.markdown(f"""
             color: white;
             font-weight: bold;
             font-size: 20px;
-        }}
+        }
         
-        .gemini-card-title {{
+        .gemini-card-title {
             margin: 0;
             font-size: 18px;
             color: var(--primary-color);
             font-weight: 600;
-        }}
+        }
 
         /* Floating Action Button */
-        .fab-button {{
+        .fab-button {
             position: fixed;
             bottom: 30px;
             right: 30px;
@@ -640,37 +640,37 @@ st.markdown(f"""
             cursor: pointer;
             transition: all 0.3s ease;
             z-index: 9999;
-        }}
+        }
         
-        .fab-button:hover {{
+        .fab-button:hover {
             transform: scale(1.1);
             box-shadow: 0 6px 14px rgba(0,0,0,0.25);
-        }}
+        }
         
         /* Loading Animation */
-        .loading-animation {{
+        .loading-animation {
             display: flex;
             justify-content: center;
             align-items: center;
             padding: 20px;
-        }}
+        }
         
-        .loading-dot {{
+        .loading-dot {
             width: 12px;
             height: 12px;
             border-radius: 50%;
             background-color: var(--accent-color);
             margin: 0 5px;
             animation: loading 1.4s infinite ease-in-out both;
-        }}
+        }
         
-        .loading-dot:nth-child(1) {{ animation-delay: -0.32s; }}
-        .loading-dot:nth-child(2) {{ animation-delay: -0.16s; }}
+        .loading-dot:nth-child(1) { animation-delay: -0.32s; }
+        .loading-dot:nth-child(2) { animation-delay: -0.16s; }
         
-        @keyframes loading {{
-            0%, 80%, 100% {{ transform: scale(0); }}
-            40% {{ transform: scale(1); }}
-        }}
+        @keyframes loading {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
     </style>
 """, unsafe_allow_html=True)
 
