@@ -655,18 +655,17 @@ st.markdown(f"""
             padding: 20px;
         }}
         
-        .loading-dot {{
+        .loading-dot {
             width: 12px;
             height: 12px;
             border-radius: 50%;
             background-color: var(--accent-color);
             margin: 0 5px;
             animation: loading 1.4s infinite ease-in-out both;
-        }}
+        }
         
-        .loading-dot:nth-child(1) {{ animation-delay: -0.32s; }}
-        .loading-dot:nth-child(2) {{ animation-delay: -0.16s; }}
-        
+        .loading-dot:nth-child(1) { animation-delay: -0.32s; }
+        .loading-dot:nth-child(2) { animation-delay: -0.16s; }
         @keyframes loading {{
             0%, 80%, 100% {{ transform: scale(0); }}
             40% {{ transform: scale(1); }}
