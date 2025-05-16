@@ -848,7 +848,7 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    if GEMINI_API_KEY == "YOUR_GEMINI_API_KEY_HERE":
+    if GEMINI_API_KEY == "AIzaSyDzirWUubBVyjF10_JZ8UVSd6c6nnTKpLw":
         st.warning("⚠️ کلید API جمینای خود را مستقیماً در کد برنامه (متغیر GEMINI_API_KEY) وارد کنید تا قابلیت‌های هوشمند فعال شوند.")
     elif not gemini_model:
          st.error("اتصال به Gemini ناموفق بود. کلید API را بررسی کنید.")
