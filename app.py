@@ -7,6 +7,10 @@ from streamlit_folium import folium_static
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import math # برای محاسبات ریاضی مانند رطوبت
+# --- 5. رابط کاربری Streamlit ---
+st.set_page_config(layout="wide", page_title="محاسبه نیاز آبی نیشکر")
+
+st.title("📊 محاسبه نیاز آبی مزارع نیشکر")
 
 # --- 0. تنظیمات اولیه و احراز هویت GEE ---
 SERVICE_ACCOUNT_FILE = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json'
@@ -134,10 +138,6 @@ def calculate_cwr(et0_mm_per_hour, kc, area_hectare):
     cwr_m3_per_hour = (cwr_mm_per_hour / 1000) * area_m2
     cwr_liters_per_hour = cwr_m3_per_hour * 1000
     return cwr_liters_per_hour, cwr_m3_per_hour, cwr_mm_per_hour
-
-# --- 5. رابط کاربری Streamlit ---
-st.set_page_config(layout="wide", page_title="محاسبه نیاز آبی نیشکر")
-st.title("📊 محاسبه نیاز آبی مزارع نیشکر")
 
 if not gee_initialized:
     st.warning("سرویس Google Earth Engine مقداردهی اولیه نشده است. محاسبات ممکن است انجام نشود.")
