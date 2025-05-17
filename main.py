@@ -4,10 +4,10 @@ from components.dashboard import render_dashboard
 from components.map_view import render_map
 from components.ai_analysis import render_ai_analysis
 from utils.initialize import initialize_app, load_farm_data
-import utils.styles as styles
+from utils.styles import apply_custom_styles
 
 # Initialize application
-styles.apply_custom_styles()
+apply_custom_styles()
 initialize_app()
 
 # Load farm data (will be cached)
