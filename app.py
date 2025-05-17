@@ -104,7 +104,7 @@ INITIAL_ZOOM = 11 # Adjusted default zoom
 
 # --- File Paths (Relative to the script location in Hugging Face) ---
 # CSV_FILE_PATH = 'cleaned_output.csv' # No longer used
-GEE_ASSET_PATH = 'projects/ee-esmaeilkiani13877/assets/Croplogging-Farm'
+GEE_ASSET_PATH = 'https://code.earthengine.google.com/?asset=projects/ee-esmaeilkiani13877/assets/Croplogging-Farm'
 SERVICE_ACCOUNT_FILE = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json' # Ensure this file is present
 
 # --- GEE Authentication ---
