@@ -111,7 +111,7 @@ THEMES = {
         "--tab-active-text": "white",
         "--info-bg": "#f9f6f3",
         "--info-border": "#544741",
-        "--warning-bg": "#fef7eT", # Typo, should be #fef7e0 for light yellow
+        "--warning-bg": "#fef7e0", # Light yellow
         "--warning-border": "#c6ac8f",
         "--success-bg": "#f3f9f3",
         "--success-border": "#777",
@@ -522,9 +522,9 @@ st.markdown(f"""
         }}
         
         @keyframes pulse {{
-            0% {{ transform: scale(1); }
-            50% {{ transform: scale(1.05); }
-            100% {{ transform: scale(1); }
+            0% {{ transform: scale(1); }}
+            50% {{ transform: scale(1.05); }}
+            100% {{ transform: scale(1); }}
         }}
         
         .fade-in {{
