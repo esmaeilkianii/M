@@ -148,6 +148,119 @@ st.set_page_config(
     layout="wide"
 )
 
+# --- Custom Modern Cards CSS ---
+st.markdown("""
+    <style>
+    /* Modern Gradient Card for Tab1 */
+    .modern-gradient-card {
+        background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+        color: #fff;
+        border-radius: 18px;
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+        padding: 32px 24px 24px 24px;
+        margin-bottom: 28px;
+        display: flex;
+        align-items: center;
+        animation: cardFadeIn 1.2s cubic-bezier(.39,.575,.565,1) both;
+        position: relative;
+        overflow: hidden;
+    }
+    .modern-gradient-card .icon {
+        font-size: 2.8em;
+        margin-left: 18px;
+        animation: iconPulse 1.5s infinite;
+    }
+    @keyframes iconPulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.15); }
+        100% { transform: scale(1); }
+    }
+    @keyframes cardFadeIn {
+        0% { opacity: 0; transform: translateY(30px); }
+        100% { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Glassmorphism Card for Tab2 */
+    .glass-card {
+        background: rgba(255, 255, 255, 0.25);
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.18);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border-radius: 18px;
+        border: 1.5px solid rgba(255,255,255,0.35);
+        padding: 28px 20px 20px 20px;
+        margin-bottom: 28px;
+        position: relative;
+        overflow: hidden;
+        animation: glassFadeIn 1.2s cubic-bezier(.39,.575,.565,1) both;
+    }
+    @keyframes glassFadeIn {
+        0% { opacity: 0; transform: scale(0.95); }
+        100% { opacity: 1; transform: scale(1); }
+    }
+    .glass-card .glass-icon {
+        font-size: 2.2em;
+        color: #38b6ff;
+        margin-left: 14px;
+        filter: drop-shadow(0 2px 8px #38b6ff55);
+    }
+    /* Floating Action Button for Tab2 */
+    .fab-animated {
+        position: absolute;
+        bottom: 18px;
+        right: 18px;
+        width: 54px;
+        height: 54px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #38b6ff 0%, #43e97b 100%);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2em;
+        box-shadow: 0 4px 16px rgba(56,182,255,0.18);
+        cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+        z-index: 10;
+        animation: fabBounce 1.5s infinite;
+    }
+    @keyframes fabBounce {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-10px); }
+    }
+
+    /* Fade-in AI Card for Tab3 */
+    .ai-fadein-card {
+        background: linear-gradient(120deg, #f7971e 0%, #ffd200 100%);
+        color: #333;
+        border-radius: 18px;
+        box-shadow: 0 8px 32px 0 rgba(255, 215, 0, 0.13);
+        padding: 30px 22px 22px 22px;
+        margin-bottom: 28px;
+        display: flex;
+        align-items: center;
+        animation: fadeInAI 1.2s cubic-bezier(.39,.575,.565,1) both;
+        position: relative;
+        overflow: hidden;
+    }
+    .ai-fadein-card .ai-icon {
+        font-size: 2.5em;
+        margin-left: 16px;
+        animation: aiGlow 1.5s infinite alternate;
+        color: #fff;
+        filter: drop-shadow(0 0 8px #ffd20088);
+    }
+    @keyframes fadeInAI {
+        0% { opacity: 0; transform: translateY(-30px); }
+        100% { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes aiGlow {
+        0% { filter: drop-shadow(0 0 8px #ffd20088); }
+        100% { filter: drop-shadow(0 0 18px #ffd200cc); }
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 # --- Animated Logo Display ---
 def get_image_as_base64(path):
     if not os.path.exists(path):
@@ -1050,7 +1163,17 @@ tab1, tab2, tab3 = st.tabs(tab_titles)
 
 
 with tab1:
-    st.markdown(f"<div class='section-container'><h1>🌾 {APP_TITLE}</h1><p>{APP_SUBTITLE}</p></div>", unsafe_allow_html=True)
+    # Modern Gradient Card (Tab1)
+    st.markdown(f"""
+    <div class='modern-gradient-card'>
+        <span class='icon'>🌱</span>
+        <div>
+            <div style='font-size:1.25em; font-weight:600;'>وضعیت کلی مزارع</div>
+            <div style='font-size:1.05em;'>تعداد کل مزارع: <b>{len(filtered_farms_df)}</b></div>
+            <div style='font-size:0.98em;'>روز انتخابی: <b>{selected_day}</b></div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     with st.container():
         st.markdown("<div class='section-container'>", unsafe_allow_html=True)
@@ -1230,8 +1353,20 @@ with tab1:
     st.markdown("</div>", unsafe_allow_html=True)
 
 with tab2:
-    st.markdown("<div class='section-container'>", unsafe_allow_html=True)
-    st.subheader(f"🗺️ نقشه وضعیت: {active_farm_name_display} (شاخص: {index_options[selected_index]})")
+    # Glassmorphism Card + Floating Action Button (Tab2)
+    st.markdown(f"""
+    <div class='glass-card'>
+        <span class='glass-icon'>🗺️</span>
+        <div>
+            <div style='font-size:1.18em; font-weight:600;'>نمایش نقشه و نمودارها</div>
+            <div style='font-size:1em;'>شاخص انتخابی: <b>{index_options[selected_index]}</b></div>
+            <div style='font-size:0.95em;'>مزرعه: <b>{active_farm_name_display}</b></div>
+        </div>
+        <div class='fab-animated' title='عملیات سریع' onclick='alert("به‌زودی!")'>
+            ➕
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     vis_params_map = { # Same as before
         'NDVI': {'min': 0.0, 'max': 0.9, 'palette': ['#a50026', '#d73027', '#f46d43', '#fdae61', '#fee08b', '#ffffbf', '#d9ef8b', '#a6d96a', '#66bd63', '#1a9850', '#006837']},
@@ -1368,9 +1503,16 @@ with tab2:
     st.markdown("</div>", unsafe_allow_html=True)
 
 with tab3:
-    st.markdown("<div class='section-container'>", unsafe_allow_html=True)
-    st.header("💡 تحلیل هوشمند با Gemini")
-    st.caption("پاسخ‌های Gemini بر اساس داده‌های موجود و الگوهای کلی تولید می‌شوند و نباید جایگزین نظر کارشناسان شوند.")
+    # AI Fade-in Card (Tab3)
+    st.markdown(f"""
+    <div class='ai-fadein-card'>
+        <span class='ai-icon'>🤖</span>
+        <div>
+            <div style='font-size:1.18em; font-weight:600;'>تحلیل هوشمند با Gemini</div>
+            <div style='font-size:1em;'>پاسخ‌های هوشمند و گزارش‌های تحلیلی با هوش مصنوعی</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     if not gemini_model:
         st.warning("⚠️ قابلیت‌های هوشمند Gemini با وارد کردن صحیح کلید API در کد فعال می‌شوند.")
