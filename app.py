@@ -5,7 +5,7 @@ import numpy as np
 import folium
 from streamlit_folium import st_folium
 import json # Added to read the service account file
-# from google.oauth2 import service_account # ee.ServiceAccountCredentials handles this
+from google.oauth2 import service_account # ee.ServiceAccountCredentials handles this
 
 # --- Configuration & GEE Initialization ---
 st.set_page_config(layout="wide")
