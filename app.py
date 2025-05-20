@@ -12,8 +12,8 @@ st.set_page_config(layout="wide")
 st.title("سامانه پایش و پشتیبانی تصمیم آبیاری نیشکر")
 st.subheader("Sugarcane Irrigation Monitoring & Decision Support")
 
-SERVICE_ACCOUNT_FILE = 'ee-esmaeilkiani1387-1b2c5e812a1d.json'
-GEE_PROJECT_ID = "ee-esmaeilkiani1387" # Extract from JSON or set manually
+SERVICE_ACCOUNT_FILE = 'ee-esmaeilkiani13877-cfdea6eaf411 (4).json'
+GEE_PROJECT_ID = "ee-esmaeilkiani13877" # Extract from JSON or set manually
 FEATURE_COLLECTION_ID = "projects/ee-esmaeilkiani13877/assets/Croplogging-Farm"
 
 @st.cache_resource
