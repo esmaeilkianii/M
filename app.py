@@ -450,7 +450,6 @@ st.set_page_config(
 # st.markdown("""
 #     <style>
 #     /* Modern Gradient Card for Tab1 */
-// ... existing code ...
 #     """, unsafe_allow_html=True)
 
 
