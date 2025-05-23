@@ -2,6 +2,7 @@ import streamlit as st
 import pyproj # Added for coordinate transformation
 import base64 # For encoding logo image
 import os # For path joining
+import ee
 
 # --- Page Config ---
 st.set_page_config(
