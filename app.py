@@ -140,21 +140,169 @@ THEMES = {
 }
 current_theme_colors = THEMES[st.session_state.selected_theme_name]
 
+# --- Apply Custom Theme and Global Styles ---
+# Add a unique class to the main Streamlit container
+st.markdown(f"""
+<style>
+    /* Animated Background */
+    body {{
+        background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+        background-size: 400% 400%;
+        animation: gradientBackground 15s ease infinite;
+    }}
 
-# --- Page Config ---
-st.set_page_config(
-    page_title="سامانه پایش هوشمند نیشکر",
-    page_icon="🌾",
-    layout="wide"
-)
+    @keyframes gradientBackground {{
+        0% {{
+            background-position: 0% 50%;
+        }}
+        50% {{
+            background-position: 100% 50%;
+        }}
+        100% {{
+            background-position: 0% 50%;
+        }}
+    }}
 
-# --- Custom Modern Cards CSS ---
-st.markdown("""
-    <style>
-    /* Modern Gradient Card for Tab1 */
-    .modern-gradient-card {
-        background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
-        color: #fff;
+    /* Use CSS variables for dynamic theming */
+    :root {{
+        --primary-color: {current_theme_colors["--primary-color"]};
+        --secondary-color: {current_theme_colors["--secondary-color"]};
+        --accent-color: {current_theme_colors["--accent-color"]};
+        --background-color: {current_theme_colors["--background-color"]};
+        --container-background-color: {current_theme_colors["--container-background-color"]};
+        --text-color: {current_theme_colors["--text-color"]};
+        --header-text-color: {current_theme_colors["--header-text-color"]};
+        --button-bg-color: {current_theme_colors["--button-bg-color"]};
+        --button-hover-bg-color: {current_theme_colors["--button-hover-bg-color"]};
+        --metric-border-accent: {current_theme_colors["--metric-border-accent"]};
+        --table-header-bg: {current_theme_colors["--table-header-bg"]};
+        --tab-active-bg: {current_theme_colors["--tab-active-bg"]};
+        --tab-active-text: {current_theme_colors["--tab-active-text"]};
+        --info-bg: {current_theme_colors["--info-bg"]};
+        --info-border: {current_theme_colors["--info-border"]};
+        --warning-bg: {current_theme_colors["--warning-bg"]};
+        --warning-border: {current_theme_colors["--warning-border"]};
+        --success-bg: {current_theme_colors["--success-bg"]};
+        --success-border: {current_theme_colors["--success-border"]};
+    }}
+
+    /* General styles using variables */
+    h1, h2, h3, h4, h5, h6 {{
+        color: var(--header-text-color);
+    }}
+
+    body {{
+        color: var(--text-color);
+        background-color: var(--background-color); /* Fallback if animated background doesn't cover */
+    }}
+
+    .stApp {{ /* Target the main Streamlit container */
+        background: none; /* Remove default Streamlit background */
+    }}
+
+    .css-1d3z3hw {{ /* Streamlit's main content container */
+        background-color: var(--container-background-color);
+        padding: 2rem;
+        border-radius: 10px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }}
+
+    /* Sidebar styling */
+    .css-czesst {{ /* Sidebar container */
+        background-color: rgba(255, 255, 255, 0.8); /* Slightly transparent white */
+        backdrop-filter: blur(5px);
+        -webkit-backdrop-filter: blur(5px);
+        padding: 1.5rem;
+    }}
+    .css-czesst .stButton > button {{
+         background-color: var(--button-bg-color);
+         color: white;
+    }}
+     .css-czesst .stButton > button:hover {{
+         background-color: var(--button-hover-bg-color);
+     }}
+
+
+    /* Button styling */
+    .stButton > button {{
+        background-color: var(--button-bg-color);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 20px;
+        font-size: 1em;
+        cursor: pointer;
+        transition: background-color 0.3s ease, transform 0.1s ease;
+    }}
+
+    .stButton > button:hover {{
+        background-color: var(--button-hover-bg-color);
+        transform: translateY(-2px);
+    }}
+
+    /* Metric cards */
+    .stMetric > div {{
+        border-left: 5px solid var(--metric-border-accent);
+        padding: 10px;
+        border-radius: 5px;
+        background-color: var(--container-background-color);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }}
+
+    /* Tabs styling */
+    .stTabs [data-baseweb="tab-list"] {{
+        gap: 8px;
+    }}
+
+    .stTabs [data-baseweb="tab"] {{
+        height: 40px;
+        white-space: nowrap;
+        border-bottom: 1px solid #ddd;
+        margin: 0;
+        padding: 0 16px;
+        gap: 8px;
+        /* background-color: #f0f0f0; /* Default tab background */ */
+        border-radius: 8px 8px 0 0;
+        transition: background-color 0.3s ease;
+    }}
+
+    .stTabs [data-baseweb="tab"]:hover {{
+        background-color: #eee;
+    }}
+
+    .stTabs [aria-selected="true"] {{
+        background-color: var(--tab-active-bg);
+        color: var(--tab-active-text);
+        border-bottom: 3px solid var(--secondary-color); /* Active indicator */
+    }}
+
+    /* Info, Warning, Success boxes */
+    .stAlert {{
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        padding: 1rem;
+    }}
+    .stAlert.stAlert-info {{
+        background-color: var(--info-bg);
+        border-left: 5px solid var(--info-border);
+        color: var(--text-color); /* Use general text color */
+    }}
+     .stAlert.stAlert-warning {{
+        background-color: var(--warning-bg);
+        border-left: 5px solid var(--warning-border);
+        color: var(--text-color); /* Use general text color */
+    }}
+      .stAlert.stAlert-success {{
+        background-color: var(--success-bg);
+        border-left: 5px solid var(--success-border);
+        color: var(--text-color); /* Use general text color */
+    }}
+
+
+    /* Custom Modern Cards CSS - Adjusted to use variables */
+    .modern-gradient-card {{
+        background: linear-gradient(135deg, var(--secondary-color) 0%, var(--accent-color) 100%); /* Using theme colors */
+        color: white; /* Ensure text is readable on gradient */
         border-radius: 18px;
         box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
         padding: 32px 24px 24px 24px;
@@ -164,77 +312,82 @@ st.markdown("""
         animation: cardFadeIn 1.2s cubic-bezier(.39,.575,.565,1) both;
         position: relative;
         overflow: hidden;
-    }
-    .modern-gradient-card .icon {
+    }}
+    .modern-gradient-card .icon {{
         font-size: 2.8em;
         margin-left: 18px;
         animation: iconPulse 1.5s infinite;
-    }
-    @keyframes iconPulse {
-        0% { transform: scale(1); }
-        50% { transform: scale(1.15); }
-        100% { transform: scale(1); }
-    }
-    @keyframes cardFadeIn {
-        0% { opacity: 0; transform: translateY(30px); }
-        100% { opacity: 1; transform: translateY(0); }
-    }
+        color: rgba(255,255,255,0.8); /* Slightly transparent icon */
+    }}
+    /* @keyframes iconPulse and cardFadeIn remain unchanged */
+    @keyframes iconPulse {{
+        0% {{ transform: scale(1); }}
+        50% {{ transform: scale(1.15); }}
+        100% {{ transform: scale(1); }}
+    }}
+    @keyframes cardFadeIn {{
+        0% {{ opacity: 0; transform: translateY(30px); }}
+        100% {{ opacity: 1; transform: translateY(0); }}
+    }}
 
-    /* Glassmorphism Card for Tab2 */
-    .glass-card {
-        background: rgba(255, 255, 255, 0.25);
+
+    /* Glassmorphism Card for Tab2 - Adjusted to use variables */
+    .glass-card {{
+        background: rgba(var(--container-background-color-rgb, 255, 255, 255), 0.5); /* Use container BG with transparency */
         box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.18);
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
         border-radius: 18px;
-        border: 1.5px solid rgba(255,255,255,0.35);
+        border: 1.5px solid rgba(var(--text-color-rgb, 33, 37, 41), 0.15); /* Border based on text color */
         padding: 28px 20px 20px 20px;
         margin-bottom: 28px;
         position: relative;
         overflow: hidden;
         animation: glassFadeIn 1.2s cubic-bezier(.39,.575,.565,1) both;
-    }
-    @keyframes glassFadeIn {
-        0% { opacity: 0; transform: scale(0.95); }
-        100% { opacity: 1; transform: scale(1); }
-    }
-    .glass-card .glass-icon {
+    }}
+    /* @keyframes glassFadeIn remains unchanged */
+    @keyframes glassFadeIn {{
+        0% {{ opacity: 0; transform: scale(0.95); }}
+        100% {{ opacity: 1; transform: scale(1); }}
+    }}
+    .glass-card .glass-icon {{
         font-size: 2.2em;
-        color: #38b6ff;
+        color: var(--primary-color); /* Using primary color */
         margin-left: 14px;
-        filter: drop-shadow(0 2px 8px #38b6ff55);
-    }
-    /* Floating Action Button for Tab2 */
-    .fab-animated {
+        filter: drop-shadow(0 2px 8px rgba(var(--primary-color-rgb, 26, 83, 92), 0.3)); /* Shadow based on primary color */
+    }}
+    /* Floating Action Button for Tab2 - Adjusted to use variables */
+    .fab-animated {{
         position: absolute;
         bottom: 18px;
         right: 18px;
         width: 54px;
         height: 54px;
         border-radius: 50%;
-        background: linear-gradient(135deg, #38b6ff 0%, #43e97b 100%);
-        color: #fff;
+        background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%); /* Using theme colors */
+        color: white; /* Ensure text is readable on gradient */
         display: flex;
         align-items: center;
         justify-content: center;
         font-size: 2em;
-        box-shadow: 0 4px 16px rgba(56,182,255,0.18);
+        box-shadow: 0 4px 16px rgba(var(--primary-color-rgb, 26, 83, 92), 0.3); /* Shadow based on primary color */
         cursor: pointer;
         transition: transform 0.2s, box-shadow 0.2s;
         z-index: 10;
         animation: fabBounce 1.5s infinite;
-    }
-    @keyframes fabBounce {
-        0%, 100% { transform: translateY(0); }
-        50% { transform: translateY(-10px); }
-    }
+    }}
+     /* @keyframes fabBounce remains unchanged */
+    @keyframes fabBounce {{
+        0%, 100% {{ transform: translateY(0); }}
+        50% {{ transform: translateY(-10px); }}
+    }}
 
-    /* Fade-in AI Card for Tab3 */
-    .ai-fadein-card {
-        background: linear-gradient(120deg, #f7971e 0%, #ffd200 100%);
-        color: #333;
+    /* Fade-in AI Card for Tab3 - Adjusted to use variables */
+    .ai-fadein-card {{
+        background: linear-gradient(120deg, var(--accent-color) 0%, var(--secondary-color) 100%); /* Using theme colors */
+        color: var(--text-color); /* Use general text color */
         border-radius: 18px;
-        box-shadow: 0 8px 32px 0 rgba(255, 215, 0, 0.13);
+        box-shadow: 0 8px 32px 0 rgba(var(--accent-color-rgb, 231, 111, 81), 0.2); /* Shadow based on accent color */
         padding: 30px 22px 22px 22px;
         margin-bottom: 28px;
         display: flex;
@@ -242,26 +395,66 @@ st.markdown("""
         animation: fadeInAI 1.2s cubic-bezier(.39,.575,.565,1) both;
         position: relative;
         overflow: hidden;
-    }
-    .ai-fadein-card .ai-icon {
+    }}
+    .ai-fadein-card .ai-icon {{
         font-size: 2.5em;
         margin-left: 16px;
         animation: aiGlow 1.5s infinite alternate;
-        color: #fff;
-        filter: drop-shadow(0 0 8px #ffd20088);
-    }
-    @keyframes fadeInAI {
-        0% { opacity: 0; transform: translateY(-30px); }
-        100% { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes aiGlow {
-        0% { filter: drop-shadow(0 0 8px #ffd20088); }
-        100% { filter: drop-shadow(0 0 18px #ffd200cc); }
-    }
-    </style>
+        color: white; /* Ensure icon is visible on gradient */
+    }}
+     /* @keyframes fadeInAI and aiGlow remain unchanged */
+    @keyframes fadeInAI {{
+        0% {{ opacity: 0; transform: translateY(30px); }}
+        100% {{ opacity: 1; transform: translateY(0); }}
+    }}
+    @keyframes aiGlow {{
+        0% {{ filter: drop-shadow(0 0 4px white); }}
+        100% {{ filter: drop-shadow(0 0 8px white); }}
+    }}
+
+    /* Helper to get RGB values from hex */
+    /* These are needed for transparent backgrounds and shadows */
+    /* We'll add these dynamically if possible or use a limited set for now */
+    /* For simplicity now, manually defining some common theme color RGBs or relying on direct rgba where applicable */
+    /* Example (will need to be generated based on selected theme): */
+    /*
+    :root {{
+         --primary-color-rgb: 26, 83, 92;
+         --container-background-color-rgb: 255, 255, 255;
+         --text-color-rgb: 33, 37, 41;
+         --accent-color-rgb: 231, 111, 81;
+    }}
+    */
+
+    /* Ensure container background is visible over animated background */
+    .main > div {{
+        background-color: var(--container-background-color);
+        border-radius: 10px;
+        padding: 20px;
+    }}
+
+
+</style>
 """, unsafe_allow_html=True)
 
-# --- Animated Logo Display ---
+
+# --- Page Config ---
+st.set_page_config(
+    page_title="سامانه پایش هوشمند نیشکر",
+    page_icon="🌾",
+    layout="wide"
+)
+
+# --- Custom Modern Cards CSS ---
+# This section will be replaced by the combined styles above
+# st.markdown("""
+#     <style>
+#     /* Modern Gradient Card for Tab1 */
+// ... existing code ...
+#     """, unsafe_allow_html=True)
+
+
+# --- Logo ---
 def get_image_as_base64(path):
     if not os.path.exists(path):
         return None
@@ -323,470 +516,6 @@ import traceback
 from streamlit_folium import st_folium
 import google.generativeai as genai
 import time # For potential (not recommended) auto-rerun
-
-
-# --- Apply Dynamic CSS based on selected theme ---
-# This CSS block will use the variables defined in current_theme_colors
-st.markdown(f"""
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700&display=swap');
-        
-        :root {{
-            {"; ".join([f"{key}: {value}" for key, value in current_theme_colors.items()])};
-        }}
-
-        body {{
-            font-family: 'Vazirmatn', sans-serif;
-            background-color: var(--background-color);
-            color: var(--text-color);
-        }}
-        
-        /* Main container - not directly targetable, use for .main if Streamlit uses it */
-        .main {{
-            font-family: 'Vazirmatn', sans-serif;
-            background-color: var(--background-color);
-        }}
-        
-        /* Headers */
-        h1, h2, h3 {{
-            font-family: 'Vazirmatn', sans-serif;
-            text-align: right;
-            font-weight: 600;
-        }}
-        h1 {{
-            color: var(--header-text-color);
-            border-bottom: 2px solid var(--secondary-color);
-            padding-bottom: 0.3em;
-            margin-bottom: 0.7em;
-        }}
-        h2 {{
-            color: var(--primary-color);
-        }}
-        h3 {{
-            color: var(--accent-color);
-            font-weight: 500;
-        }}
-        
-        /* Metrics - Enhanced Styling */
-        .stMetric {{
-            font-family: 'Vazirmatn', sans-serif;
-            background-color: var(--container-background-color);
-            border: 1px solid #e0e0e0;
-            border-left: 5px solid var(--metric-border-accent);
-            border-radius: 8px;
-            padding: 1.2rem;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.05);
-            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
-        }}
-        .stMetric:hover {{
-            transform: translateY(-3px);
-            box-shadow: 0 6px 12px rgba(0,0,0,0.1);
-        }}
-        .stMetric > label {{
-            font-weight: 500;
-            color: var(--primary-color);
-        }}
-        .stMetric > div[data-testid="stMetricValue"] {{
-            font-size: 1.8em;
-            font-weight: 600;
-            color: var(--text-color);
-        }}
-        
-        /* Tabs */
-        .stTabs [data-baseweb="tab-list"] {{
-            gap: 5px;
-            direction: rtl;
-            border-bottom: 2px solid #e0e0e0;
-        }}
-        .stTabs [data-baseweb="tab"] {{
-            height: 55px;
-            padding: 12px 25px;
-            background-color: #f8f9fa; /* Neutral non-active tab */
-            border-radius: 8px 8px 0 0;
-            font-family: 'Vazirmatn', sans-serif;
-            font-weight: 600;
-            color: var(--text-color);
-            border: 1px solid #e0e0e0;
-            border-bottom: none;
-            transition: background-color 0.2s, color 0.2s;
-        }}
-        .stTabs [data-baseweb="tab"][aria-selected="true"] {{
-            background-color: var(--tab-active-bg);
-            color: var(--tab-active-text);
-            border-color: var(--tab-active-bg);
-        }}
-        
-        /* Tables */
-        .dataframe-container table {{
-            font-family: 'Vazirmatn', sans-serif;
-            text-align: right;
-            border-collapse: collapse;
-            width: 100%;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            border-radius: 8px;
-            overflow: hidden;
-        }}
-        .dataframe-container th {{
-            background-color: var(--table-header-bg);
-            color: white;
-            padding: 12px 15px;
-            font-weight: 600;
-            text-align: right;
-        }}
-        .dataframe-container td {{
-            padding: 10px 15px;
-            border-bottom: 1px solid #e0e0e0;
-            background-color: var(--container-background-color); /* Ensure TD matches container */
-        }}
-        .dataframe-container tr:nth-child(even) td {{
-            background-color: color-mix(in srgb, var(--container-background-color) 90%, var(--background-color) 10%);
-        }}
-        .dataframe-container tr:hover td {{
-            background-color: color-mix(in srgb, var(--container-background-color) 80%, var(--secondary-color) 20%);
-        }}
-
-        /* Sidebar */
-        .css-1d391kg {{ /* Streamlit's default sidebar class */
-            font-family: 'Vazirmatn', sans-serif;
-            direction: rtl;
-            background-color: var(--container-background-color);
-            padding: 1.5rem;
-            border-left: 1px solid #e0e0e0;
-        }}
-        .css-1d391kg .stSelectbox label, .css-1d391kg .stTextInput label, .css-1d391kg .stButton > button {{
-            font-weight: 500;
-            color: var(--text-color);
-        }}
-        
-        /* Custom status badges */
-        .status-badge {{ padding: 5px 10px; border-radius: 15px; font-size: 0.85em; font-weight: 500; display: inline-block; }}
-        .status-positive {{ background-color: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }}
-        .status-neutral {{ background-color: #feF3c7; color: #92400e; border: 1px solid #fcd34d; }}
-        .status-negative {{ background-color: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }}
-
-        /* Custom containers for better visual grouping */
-        .section-container {{
-            background-color: var(--container-background-color);
-            padding: 1.5rem;
-            border-radius: 10px;
-            box-shadow: 0 3px 10px rgba(0,0,0,0.07);
-            margin-bottom: 2rem;
-        }}
-
-        /* Styling for buttons */
-        .stButton > button {{
-            font-family: 'Vazirmatn', sans-serif;
-            background-color: var(--button-bg-color);
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 8px;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-            z-index: 1;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }}
-        
-        .stButton > button:before {{
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-            transition: all 0.5s;
-            z-index: -1;
-        }}
-        
-        .stButton > button:hover {{
-            transform: translateY(-3px);
-            box-shadow: 0 7px 14px rgba(0,0,0,0.15);
-        }}
-        
-        .stButton > button:hover:before {{
-            left: 100%;
-        }}
-        
-        .stButton > button:active {{
-            transform: translateY(1px);
-            box-shadow: 0 3px 8px rgba(0,0,0,0.15);
-        }}
-
-        /* Input fields */
-        .stTextInput input, .stSelectbox div[data-baseweb="select"] > div, .stDateInput input {{
-            border-radius: 8px !important; /* Ensure high specificity */
-            border: 1px solid #ced4da !important;
-            background-color: var(--container-background-color) !important;
-            color: var(--text-color) !important;
-        }}
-        .stTextInput input:focus, .stSelectbox div[data-baseweb="select"] > div:focus-within, .stDateInput input:focus {{
-            border-color: var(--accent-color) !important;
-            box-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--accent-color) 30%, transparent 70%) !important;
-        }}
-        /* Placeholder text color for inputs */
-        .stTextInput input::placeholder {{ color: color-mix(in srgb, var(--text-color) 60%, transparent 40%); }}
-
-
-        /* Markdown links */
-        a {{ color: var(--accent-color); text-decoration: none; }}
-        a:hover {{ text-decoration: underline; }}
-
-        /* Custom Gemini response box styles */
-        .gemini-response-default {{ 
-            background-color: var(--info-bg); 
-            border-left: 5px solid var(--info-border); 
-            padding: 20px; 
-            border-radius: 10px; 
-            margin-top:20px; 
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }}
-        
-        .gemini-response-default:before {{
-            content: '💡';
-            font-size: 1.2em;
-            position: absolute;
-            top: 10px;
-            right: 15px;
-            opacity: 0.5;
-        }}
-        
-        .gemini-response-default:hover {{
-            box-shadow: 0 6px 16px rgba(0,0,0,0.12);
-            transform: translateY(-3px);
-        }}
-        
-        .gemini-response-report {{ 
-            background-color: var(--success-bg); 
-            border-left: 5px solid var(--success-border); 
-            padding: 20px; 
-            border-radius: 10px; 
-            margin-top:20px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-            transition: all 0.3s ease;
-            position: relative;
-        }}
-        
-        .gemini-response-report:before {{
-            content: '📊';
-            font-size: 1.2em;
-            position: absolute;
-            top: 10px;
-            right: 15px;
-            opacity: 0.5;
-        }}
-        
-        .gemini-response-report:hover {{
-            box-shadow: 0 6px 16px rgba(0,0,0,0.12);
-            transform: translateY(-3px);
-        }}
-        
-        .gemini-response-analysis {{ 
-            background-color: var(--warning-bg); 
-            border-left: 5px solid var(--warning-border); 
-            padding: 20px; 
-            border-radius: 10px; 
-            margin-top:20px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-            transition: all 0.3s ease;
-            position: relative;
-        }}
-        
-        .gemini-response-analysis:before {{
-            content: '🔍';
-            font-size: 1.2em;
-            position: absolute;
-            top: 10px;
-            right: 15px;
-            opacity: 0.5;
-        }}
-        
-        .gemini-response-analysis:hover {{
-            box-shadow: 0 6px 16px rgba(0,0,0,0.12);
-            transform: translateY(-3px);
-        }}
-        
-        /* Animated Gemini AI Tab */
-        .gemini-header {{
-            background: linear-gradient(-45deg, var(--primary-color), var(--secondary-color), var(--accent-color));
-            background-size: 400% 400%;
-            animation: gradient 15s ease infinite;
-            color: white;
-            padding: 15px 25px;
-            border-radius: 12px;
-            text-align: center;
-            margin-bottom: 20px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        }}
-        
-        @keyframes gradient {{
-            0% {{ background-position: 0% 50%; }}
-            50% {{ background-position: 100% 50%; }}
-            100% {{ background-position: 0% 50%; }}
-        }}
-        
-        .pulse-animation {{
-            animation: pulse 2s infinite;
-        }}
-        
-        @keyframes pulse {{
-            0% {{ transform: scale(1); }}
-            50% {{ transform: scale(1.05); }}
-            100% {{ transform: scale(1); }}
-        }}
-        
-        .fade-in {{
-            opacity: 0;
-            animation: fadeIn 1s forwards;
-        }}
-        
-        @keyframes fadeIn {{
-            from {{ opacity: 0; transform: translateY(20px); }}
-            to {{ opacity: 1; transform: translateY(0); }}
-        }}
-        
-        /* Animated AI Icon */
-        .ai-icon {{
-            display: flex;
-            justify-content: center;
-            margin-bottom: 15px;
-        }}
-        
-        .ai-icon-pulse {{
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            background-color: var(--accent-color);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            color: white;
-            font-size: 30px;
-            box-shadow: 0 0 0 0 rgba(var(--accent-color), 0.5);
-            animation: ai-pulse 2s infinite;
-        }}
-        
-        @keyframes ai-pulse {{
-            0% {{ transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 123, 255, 0.7); }}
-            70% {{ transform: scale(1); box-shadow: 0 0 0 10px rgba(0, 123, 255, 0); }}
-            100% {{ transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 123, 255, 0); }}
-        }}
-        
-        /* Advanced Card Design for Gemini Sections */
-        .gemini-card {{
-            background-color: var(--container-background-color);
-            border-radius: 12px;
-            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
-            padding: 20px;
-            margin-bottom: 25px;
-            transition: all 0.3s ease;
-            border-top: 5px solid var(--accent-color);
-            position: relative;
-            overflow: hidden;
-        }}
-        
-        .gemini-card:hover {{
-            transform: translateY(-5px);
-            box-shadow: 0 15px 30px rgba(0,0,0,0.15);
-        }}
-        
-        .gemini-card::after {{
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 50%);
-            pointer-events: none;
-        }}
-        
-        .gemini-card-header {{
-            display: flex;
-            align-items: center;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid rgba(0,0,0,0.1);
-        }}
-        
-        .gemini-card-icon {{
-            width: 40px;
-            height: 40px;
-            border-radius: 8px;
-            background-color: var(--accent-color);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin-left: 15px;
-            color: white;
-            font-weight: bold;
-            font-size: 20px;
-        }}
-        
-        .gemini-card-title {{
-            margin: 0;
-            font-size: 18px;
-            color: var(--primary-color);
-            font-weight: 600;
-        }}
-
-        /* Floating Action Button */
-        .fab-button {{
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            background-color: var(--accent-color);
-            color: white;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 24px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-            cursor: pointer;
-            transition: all 0.3s ease;
-            z-index: 9999;
-        }}
-        
-        .fab-button:hover {{
-            transform: scale(1.1);
-            box-shadow: 0 6px 14px rgba(0,0,0,0.25);
-        }}
-        
-        /* Loading Animation */
-        .loading-animation {{
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-        }}
-        
-        .loading-dot {{
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background-color: var(--accent-color);
-            margin: 0 5px;
-            animation: loading 1.4s infinite ease-in-out both;
-        }}
-        
-        .loading-dot:nth-child(1) {{ animation-delay: -0.32s; }}
-        .loading-dot:nth-child(2) {{ animation-delay: -0.16s; }}
-        
-        @keyframes loading {{
-            0%, 80%, 100% {{ transform: scale(0); }}
-            40% {{ transform: scale(1); }}
-        }}
-
-    </style>
-""", unsafe_allow_html=True)
 
 
 # --- Configuration ---
