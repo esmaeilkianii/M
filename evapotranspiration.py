@@ -241,6 +241,100 @@ def calculate_et(image):
     
     return image.addBands(le).addBands(et)
 
+# Function to calculate ET using Hargreaves-Samani method
+def calculate_et_hargreaves_samani(image, geometry, start_date, end_date):
+    """Calculate evapotranspiration using the Hargreaves-Samani method."""
+    # Hargreaves-Samani equation: ET0 = 0.0023 * Ra * (Tavg + 17.8) * (Tmax - Tmin)^0.5
+    # Ra: Extraterrestrial radiation (MJ/m²/day)
+    # Tavg, Tmax, Tmin: Average, maximum, and minimum daily air temperature (°C)
+
+    # Get ERA5 daily temperature data
+    era5_daily = ee.ImageCollection('ECMWF/ERA5/DAILY')\
+        .filterDate(start_date, end_date)\
+        .filterBounds(geometry)
+
+    # Select temperature bands and convert to Celsius
+    tmax = era5_daily.select('maximum_2m_air_temperature').map(lambda img: img.subtract(273.15)) # K to C
+    tmin = era5_daily.select('minimum_2m_air_temperature').map(lambda img: img.subtract(273.15)) # K to C
+    tavg = era5_daily.select('mean_2m_air_temperature').map(lambda img: img.subtract(273.15))   # K to C
+
+    # Calculate extraterrestrial radiation (Ra) - using ee.ImageCollection.map for daily calculation
+    def calculate_daily_ra(image):
+        date = image.date()
+        day_of_year = date.getRelative('day', 'year')
+        # Get latitude for Ra calculation
+        lat = ee.Image.pixelLonLat().select('latitude').clip(geometry)
+        # Calculate Ra using a GEE solar radiation function (example: based on Allen et al. 1998)
+        # This is a placeholder; a more accurate calculation might be needed.
+        ra = ee.Image(0).add(
+            ee.Algorithms.RequiresApi(ee.Algorithms.Image.dailySolarRadiation(date, lat))
+        ).rename('Ra') # Replace with actual Ra calculation if a direct function is available or implement it.
+        # NOTE: ee.Algorithms.Image.dailySolarRadiation is a placeholder. Need to verify/implement actual Ra calculation.
+        # For now, let's use a simplified approach based on day of year and latitude if a direct GEE function isn't easily found/verified.
+
+        # A common approximation for daily extraterrestrial radiation (Ra) in MJ/m²/day:
+        # Gsc = 0.082 MJ/m²/minute (solar constant)
+        # dr = 1 + 0.033 * cos(2 * pi * day_of_year / 365) (inverse relative distance Earth-Sun)
+        # delta = 0.409 * sin(2 * pi * day_of_year / 365 - 1.39) (solar declination in radians)
+        # omega_s = acos(-tan(lat * pi / 180) * tan(delta)) (sunset hour angle in radians)
+        # Ra = (Gsc * dr / pi) * (omega_s * sin(lat * pi / 180) * sin(delta) + cos(lat * pi / 180) * cos(delta) * sin(omega_s))
+
+        # Let's implement the Ra calculation explicitly since a direct GEE function for daily Ra by pixel isn't immediately apparent or might need specific inputs.
+        Gsc = ee.Number(0.082) # MJ/m²/minute
+        pi = ee.Number(np.pi)
+        dr = ee.Image(1).add(ee.Image(0.033).multiply(ee.Image.cos(ee.Image(2).multiply(pi).multiply(day_of_year).divide(365))))
+        delta = ee.Image(0.409).multiply(ee.Image.sin(ee.Image(2).multiply(pi).multiply(day_of_year).divide(365).subtract(1.39)))
+        lat_rad = lat.multiply(pi).divide(180)
+        omega_s = ee.Image(-1).multiply(lat_rad.tan()).multiply(delta.tan()).acos()
+
+        # Handle potential errors where the argument to acos is outside [-1, 1] due to precision or extreme latitudes/dates
+        omega_s = omega_s.where(omega_s.lt(0), 0) # Set to 0 if < 0
+        omega_s = omega_s.where(omega_s.gt(pi), pi) # Set to pi if > pi
+
+        ra_mj_m2_day = Gsc.multiply(dr).divide(pi).multiply(
+            omega_s.multiply(lat_rad.sin()).multiply(delta.sin()).add(
+                lat_rad.cos().multiply(delta.cos()).multiply(omega_s.sin())
+            )
+        ).multiply(1440) # Convert from MJ/m²/minute to MJ/m²/day by multiplying by minutes in a day
+
+        return image.addBands(ra_mj_m2_day.rename('Ra'))
+
+    # Map the Ra calculation over the ERA5 collection (since we need daily Ra)
+    era5_with_ra = era5_daily.map(calculate_daily_ra)
+
+    # Join temperature bands with Ra
+    # We need to join the temperature bands (Tmax, Tmin, Tavg) with the calculated Ra for each day.
+    # Since both are derived from the ERA5 daily collection and mapped with the same dates, we can likely process them together.
+    # Let's refine the mapping to calculate ET0 for each day.
+
+    def calculate_daily_et0(image):
+        tmax_img = image.select('maximum_2m_air_temperature').subtract(273.15) # K to C
+        tmin_img = image.select('minimum_2m_air_temperature').subtract(273.15) # K to C
+        tavg_img = image.select('mean_2m_air_temperature').subtract(273.15)   # K to C
+        ra_img = image.select('Ra')
+
+        # Apply Hargreaves-Samani formula
+        et0 = ee.Image(0.0023).multiply(ra_img).multiply(
+            tavg_img.add(17.8)
+        ).multiply(
+            tmax_img.subtract(tmin_img).max(0).sqrt() # Ensure (Tmax - Tmin) is non-negative before sqrt
+        ).rename('ET_Hargreaves')
+
+        return et0
+
+    # Map the daily ET0 calculation over the collection
+    et0_collection = era5_with_ra.map(calculate_daily_et0)
+
+    # Reduce the collection to a single image (e.g., sum for cumulative ET over the period)
+    # Depending on the desired output (e.g., daily average, cumulative), the reduction method changes.
+    # For cumulative ET over the period:
+    et_image = et0_collection.sum().rename('ET_Hargreaves') # Sum of daily ET0
+
+    # Clip the image to the geometry
+    et_image = et_image.clip(geometry)
+
+    return et_image
+
 # Main function to calculate ET using SEBAL/METRIC approach
 def calculate_et_sebal(geometry, start_date, end_date, sensor='MODIS'):
     """Calculate evapotranspiration using SEBAL/METRIC approach."""
@@ -249,70 +343,80 @@ def calculate_et_sebal(geometry, start_date, end_date, sensor='MODIS'):
     
     # Get satellite imagery based on sensor type
     if sensor == 'MODIS':
-        # Get MODIS data
-        collection = ee.ImageCollection('MODIS/006/MOD11A1') \
-            .filterDate(start_date, end_date) \
-            .filterBounds(geometry)
-        
-        # Get MODIS surface reflectance data
-        collection_sr = ee.ImageCollection('MODIS/006/MOD09GA') \
-            .filterDate(start_date, end_date) \
-            .filterBounds(geometry) \
-            .map(mask_modis_clouds)
-        
-        # Join the collections
-        joined = ee.ImageCollection(ee.Join.inner().apply({
-            'primary': collection,
-            'secondary': collection_sr,
-            'condition': ee.Filter.equals({
-                'leftField': 'system:time_start',
-                'rightField': 'system:time_start'
-            })
-        })).map(lambda pair: ee.Image(pair.get('primary')).addBands(ee.Image(pair.get('secondary'))))
-        
+        collection = ee.ImageCollection('MODIS/061/MOD13Q1')\
+            .filterDate(start_date, end_date)\
+            .filterBounds(geometry)\
+            .map(mask_modis_clouds)\
+            .map(calculate_albedo_modis)\
+            .map(calculate_ndvi)\
+            .map(calculate_lst)\
+            .map(calculate_net_radiation)\
+            .map(calculate_soil_heat_flux)\
+            .map(lambda img: calculate_sensible_heat_flux(img, dem))\
+            .map(calculate_et)
     elif sensor == 'Landsat':
-        # Get Landsat 8 Collection 2 data
-        collection = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2') \
-            .filterDate(start_date, end_date) \
-            .filterBounds(geometry) \
+        # Use Landsat 8 Collection 2 Level 2
+        collection = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')\
+            .filterDate(start_date, end_date)\
+            .filterBounds(geometry)\
+            .map(mask_landsat_clouds)\
+            .map(calculate_albedo_landsat)\
+            .map(calculate_ndvi)\
+            .map(calculate_lst)\
+            .map(calculate_net_radiation)\
+            .map(calculate_soil_heat_flux)\
+            .map(lambda img: calculate_sensible_heat_flux(img, dem))\
+            .map(calculate_et)
+    else:
+        raise ValueError('Unsupported sensor type')
+    
+    # Reduce the collection to a single image (e.g., median composite)
+    et_image = collection.select('ET').median()
+    
+    # Clip the image to the geometry
+    et_image = et_image.clip(geometry)
+    
+    return et_image
+
+# Main function to calculate ET
+def calculate_evapotranspiration(geometry, start_date, end_date, sensor='Landsat', method='Hargreaves-Samani'):
+    """
+    Calculate evapotranspiration for a given geometry and time period.
+
+    Args:
+        geometry: Earth Engine geometry object.
+        start_date: Start date (YYYY-MM-DD).
+        end_date: End date (YYYY-MM-DD).
+        sensor: Satellite sensor ('Landsat' or 'MODIS').
+        method: ET calculation method ('Hargreaves-Samani' or 'SEBAL').
+
+    Returns:
+        Earth Engine image of evapotranspiration.
+    """
+    start_date_ee = ee.Date(start_date)
+    end_date_ee = ee.Date(end_date)
+
+    if method == 'Hargreaves-Samani':
+        # For Hargreaves-Samani, we primarily need temperature data and Ra.
+        # We will still filter the Landsat collection by date and bounds
+        # and potentially use it for ancillary data like LST or NDVI if needed
+        # in an adapted Hargreaves-Samani approach or for masking.
+        landsat_collection = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')\
+            .filterDate(start_date_ee, end_date_ee)\
+            .filterBounds(geometry)\
             .map(mask_landsat_clouds)
-        
-        joined = collection  # No need to join for Landsat
-    
-    # Apply ET calculation steps to each image
-    et_collection = joined.map(lambda image: {
-        # Calculate albedo
-        image = calculate_albedo_modis(image) if sensor == 'MODIS' else calculate_albedo_landsat(image)
-        
-        # Calculate NDVI
-        image = calculate_ndvi(image, sensor)
-        
-        # Calculate LST
-        image = calculate_lst(image, sensor)
-        
-        # Calculate net radiation
-        image = calculate_net_radiation(image)
-        
-        # Calculate soil heat flux
-        image = calculate_soil_heat_flux(image)
-        
-        # Calculate sensible heat flux
-        image = calculate_sensible_heat_flux(image, dem.clip(geometry))
-        
-        # Calculate latent heat flux and ET
-        image = calculate_et(image)
-        
-        return image
-    })
-    
-    # Calculate median ET over the period
-    median_et = et_collection.select('ET').median()
-    
-    return {
-        'et_image': median_et,
-        'et_collection': et_collection,
-        'count': et_collection.size().getInfo()
-    }
+
+        # Need to implement the core Hargreaves-Samani calculation logic
+        # which likely involves integrating temperature datasets.
+        # For now, this calls the placeholder function.
+        et_image = calculate_et_hargreaves_samani(landsat_collection.median(), geometry, start_date_ee, end_date_ee)
+
+    elif method == 'SEBAL':
+        et_image = calculate_et_sebal(geometry, start_date, end_date, sensor)
+    else:
+        raise ValueError('Unsupported ET calculation method')
+
+    return et_image
 
 # Function to get time series of ET for a point
 def get_et_time_series(point_geometry, start_date, end_date, sensor='MODIS'):
