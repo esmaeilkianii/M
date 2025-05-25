@@ -4,7 +4,7 @@ emoji: 💻
 colorFrom: pink
 colorTo: indigo
 sdk: streamlit
-sdk_version: 1.44.1
+sdk_version: 1.45.1
 app_file: app.py
 pinned: false
 license: apache-2.0
