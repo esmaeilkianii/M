@@ -1504,7 +1504,7 @@ with tab2:
 
 with tab3:
     # AI Fade-in Card (Tab3)
-    st.markdown(f"""
+    st.markdown("""
     <div class='ai-fadein-card'>
         <span class='ai-icon'>🤖</span>
         <div>
@@ -1591,8 +1591,16 @@ with tab3:
 
 
         # --- 1. Intelligent Q&A ---
+        # Wrap this section in gemini-card and add a header
+        st.markdown("<div class='gemini-card'>", unsafe_allow_html=True) # Start gemini-card
         with st.expander("💬 پرسش و پاسخ هوشمند", expanded=True):
-            st.markdown("##### سوال خود را در مورد وضعیت عمومی مزارع یا یک مزرعه خاص بپرسید.")
+            st.markdown("""
+            <div class='gemini-card-header'>
+                <div class='gemini-card-icon'>💬</div>
+                <h3 class='gemini-card-title'>پرسش و پاسخ هوشمند</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            st.markdown("##### سوال خود را در مورد وضعیت عمومی مزارع یا یک مزرعه خاص بپرسید.") # Keep descriptive text
             user_farm_q_gemini = st.text_area(
                 f"سوال شما درباره '{active_farm_name_display}' یا مزارع روز '{selected_day}' (شاخص: {index_options[selected_index]}):", 
                 key="gemini_farm_q_text_tab3", 
@@ -1643,9 +1651,19 @@ with tab3:
                         response_gemini_q = ask_gemini(prompt_gemini_q)
                         st.markdown(f"<div class='gemini-response-default'>{response_gemini_q}</div>", unsafe_allow_html=True)
 
+        st.markdown("</div>", unsafe_allow_html=True) # End gemini-card
+
         # --- 2. Automatic Weekly Report ---
+        # Wrap this section in gemini-card and add a header
+        st.markdown("<div class='gemini-card'>", unsafe_allow_html=True) # Start gemini-card
         with st.expander("📄 تولید گزارش خودکار هفتگی", expanded=False):
-            st.markdown(f"##### تولید گزارش هفتگی برای مزرعه '{active_farm_name_display}' بر اساس شاخص '{index_options[selected_index]}'.")
+            st.markdown("""
+            <div class='gemini-card-header'>
+                <div class='gemini-card-icon'>📄</div>
+                <h3 class='gemini-card-title'>تولید گزارش خودکار هفتگی</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            st.markdown(f"##### تولید گزارش هفتگی برای مزرعه '{active_farm_name_display}' بر اساس شاخص '{index_options[selected_index]}'.") # Keep descriptive text
             if active_farm_name_display == "همه مزارع":
                 st.info("لطفاً یک مزرعه خاص را از سایدبار برای تولید گزارش انتخاب کنید.")
             else:
@@ -1682,9 +1700,19 @@ with tab3:
                         st.markdown(f"**بازه زمانی:** {start_date_current_str} الی {end_date_current_str}")
                         st.markdown(f"<div class='gemini-response-report'>{response_rep}</div>", unsafe_allow_html=True)
         
+        st.markdown("</div>", unsafe_allow_html=True) # End gemini-card
+
         # --- 3. Prioritization Assistant (NEW) ---
+        # Wrap this section in gemini-card and add a header
+        st.markdown("<div class='gemini-card'>", unsafe_allow_html=True) # Start gemini-card
         with st.expander("⚠️ دستیار اولویت‌بندی مزارع بحرانی", expanded=False):
-            st.markdown(f"##### شناسایی مزارع نیازمند توجه فوری بر اساس شاخص '{index_options[selected_index]}'.")
+            st.markdown("""
+            <div class='gemini-card-header'>
+                <div class='gemini-card-icon'>🚨</div>
+                <h3 class='gemini-card-title'>دستیار اولویت‌بندی مزارع بحرانی</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            st.markdown(f"##### شناسایی مزارع نیازمند توجه فوری بر اساس شاخص '{index_options[selected_index]}'.") # Keep descriptive text
             if count_negative_summary_tab3 == 0 and (not ranking_df_sorted_tab3.empty):
                 st.info(f"بر اساس شاخص '{index_options[selected_index]}'، هیچ مزرعه‌ای در وضعیت 'تنش/کاهش' برای روز '{selected_day}' شناسایی نشد.")
             elif ranking_df_sorted_tab3.empty :
@@ -1735,9 +1763,19 @@ with tab3:
                     response_priority = ask_gemini(prompt_priority, temperature=0.5)
                     st.markdown(f"<div class='gemini-response-analysis'>{response_priority}</div>", unsafe_allow_html=True)
         
+        st.markdown("</div>", unsafe_allow_html=True) # End gemini-card
+
         # --- 4. Intelligent Timeseries Analysis ---
+        # Wrap this section in gemini-card and add a header
+        st.markdown("<div class='gemini-card'>", unsafe_allow_html=True) # Start gemini-card
         with st.expander(f"📉 تحلیل هوشمند روند زمانی شاخص {index_options[selected_index]}", expanded=False):
-            st.markdown(f"##### تحلیل روند زمانی شاخص '{index_options[selected_index]}' برای مزرعه '{active_farm_name_display}'.")
+            st.markdown("""
+            <div class='gemini-card-header'>
+                <div class='gemini-card-icon'>📉</div>
+                <h3 class='gemini-card-title'>تحلیل هوشمند روند زمانی</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            st.markdown(f"##### تحلیل روند زمانی شاخص '{index_options[selected_index]}' برای مزرعه '{active_farm_name_display}'.") # Keep descriptive text
             if active_farm_name_display == "همه مزارع":
                 st.info("لطفاً یک مزرعه خاص را از سایدبار برای تحلیل سری زمانی انتخاب کنید.")
             elif active_farm_geom:
@@ -1785,8 +1823,16 @@ with tab3:
                  st.info("تحلیل روند زمانی فقط برای یک مزرعه منفرد با مختصات مشخص قابل انجام است.")
 
         # --- 5. General Q&A ---
+        # Wrap this section in gemini-card and add a header
+        st.markdown("<div class='gemini-card'>", unsafe_allow_html=True) # Start gemini-card
         with st.expander("🗣️ پرسش و پاسخ عمومی", expanded=False):
-            st.markdown("##### سوالات عمومی خود را در مورد مفاهیم کشاورزی، شاخص‌های سنجش از دور، نیشکر یا عملکرد این سامانه بپرسید.")
+            st.markdown("""
+            <div class='gemini-card-header'>
+                <div class='gemini-card-icon'>❓</div>
+                <h3 class='gemini-card-title'>پرسش و پاسخ عمومی</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            st.markdown("##### سوالات عمومی خود را در مورد مفاهیم کشاورزی، شاخص‌های سنجش از دور، نیشکر یا عملکرد این سامانه بپرسید.") # Keep descriptive text
             user_general_q_gemini = st.text_area(
                 "سوال عمومی شما:", 
                 key="gemini_general_q_text_tab3", 
@@ -1806,4 +1852,6 @@ with tab3:
                         response_gen_q = ask_gemini(prompt_gen_q, temperature=0.4)
                         st.markdown(f"<div class='gemini-response-default'>{response_gen_q}</div>", unsafe_allow_html=True)
     
-    st.markdown("</div>", unsafe_allow_html=True) # End of section-container for tab3
+        st.markdown("</div>", unsafe_allow_html=True) # End gemini-card
+
+    # st.markdown("</div>", unsafe_allow_html=True) # End of section-container for tab3 - This outer div seems unnecessary now, removing.
