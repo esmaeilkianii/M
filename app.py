@@ -1,5 +1,3 @@
---- START OF FILE app (80).py ---
-
 import streamlit as st
 import pyproj # Added for coordinate transformation
 import base64 # For encoding logo image
@@ -284,6 +282,11 @@ if logo_base64:
             80%  {{ background-color: #ffcccb; }} /* Light Red */
             100% {{ background-color: #add8e6; }} /* Light Blue */
         }}
+        @keyframes logoPulse {{
+            0% {{ transform: scale(1); }}
+            50% {{ transform: scale(1.05); }}
+            100% {{ transform: scale(1); }}
+        }}
 
         .animated-logo-container {{
             display: flex;
@@ -300,6 +303,7 @@ if logo_base64:
             max-height: 100px; /* Adjust max height as needed */
             max-width: 100%;   /* Ensure logo is responsive within its container */
             object-fit: contain;
+            animation: logoPulse 2s infinite ease-in-out; /* Apply pulse animation to the image */
         }}
     </style>
     <div class="animated-logo-container">
@@ -887,7 +891,7 @@ if farm_data_df is None:
 # Gemini API Configuration
 # ==============================================================================
 # !!! هشدار امنیتی: قرار دادن مستقیم API Key در کد ریسک بالایی دارد !!!
-GEMINI_API_KEY = "AIzaSyDzirWUubBVyjF10_JZ8UVSd6c6nnTKpLw" # <<<<<<< جایگزین کنید >>>>>>>>
+GEMINI_API_KEY = "AIzaSyDzirWUubBVyjF10_JZUVSd6c6nnTKpLw" # <<<<<<< جایگزین کنید >>>>>>>>
 
 gemini_model = None
 if GEMINI_API_KEY and GEMINI_API_KEY != "YOUR_GEMINI_API_KEY_HERE":
@@ -1287,7 +1291,6 @@ with tab1:
         ranking_df_sorted.index.name = 'رتبه'
 
         def determine_status_html(row, index_name_col_status):
-            # ... (function copied from previous, no changes)
             change_val_status = row['تغییر']
             current_val_status = row[f'{index_name_col_status} (هفته جاری)']
             prev_val_status = row[f'{index_name_col_status} (هفته قبل)']
@@ -1333,7 +1336,6 @@ with tab1:
         st.info("""**توضیحات وضعیت:** 🟢 بهبود/رشد  ⚪ ثابت  🔴 تنش/کاهش  ❔ بدون داده/خطا""")
         
         def extract_status_text(html_badge):
-            # ... (function copied from previous, no changes)
             if 'رشد/بهبود' in html_badge: return 'رشد/بهبود'
             if 'تنش کمتر' in html_badge: return 'بهبود (تنش کمتر)'
             if 'ثابت' in html_badge: return 'ثابت'
@@ -1612,46 +1614,50 @@ with tab3:
                 if not user_farm_q_gemini:
                     st.info("لطفاً سوال خود را وارد کنید.")
                 else:
-                    prompt_gemini_q = f"شما یک دستیار هوشمند برای تحلیل داده‌های کشاورزی نیشکر هستید. {analysis_basis_str_gemini_tab3}\n"
-                    context_data_gemini_q = ""
-                    if active_farm_name_display != "همه مزارع":
-                        context_data_gemini_q += farm_details_for_gemini_tab3
-                        farm_data_for_prompt_q = pd.DataFrame()
-                        if not ranking_df_sorted_tab3.empty:
-                            farm_data_for_prompt_q = ranking_df_sorted_tab3[ranking_df_sorted_tab3['مزرعه'] == active_farm_name_display]
+                    with st.container(): # Use a container for the spinner and response
+                        st.markdown("<div class='loading-animation'><div class='loading-dot'></div><div class='loading-dot'></div><div class='loading-dot'></div></div>", unsafe_allow_html=True)
+                        st.info("⏳ در حال پردازش پاسخ با Gemini...")
                         
-                        if not farm_data_for_prompt_q.empty:
-                            current_farm_data = farm_data_for_prompt_q.iloc[0]
-                            status_text_gemini_q = current_farm_data['وضعیت']
-                            current_val_str_gemini_q = f"{current_farm_data[f'{selected_index} (هفته جاری)']:.3f}" if pd.notna(current_farm_data[f'{selected_index} (هفته جاری)']) else "N/A"
-                            prev_val_str_gemini_q = f"{current_farm_data[f'{selected_index} (هفته قبل)']:.3f}" if pd.notna(current_farm_data[f'{selected_index} (هفته قبل)']) else "N/A"
-                            change_str_gemini_q = f"{current_farm_data['تغییر']:.3f}" if pd.notna(current_farm_data['تغییر']) else "N/A"
+                        prompt_gemini_q = f"شما یک دستیار هوشمند برای تحلیل داده‌های کشاورزی نیشکر هستید. {analysis_basis_str_gemini_tab3}\n"
+                        context_data_gemini_q = ""
+                        if active_farm_name_display != "همه مزارع":
+                            context_data_gemini_q += farm_details_for_gemini_tab3
+                            farm_data_for_prompt_q = pd.DataFrame()
+                            if not ranking_df_sorted_tab3.empty:
+                                farm_data_for_prompt_q = ranking_df_sorted_tab3[ranking_df_sorted_tab3['مزرعه'] == active_farm_name_display]
                             
-                            context_data_gemini_q += (
-                                f"داده‌های مزرعه '{active_farm_name_display}' برای شاخص {index_options[selected_index]} (هفته منتهی به {end_date_current_str}):\n"
-                                f"- مقدار هفته جاری: {current_val_str_gemini_q}\n"
-                                f"- مقدار هفته قبل: {prev_val_str_gemini_q}\n"
-                                f"- تغییر: {change_str_gemini_q}\n"
-                                f"- وضعیت کلی: {status_text_gemini_q}\n"
-                            )
-                        else:
-                            context_data_gemini_q += f"داده‌های عددی هفتگی برای شاخص '{selected_index}' جهت مزرعه '{active_farm_name_display}' در جدول رتبه‌بندی یافت نشد.\n"
-                        prompt_gemini_q += f"کاربر در مورد '{active_farm_name_display}' پرسیده: '{user_farm_q_gemini}'.\n{context_data_gemini_q}پاسخ جامع و مفید به فارسی ارائه دهید."
-                    else: # "همه مزارع"
-                        context_data_gemini_q = f"وضعیت کلی مزارع برای روز '{selected_day}' و شاخص '{index_options[selected_index]}'. تعداد {len(filtered_farms_df) if filtered_farms_df is not None else 0} مزرعه فیلتر شده‌اند."
-                        if not ranking_df_sorted_tab3.empty:
-                            context_data_gemini_q += (
-                                f"\nخلاصه وضعیت مزارع (نقاط مرکزی CSV) برای شاخص {selected_index}:\n"
-                                f"- بهبود/رشد: {count_positive_summary_tab3}\n"
-                                f"- ثابت: {count_neutral_summary_tab3}\n"
-                                f"- تنش/کاهش: {count_negative_summary_tab3}\n"
-                                f"- بدون داده/خطا: {count_nodata_summary_tab3}\n"
-                            )
-                        prompt_gemini_q += f"کاربر در مورد وضعیت کلی مزارع پرسیده: '{user_farm_q_gemini}'.\n{context_data_gemini_q}پاسخ جامع و مفید به فارسی ارائه دهید."
-                    
-                    with st.spinner("⏳ در حال پردازش پاسخ با Gemini..."):
+                            if not farm_data_for_prompt_q.empty:
+                                current_farm_data = farm_data_for_prompt_q.iloc[0]
+                                status_text_gemini_q = current_farm_data['وضعیت']
+                                current_val_str_gemini_q = f"{current_farm_data[f'{selected_index} (هفته جاری)']:.3f}" if pd.notna(current_farm_data[f'{selected_index} (هفته جاری)']) else "N/A"
+                                prev_val_str_gemini_q = f"{current_farm_data[f'{selected_index} (هفته قبل)']:.3f}" if pd.notna(current_farm_data[f'{selected_index} (هفته قبل)']) else "N/A"
+                                change_str_gemini_q = f"{current_farm_data['تغییر']:.3f}" if pd.notna(current_farm_data['تغییر']) else "N/A"
+                                
+                                context_data_gemini_q += (
+                                    f"داده‌های مزرعه '{active_farm_name_display}' برای شاخص {index_options[selected_index]} (هفته منتهی به {end_date_current_str}):\n"
+                                    f"- مقدار هفته جاری: {current_val_str_gemini_q}\n"
+                                    f"- مقدار هفته قبل: {prev_val_str_gemini_q}\n"
+                                    f"- تغییر: {change_str_gemini_q}\n"
+                                    f"- وضعیت کلی: {status_text_gemini_q}\n"
+                                )
+                            else:
+                                context_data_gemini_q += f"داده‌های عددی هفتگی برای شاخص '{selected_index}' جهت مزرعه '{active_farm_name_display}' در جدول رتبه‌بندی یافت نشد.\n"
+                            prompt_gemini_q += f"کاربر در مورد '{active_farm_name_display}' پرسیده: '{user_farm_q_gemini}'.\n{context_data_gemini_q}پاسخ جامع و مفید به فارسی ارائه دهید."
+                        else: # "همه مزارع"
+                            context_data_gemini_q = f"وضعیت کلی مزارع برای روز '{selected_day}' و شاخص '{index_options[selected_index]}'. تعداد {len(filtered_farms_df) if filtered_farms_df is not None else 0} مزرعه فیلتر شده‌اند."
+                            if not ranking_df_sorted_tab3.empty:
+                                context_data_gemini_q += (
+                                    f"\nخلاصه وضعیت مزارع (نقاط مرکزی CSV) برای شاخص {selected_index}:\n"
+                                    f"- بهبود/رشد: {count_positive_summary_tab3}\n"
+                                    f"- ثابت: {count_neutral_summary_tab3}\n"
+                                    f"- تنش/کاهش: {count_negative_summary_tab3}\n"
+                                    f"- بدون داده/خطا: {count_nodata_summary_tab3}\n"
+                                )
+                            prompt_gemini_q += f"کاربر در مورد وضعیت کلی مزارع پرسیده: '{user_farm_q_gemini}'.\n{context_data_gemini_q}پاسخ جامع و مفید به فارسی ارائه دهید."
+                        
                         response_gemini_q = ask_gemini(prompt_gemini_q)
                         st.markdown(f"<div class='gemini-response-default'>{response_gemini_q}</div>", unsafe_allow_html=True)
+                        st.empty() # Clear spinner and info
 
         st.markdown("</div>", unsafe_allow_html=True) # End gemini-card
 
@@ -1676,31 +1682,35 @@ with tab3:
                 if farm_data_for_report_gemini.empty:
                     st.info(f"داده‌های رتبه‌بندی برای '{active_farm_name_display}' (شاخص: {selected_index}) جهت تولید گزارش موجود نیست.")
                 elif st.button(f"📝 تولید گزارش برای '{active_farm_name_display}'", key="btn_gemini_report_gen_tab3"):
-                    report_context_gemini = farm_details_for_gemini_tab3
-                    current_farm_report_data = farm_data_for_report_gemini.iloc[0]
-                    current_val_str_rep = f"{current_farm_report_data[f'{selected_index} (هفته جاری)']:.3f}" if pd.notna(current_farm_report_data[f'{selected_index} (هفته جاری)']) else "N/A"
-                    prev_val_str_rep = f"{current_farm_report_data[f'{selected_index} (هفته قبل)']:.3f}" if pd.notna(current_farm_report_data[f'{selected_index} (هفته قبل)']) else "N/A"
-                    change_str_rep = f"{current_farm_report_data['تغییر']:.3f}" if pd.notna(current_farm_report_data['تغییر']) else "N/A"
-                    status_text_rep = current_farm_report_data['وضعیت']
-                    
-                    report_context_gemini += (
-                        f"داده‌های شاخص {index_options[selected_index]} برای '{active_farm_name_display}' (هفته منتهی به {end_date_current_str}):\n"
-                        f"- جاری: {current_val_str_rep}\n"
-                        f"- قبلی: {prev_val_str_rep}\n"
-                        f"- تغییر: {change_str_rep}\n"
-                        f"- وضعیت: {status_text_rep}\n"
-                    )
-                    prompt_rep = (
-                        f"شما یک دستیار هوشمند برای تهیه گزارش‌های کشاورزی هستید. لطفاً یک گزارش توصیفی و ساختاریافته به زبان فارسی در مورد وضعیت '{active_farm_name_display}' برای هفته منتهی به {end_date_current_str} تهیه کنید.\n"
-                        f"اطلاعات موجود:\n{report_context_gemini}{analysis_basis_str_gemini_tab3}\n"
-                        f"در گزارش به موارد فوق اشاره کنید، تحلیل مختصری از وضعیت (با توجه به شاخص {selected_index}) ارائه دهید و در صورت امکان، پیشنهادهای کلی (نه تخصصی و قطعی) برای بهبود یا حفظ وضعیت مطلوب بیان کنید. گزارش باید رسمی، دارای عنوان، تاریخ، و بخش‌های مشخص (مقدمه، وضعیت فعلی، تحلیل، پیشنهادات) و قابل فهم برای مدیران کشاورزی باشد."
-                    )
-                    with st.spinner(f"⏳ در حال تولید گزارش برای '{active_farm_name_display}'..."):
+                    with st.container(): # Use a container for the spinner and response
+                        st.markdown("<div class='loading-animation'><div class='loading-dot'></div><div class='loading-dot'></div><div class='loading-dot'></div></div>", unsafe_allow_html=True)
+                        st.info(f"⏳ در حال تولید گزارش برای '{active_farm_name_display}'...")
+
+                        report_context_gemini = farm_details_for_gemini_tab3
+                        current_farm_report_data = farm_data_for_report_gemini.iloc[0]
+                        current_val_str_rep = f"{current_farm_report_data[f'{selected_index} (هفته جاری)']:.3f}" if pd.notna(current_farm_report_data[f'{selected_index} (هفته جاری)']) else "N/A"
+                        prev_val_str_rep = f"{current_farm_report_data[f'{selected_index} (هفته قبل)']:.3f}" if pd.notna(current_farm_report_data[f'{selected_index} (هفته قبل)']) else "N/A"
+                        change_str_rep = f"{current_farm_report_data['تغییر']:.3f}" if pd.notna(current_farm_report_data['تغییر']) else "N/A"
+                        status_text_rep = current_farm_report_data['وضعیت']
+                        
+                        report_context_gemini += (
+                            f"داده‌های شاخص {index_options[selected_index]} برای '{active_farm_name_display}' (هفته منتهی به {end_date_current_str}):\n"
+                            f"- جاری: {current_val_str_rep}\n"
+                            f"- قبلی: {prev_val_str_rep}\n"
+                            f"- تغییر: {change_str_rep}\n"
+                            f"- وضعیت: {status_text_rep}\n"
+                        )
+                        prompt_rep = (
+                            f"شما یک دستیار هوشمند برای تهیه گزارش‌های کشاورزی هستید. لطفاً یک گزارش توصیفی و ساختاریافته به زبان فارسی در مورد وضعیت '{active_farm_name_display}' برای هفته منتهی به {end_date_current_str} تهیه کنید.\n"
+                            f"اطلاعات موجود:\n{report_context_gemini}{analysis_basis_str_gemini_tab3}\n"
+                            f"در گزارش به موارد فوق اشاره کنید، تحلیل مختصری از وضعیت (با توجه به شاخص {selected_index}) ارائه دهید و در صورت امکان، پیشنهادهای کلی (نه تخصصی و قطعی) برای بهبود یا حفظ وضعیت مطلوب بیان کنید. گزارش باید رسمی، دارای عنوان، تاریخ، و بخش‌های مشخص (مقدمه، وضعیت فعلی، تحلیل، پیشنهادات) و قابل فهم برای مدیران کشاورزی باشد."
+                        )
                         response_rep = ask_gemini(prompt_rep, temperature=0.6, top_p=0.9)
                         st.markdown(f"### گزارش هفتگی '{active_farm_name_display}' (شاخص {index_options[selected_index]})")
                         st.markdown(f"**تاریخ گزارش:** {datetime.date.today().strftime('%Y-%m-%d')}")
                         st.markdown(f"**بازه زمانی:** {start_date_current_str} الی {end_date_current_str}")
                         st.markdown(f"<div class='gemini-response-report'>{response_rep}</div>", unsafe_allow_html=True)
+                        st.empty() # Clear spinner and info
         
         st.markdown("</div>", unsafe_allow_html=True) # End gemini-card
 
@@ -1720,28 +1730,21 @@ with tab3:
             elif ranking_df_sorted_tab3.empty :
                  st.info(f"داده‌ای برای رتبه‌بندی و اولویت‌بندی مزارع بر اساس شاخص '{index_options[selected_index]}' یافت نشد.")
             elif st.button(f"🔍 تحلیل و اولویت‌بندی مزارع بحرانی", key="btn_gemini_priority_assist_tab3"):
-                # Prepare data for the prompt: farms with negative status
-                # Sort by 'تغییر' to get the most negative changes first for positive-is-good indices
-                # For MSI (stress index, higher is worse), a positive change is bad.
-                # The existing 'وضعیت' text captures this logic.
-                
-                problematic_farms_df = ranking_df_sorted_tab3[
-                    ranking_df_sorted_tab3['وضعیت'].str.contains('تنش|کاهش', case=False, na=False)
-                ]
-                # Sort by 'تغییر' column to highlight most significant changes for the prompt context
-                # For NDVI, EVI, etc. (higher is better), a more negative 'تغییر' is worse.
-                # For MSI (higher is worse), a more positive 'تغییر' is worse.
-                # The 'ascending' parameter of sort_values handles this based on index nature.
-                # However, 'تغییر' itself is just a difference. 'status_text' is more reliable for "bad".
-                
-                # Let's sort the problematic farms by the 'تغییر' to show Gemini the ones with biggest issues first.
-                # If index is like NDVI (higher better), sort 'تغییر' ascending (most negative first)
-                # If index is like MSI (higher worse), sort 'تغییر' descending (most positive first)
-                sort_asc_for_change = selected_index not in ['MSI'] 
-                
-                problematic_farms_for_prompt = problematic_farms_df.sort_values(by='تغییر', ascending=sort_asc_for_change)
-                                
-                prompt_priority = f"""شما یک دستیار هوشمند برای اولویت‌بندی در مدیریت مزارع نیشکر هستید.
+                with st.container(): # Use a container for the spinner and response
+                    st.markdown("<div class='loading-animation'><div class='loading-dot'></div><div class='loading-dot'></div><div class='loading-dot'></div></div>", unsafe_allow_html=True)
+                    st.info("⏳ در حال تحلیل اولویت‌بندی با Gemini...")
+
+                    problematic_farms_df = ranking_df_sorted_tab3[
+                        ranking_df_sorted_tab3['وضعیت'].str.contains('تنش|کاهش', case=False, na=False)
+                    ]
+                    # Sort by 'تغییر' column to highlight most significant changes for the prompt context
+                    # If index is like NDVI (higher better), sort 'تغییر' ascending (most negative first)
+                    # If index is like MSI (higher worse), sort 'تغییر' descending (most positive first)
+                    sort_asc_for_change = selected_index not in ['MSI'] 
+                    
+                    problematic_farms_for_prompt = problematic_farms_df.sort_values(by='تغییر', ascending=sort_asc_for_change)
+                                    
+                    prompt_priority = f"""شما یک دستیار هوشمند برای اولویت‌بندی در مدیریت مزارع نیشکر هستید.
 روز مشاهده: {selected_day}
 شاخص مورد بررسی: {index_options[selected_index]} (ماهیت شاخص: {'مقدار بالاتر بهتر است' if selected_index not in ['MSI'] else 'مقدار بالاتر بدتر است (تنش بیشتر)'})
 هفته منتهی به: {end_date_current_str}
@@ -1761,9 +1764,9 @@ with tab3:
 پاسخ باید به فارسی، ساختاریافته (مثلاً با استفاده از لیست‌ها یا بخش‌بندی برای هر مزرعه)، و کاربردی باشد.
 {analysis_basis_str_gemini_tab3}
 """
-                with st.spinner("⏳ در حال تحلیل اولویت‌بندی با Gemini..."):
                     response_priority = ask_gemini(prompt_priority, temperature=0.5)
                     st.markdown(f"<div class='gemini-response-analysis'>{response_priority}</div>", unsafe_allow_html=True)
+                    st.empty() # Clear spinner and info
         
         st.markdown("</div>", unsafe_allow_html=True) # End gemini-card
 
@@ -1785,7 +1788,10 @@ with tab3:
                     ts_end_date_gemini_ts = today.strftime('%Y-%m-%d')
                     ts_start_date_gemini_ts = (today - datetime.timedelta(days=180)).strftime('%Y-%m-%d') # 6 months
                     
-                    with st.spinner(f"⏳ در حال دریافت داده‌های سری زمانی برای Gemini..."):
+                    with st.container(): # Use a container for the spinner and response
+                        st.markdown("<div class='loading-animation'><div class='loading-dot'></div><div class='loading-dot'></div><div class='loading-dot'></div></div>", unsafe_allow_html=True)
+                        st.info(f"⏳ در حال دریافت داده‌های سری زمانی برای Gemini...")
+                        
                         # get_index_time_series is cached
                         ts_df_gemini_ts, ts_error_gemini_ts = get_index_time_series(
                             active_farm_geom, selected_index, # Use entire farm polygon
@@ -1794,6 +1800,7 @@ with tab3:
                     
                     if ts_error_gemini_ts:
                         st.error(f"خطا در دریافت داده‌های سری زمانی برای Gemini: {ts_error_gemini_ts}")
+                        st.empty() # Clear spinner and info
                     elif not ts_df_gemini_ts.empty:
                         ts_summary_gemini = f"داده‌های سری زمانی شاخص {index_options[selected_index]} برای '{active_farm_name_display}' در 6 ماه گذشته ({ts_start_date_gemini_ts} تا {ts_end_date_gemini_ts}):\n"
                         # Sample data for conciseness in prompt, but provide key stats
@@ -1816,9 +1823,9 @@ with tab3:
                             f"۴. چه نوع مشاهدات میدانی یا اطلاعات تکمیلی می‌تواند به درک بهتر این روند و تأیید تحلیل شما کمک کند?\n"
                             f"پاسخ به فارسی، ساختاریافته، تحلیلی و کاربردی باشد."
                         )
-                        with st.spinner(f"⏳ در حال تحلیل روند زمانی {selected_index} با Gemini..."):
-                            response_ts_an = ask_gemini(prompt_ts_an, temperature=0.5)
-                            st.markdown(f"<div class='gemini-response-analysis'>{response_ts_an}</div>", unsafe_allow_html=True)
+                        response_ts_an = ask_gemini(prompt_ts_an, temperature=0.5)
+                        st.markdown(f"<div class='gemini-response-analysis'>{response_ts_an}</div>", unsafe_allow_html=True)
+                        st.empty() # Clear spinner and info
                     else:
                         st.info(f"داده‌ای برای تحلیل سری زمانی {selected_index} برای '{active_farm_name_display}' در 6 ماه گذشته یافت نشد.")
             else: # Not a single farm or no geometry
@@ -1844,17 +1851,18 @@ with tab3:
                 if not user_general_q_gemini:
                     st.info("لطفاً سوال خود را وارد کنید.")
                 else:
-                    prompt_gen_q = (
-                        f"شما یک دانشنامه هوشمند در زمینه کشاورزی (با تمرکز بر نیشکر) و سنجش از دور هستید. "
-                        f"لطفاً به سوال زیر که توسط یک کاربر سامانه پایش نیشکر پرسیده شده است، به زبان فارسی پاسخ دهید. "
-                        f"سعی کنید پاسخ شما ساده، قابل فهم، دقیق و در حد امکان جامع باشد.\n"
-                        f"سوال کاربر: '{user_general_q_gemini}'"
-                    )
-                    with st.spinner("⏳ در حال جستجو برای پاسخ با Gemini..."):
+                    with st.container(): # Use a container for the spinner and response
+                        st.markdown("<div class='loading-animation'><div class='loading-dot'></div><div class='loading-dot'></div><div class='loading-dot'></div></div>", unsafe_allow_html=True)
+                        st.info("⏳ در حال جستجو برای پاسخ با Gemini...")
+
+                        prompt_gen_q = (
+                            f"شما یک دانشنامه هوشمند در زمینه کشاورزی (با تمرکز بر نیشکر) و سنجش از دور هستید. "
+                            f"لطفاً به سوال زیر که توسط یک کاربر سامانه پایش نیشکر پرسیده شده است، به زبان فارسی پاسخ دهید. "
+                            f"سعی کنید پاسخ شما ساده، قابل فهم، دقیق و در حد امکان جامع باشد.\n"
+                            f"سوال کاربر: '{user_general_q_gemini}'"
+                        )
                         response_gen_q = ask_gemini(prompt_gen_q, temperature=0.4)
                         st.markdown(f"<div class='gemini-response-default'>{response_gen_q}</div>", unsafe_allow_html=True)
+                        st.empty() # Clear spinner and info
     
         st.markdown("</div>", unsafe_allow_html=True) # End gemini-card
-
-    # st.markdown("</div>", unsafe_allow_html=True) # End of section-container for tab3 - This outer div seems unnecessary now, removing.
---- END OF FILE app (80).py ---
