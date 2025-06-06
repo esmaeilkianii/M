@@ -1,144 +1,7 @@
 import streamlit as st
 import pyproj # Added for coordinate transformation
-import base64 # For encoding logo image
-import os # For path joining
-
-# --- Theme Selection Logic ---
-# MUST BE VERY EARLY, ideally after imports and before page_config
-if 'selected_theme_name' not in st.session_state:
-    st.session_state.selected_theme_name = "پیش‌فرض (آبی تیره)" # Default theme
-
-# Define theme colors (CSS variables)
-# Each theme will override these variables
-THEMES = {
-    "پیش‌فرض (آبی تیره)": {
-        "--primary-color": "#1a535c",       # Dark Teal
-        "--secondary-color": "#4ecdc4",     # Light Teal
-        "--accent-color": "#e76f51",        # Coral
-        "--background-color": "#f0f2f6",    # Light Grey Page BG
-        "--container-background-color": "#ffffff", # White Container BG
-        "--text-color": "#212529",          # Dark Text
-        "--header-text-color": "#1a535c",
-        "--button-bg-color": "#264653",
-        "--button-hover-bg-color": "#2a9d8f",
-        "--metric-border-accent": "#4ecdc4",
-        "--table-header-bg": "#2a9d8f",
-        "--tab-active-bg": "#4ecdc4",
-        "--tab-active-text": "white",
-        "--info-bg": "#e6f7ff", # Light blue for info boxes
-        "--info-border": "#007bff",
-        "--warning-bg": "#fff3cd", # Light yellow for warning
-        "--warning-border": "#ffc107",
-        "--success-bg": "#f0fff0", # Light green for success
-        "--success-border": "#28a745",
-    },
-    "تم سبز (طبیعت)": {
-        "--primary-color": "#2d6a4f",       # Dark Green
-        "--secondary-color": "#74c69d",     # Medium Green
-        "--accent-color": "#fca311",        # Orange accent
-        "--background-color": "#f4f9f4",
-        "--container-background-color": "#ffffff",
-        "--text-color": "#1b4332",
-        "--header-text-color": "#2d6a4f",
-        "--button-bg-color": "#40916c",
-        "--button-hover-bg-color": "#52b788",
-        "--metric-border-accent": "#74c69d",
-        "--table-header-bg": "#40916c",
-        "--tab-active-bg": "#74c69d",
-        "--tab-active-text": "white",
-        "--info-bg": "#e6fff0",
-        "--info-border": "#2d6a4f",
-        "--warning-bg": "#fff9e6",
-        "--warning-border": "#fca311",
-        "--success-bg": "#e6fff0",
-        "--success-border": "#2d6a4f",
-    },
-    "تم قرمز (هشدار)": {
-        "--primary-color": "#9d0208",       # Dark Red
-        "--secondary-color": "#dc2f02",     # Medium Red
-        "--accent-color": "#ffba08",        # Yellow accent
-        "--background-color": "#fff5f5",
-        "--container-background-color": "#ffffff",
-        "--text-color": "#370617",
-        "--header-text-color": "#9d0208",
-        "--button-bg-color": "#ae2012",
-        "--button-hover-bg-color": "#dc2f02",
-        "--metric-border-accent": "#dc2f02",
-        "--table-header-bg": "#ae2012",
-        "--tab-active-bg": "#dc2f02",
-        "--tab-active-text": "white",
-        "--info-bg": "#ffeeee",
-        "--info-border": "#9d0208",
-        "--warning-bg": "#fff0e6",
-        "--warning-border": "#ffba08",
-        "--success-bg": "#eeffee", # Less prominent success
-        "--success-border": "#555",
-    },
-    "تم زرد/نارنجی (گرم)": {
-        "--primary-color": "#e76f51",       # Coral (Primary)
-        "--secondary-color": "#f4a261",     # Sandy Brown
-        "--accent-color": "#2a9d8f",        # Teal Accent
-        "--background-color": "#fff8f0",
-        "--container-background-color": "#ffffff",
-        "--text-color": "#854d0e", # Brown text
-        "--header-text-color": "#d95f02", # Dark Orange
-        "--button-bg-color": "#e76f51",
-        "--button-hover-bg-color": "#f4a261",
-        "--metric-border-accent": "#f4a261",
-        "--table-header-bg": "#e76f51",
-        "--tab-active-bg": "#f4a261",
-        "--tab-active-text": "white",
-        "--info-bg": "#fff8e1",
-        "--info-border": "#e76f51",
-        "--warning-bg": "#fff3cd",
-        "--warning-border": "#f4a261",
-        "--success-bg": "#f0fff0",
-        "--success-border": "#2a9d8f",
-    },
-     "تم قهوه‌ای (خاکی)": {
-        "--primary-color": "#544741",      # Dark Brown
-        "--secondary-color": "#8a786f",    # Medium Brown
-        "--accent-color": "#c6ac8f",       # Light Tan/Beige
-        "--background-color": "#f5f2ef",
-        "--container-background-color": "#ffffff",
-        "--text-color": "#3d2c25",
-        "--header-text-color": "#544741",
-        "--button-bg-color": "#6f5f55",
-        "--button-hover-bg-color": "#8a786f",
-        "--metric-border-accent": "#8a786f",
-        "--table-header-bg": "#6f5f55",
-        "--tab-active-bg": "#8a786f",
-        "--tab-active-text": "white",
-        "--info-bg": "#f9f6f3",
-        "--info-border": "#544741",
-        "--warning-bg": "#fef7e0", # Light yellow
-        "--warning-border": "#c6ac8f",
-        "--success-bg": "#f3f9f3",
-        "--success-border": "#777",
-    },
-    "تم روشن (ساده)": {
-        "--primary-color": "#4A5568",      # Cool Gray
-        "--secondary-color": "#718096",    # Medium Gray
-        "--accent-color": "#3182CE",       # Blue Accent
-        "--background-color": "#F7FAFC",
-        "--container-background-color": "#FFFFFF",
-        "--text-color": "#2D3748",
-        "--header-text-color": "#2D3748",
-        "--button-bg-color": "#4A5568",
-        "--button-hover-bg-color": "#2D3748",
-        "--metric-border-accent": "#718096",
-        "--table-header-bg": "#E2E8F0", # Light gray, ensure good contrast with white text if used, or change text color
-        "--tab-active-bg": "#4A5568",
-        "--tab-active-text": "white",
-        "--info-bg": "#EBF8FF",
-        "--info-border": "#3182CE",
-        "--warning-bg": "#FFFBEB",
-        "--warning-border": "#ECC94B",
-        "--success-bg": "#F0FFF4",
-        "--success-border": "#48BB78",
-    }
-}
-current_theme_colors = THEMES[st.session_state.selected_theme_name]
+# import base64 # For encoding logo image - Will be removed if not used elsewhere
+import os # For path joining - Will be removed if not used elsewhere
 
 
 # --- Page Config ---
@@ -148,173 +11,505 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- Custom Modern Cards CSS ---
+# --- Apply Custom Styles from styles.py ---
 st.markdown("""
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
     <style>
-    /* Modern Gradient Card for Tab1 */
-    .modern-gradient-card {
-        background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
-        color: #fff;
-        border-radius: 18px;
-        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
-        padding: 32px 24px 24px 24px;
-        margin-bottom: 28px;
-        display: flex;
-        align-items: center;
-        animation: cardFadeIn 1.2s cubic-bezier(.39,.575,.565,1) both;
+    /* Modern Color Scheme */
+    :root {
+        --primary-color: #2C3E50;
+        --secondary-color: #3498DB;
+        --accent-color: #E74C3C;
+        --success-color: #2ECC71;
+        --warning-color: #F1C40F;
+        --background-color: #ECF0F1;
+        --card-bg-color: rgba(255, 255, 255, 0.95);
+        --text-color: #2C3E50;
+        /* Added based on reintegration needs */
+        --info-bg: #e6f7ff;
+        --info-border: #007bff;
+        --success-bg: #f0fff0; /* Consider: color-mix(in srgb, var(--success-color) 15%, transparent); */
+        --success-border: var(--success-color);
+        --warning-bg: #fff3cd; /* Consider: color-mix(in srgb, var(--warning-color) 15%, transparent); */
+        --warning-border: var(--warning-color);
+        --header-text-color: var(--primary-color); /* Default header text color */
+    }
+
+    /* Glass Morphism Effect */
+    .glass-card {
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(10px);
+        border-radius: 15px;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+    }
+
+    /* Modern Dashboard Layout */
+    .stApp {
+        background: linear-gradient(135deg, #ECF0F1 0%, #D5DBDB 100%);
+        font-family: 'Vazirmatn', sans-serif;
+    }
+
+    /* Enhanced Cards */
+    div.element-container {
+        background: var(--card-bg-color);
+        border-radius: 15px;
+        padding: 1rem;
+        margin: 0.5rem 0;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        transition: transform 0.3s ease;
+    }
+
+    div.element-container:hover {
+        transform: translateY(-5px);
+    }
+
+    /* Animated Metrics */
+    [data-testid="stMetric"] {
+        background: var(--card-bg-color);
+        padding: 1rem;
+        border-radius: 10px;
+        border-left: 4px solid var(--accent-color);
+        animation: slideIn 0.5s ease-out;
+    }
+
+    @keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateX(-20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateX(0);
+        }
+    }
+
+    /* Modern Buttons */
+    .stButton > button {
+        background: linear-gradient(45deg, var(--primary-color), var(--secondary-color));
+        color: white;
+        border: none;
+        border-radius: 25px;
+        padding: 0.5rem 2rem;
+        font-weight: 500;
+        transition: all 0.3s ease;
+    }
+
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+    }
+
+    /* Enhanced Charts */
+    .js-plotly-plot {
+        background: var(--card-bg-color);
+        border-radius: 15px;
+        padding: 1rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Modern Tables */
+    .dataframe {
+        border: none !important;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .dataframe thead th {
+        background-color: var(--primary-color) !important;
+        color: white !important;
+    }
+
+    .dataframe tbody tr:nth-child(even) {
+        background-color: rgba(236, 240, 241, 0.5);
+    }
+
+    /* Animated Loading Spinner */
+    .stSpinner {
+        border: 4px solid var(--background-color);
+        border-top: 4px solid var(--accent-color);
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    /* RTL Support */
+    .rtl-content {
+        direction: rtl;
+        text-align: right;
+    }
+
+    /* Responsive Design */
+    @media screen and (max-width: 768px) {
+        .stButton > button {
+            width: 100%;
+        }
+
+        div.element-container {
+            margin: 0.25rem 0;
+        }
+    }
+
+    /* --- START REINTEGRATED STYLES --- */
+
+    /* Headers */
+    h1, h2, h3 {
+        font-family: 'Vazirmatn', sans-serif;
+        text-align: right;
+        font-weight: 600;
+    }
+    h1 {
+        color: var(--header-text-color, var(--primary-color)); /* Fallback to primary-color */
+        border-bottom: 2px solid var(--secondary-color);
+        padding-bottom: 0.3em;
+        margin-bottom: 0.7em;
+    }
+    h2 {
+        color: var(--primary-color);
+    }
+    h3 {
+        color: var(--accent-color);
+        font-weight: 500;
+    }
+
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 5px;
+        direction: rtl;
+        border-bottom: 2px solid #e0e0e0; /* Consider var(--background-color) or a lighter gray */
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 55px;
+        padding: 12px 25px;
+        background-color: #f8f9fa; /* Neutral non-active tab, consider var(--card-bg-color) or lighter var(--background-color) */
+        border-radius: 8px 8px 0 0;
+        font-family: 'Vazirmatn', sans-serif;
+        font-weight: 600;
+        color: var(--text-color);
+        border: 1px solid #e0e0e0; /* Consider var(--background-color) or a lighter gray */
+        border-bottom: none;
+        transition: background-color 0.2s, color 0.2s;
+    }
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        background-color: var(--secondary-color); /* Use theme's secondary color for active tab */
+        color: white; /* Ensure contrast with secondary color */
+        border-color: var(--secondary-color);
+    }
+
+    /* Custom status badges */
+    .status-badge {
+        padding: 5px 10px;
+        border-radius: 15px;
+        font-size: 0.85em;
+        font-weight: 500;
+        display: inline-block;
+    }
+    .status-positive {
+        background-color: var(--success-bg); /* #d1fae5; */
+        color: var(--success-color); /* #065f46; */
+        border: 1px solid var(--success-border); /* #6ee7b7; */
+    }
+    .status-neutral {
+        background-color: var(--warning-bg); /* #feF3c7; */
+        color: var(--warning-color); /* #92400e; */
+        border: 1px solid var(--warning-border); /* #fcd34d; */
+    }
+    .status-negative {
+        background-color: color-mix(in srgb, var(--accent-color) 15%, transparent); /* #fee2e2; */
+        color: var(--accent-color); /* #991b1b; */
+        border: 1px solid var(--accent-color); /* #fca5a5; */
+    }
+
+    /* Custom containers for better visual grouping */
+    .section-container {
+        background-color: var(--card-bg-color);
+        padding: 1.5rem;
+        border-radius: 10px;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.07);
+        margin-bottom: 2rem;
+    }
+
+    /* Markdown links */
+    a {
+        color: var(--accent-color);
+        text-decoration: none;
+    }
+    a:hover {
+        text-decoration: underline;
+    }
+
+    /* Custom Gemini response box styles */
+    .gemini-response-default {
+        background-color: var(--info-bg);
+        border-left: 5px solid var(--info-border);
+        padding: 20px;
+        border-radius: 10px;
+        margin-top:20px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        transition: all 0.3s ease;
         position: relative;
         overflow: hidden;
     }
-    .modern-gradient-card .icon {
-        font-size: 2.8em;
-        margin-left: 18px;
-        animation: iconPulse 1.5s infinite;
+    .gemini-response-default:before {
+        content: '💡';
+        font-size: 1.2em;
+        position: absolute;
+        top: 10px;
+        right: 15px;
+        opacity: 0.5;
     }
-    @keyframes iconPulse {
+    .gemini-response-default:hover {
+        box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+        transform: translateY(-3px);
+    }
+
+    .gemini-response-report {
+        background-color: var(--success-bg);
+        border-left: 5px solid var(--success-border);
+        padding: 20px;
+        border-radius: 10px;
+        margin-top:20px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        transition: all 0.3s ease;
+        position: relative;
+    }
+    .gemini-response-report:before {
+        content: '📊';
+        font-size: 1.2em;
+        position: absolute;
+        top: 10px;
+        right: 15px;
+        opacity: 0.5;
+    }
+    .gemini-response-report:hover {
+        box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+        transform: translateY(-3px);
+    }
+
+    .gemini-response-analysis {
+        background-color: var(--warning-bg);
+        border-left: 5px solid var(--warning-border);
+        padding: 20px;
+        border-radius: 10px;
+        margin-top:20px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        transition: all 0.3s ease;
+        position: relative;
+    }
+    .gemini-response-analysis:before {
+        content: '🔍';
+        font-size: 1.2em;
+        position: absolute;
+        top: 10px;
+        right: 15px;
+        opacity: 0.5;
+    }
+    .gemini-response-analysis:hover {
+        box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+        transform: translateY(-3px);
+    }
+
+    /* Animated Gemini AI Tab specific styles */
+    .gemini-header {
+        background: linear-gradient(-45deg, var(--primary-color), var(--secondary-color), var(--accent-color));
+        background-size: 400% 400%;
+        animation: gradient 15s ease infinite;
+        color: white;
+        padding: 15px 25px;
+        border-radius: 12px;
+        text-align: center;
+        margin-bottom: 20px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+    @keyframes gradient {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+
+    .pulse-animation {
+        animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
         0% { transform: scale(1); }
-        50% { transform: scale(1.15); }
+        50% { transform: scale(1.05); }
         100% { transform: scale(1); }
     }
-    @keyframes cardFadeIn {
-        0% { opacity: 0; transform: translateY(30px); }
-        100% { opacity: 1; transform: translateY(0); }
+
+    .fade-in {
+        opacity: 0;
+        animation: fadeIn 1s forwards;
+    }
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
     }
 
-    /* Glassmorphism Card for Tab2 */
-    .glass-card {
-        background: rgba(255, 255, 255, 0.25);
-        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.18);
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
-        border-radius: 18px;
-        border: 1.5px solid rgba(255,255,255,0.35);
-        padding: 28px 20px 20px 20px;
-        margin-bottom: 28px;
-        position: relative;
-        overflow: hidden;
-        animation: glassFadeIn 1.2s cubic-bezier(.39,.575,.565,1) both;
-    }
-    @keyframes glassFadeIn {
-        0% { opacity: 0; transform: scale(0.95); }
-        100% { opacity: 1; transform: scale(1); }
-    }
-    .glass-card .glass-icon {
-        font-size: 2.2em;
-        color: #38b6ff;
-        margin-left: 14px;
-        filter: drop-shadow(0 2px 8px #38b6ff55);
-    }
-    /* Floating Action Button for Tab2 */
-    .fab-animated {
-        position: absolute;
-        bottom: 18px;
-        right: 18px;
-        width: 54px;
-        height: 54px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, #38b6ff 0%, #43e97b 100%);
-        color: #fff;
+    /* Animated AI Icon for Gemini Sections */
+    .ai-icon { /* This is for Gemini sections, distinct from tab intro icons */
         display: flex;
-        align-items: center;
         justify-content: center;
-        font-size: 2em;
-        box-shadow: 0 4px 16px rgba(56,182,255,0.18);
-        cursor: pointer;
-        transition: transform 0.2s, box-shadow 0.2s;
-        z-index: 10;
-        animation: fabBounce 1.5s infinite;
+        margin-bottom: 15px;
     }
-    @keyframes fabBounce {
-        0%, 100% { transform: translateY(0); }
-        50% { transform: translateY(-10px); }
+    .ai-icon-pulse { /* Specific animated icon for Gemini */
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background-color: var(--accent-color);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        color: white;
+        font-size: 30px;
+        box-shadow: 0 0 0 0 rgba(var(--accent-color), 0.5); /* Use accent color for pulse */
+        animation: ai-pulse 2s infinite;
+    }
+    @keyframes ai-pulse { /* Keyframes for the Gemini AI icon pulse */
+        0% { transform: scale(0.95); box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-color) 70%, transparent); }
+        70% { transform: scale(1); box-shadow: 0 0 0 10px color-mix(in srgb, var(--accent-color) 0%, transparent); }
+        100% { transform: scale(0.95); box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-color) 0%, transparent); }
     }
 
-    /* Fade-in AI Card for Tab3 */
-    .ai-fadein-card {
-        background: linear-gradient(120deg, #f7971e 0%, #ffd200 100%);
-        color: #333;
-        border-radius: 18px;
-        box-shadow: 0 8px 32px 0 rgba(255, 215, 0, 0.13);
-        padding: 30px 22px 22px 22px;
-        margin-bottom: 28px;
-        display: flex;
-        align-items: center;
-        animation: fadeInAI 1.2s cubic-bezier(.39,.575,.565,1) both;
+    /* Advanced Card Design for Gemini Sections */
+    .gemini-card {
+        background-color: var(--card-bg-color);
+        border-radius: 12px;
+        box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        padding: 20px;
+        margin-bottom: 25px;
+        transition: all 0.3s ease;
+        border-top: 5px solid var(--accent-color);
         position: relative;
         overflow: hidden;
     }
-    .ai-fadein-card .ai-icon {
-        font-size: 2.5em;
-        margin-left: 16px;
-        animation: aiGlow 1.5s infinite alternate;
-        color: #fff;
-        filter: drop-shadow(0 0 8px #ffd20088);
+    .gemini-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 30px rgba(0,0,0,0.15);
     }
-    @keyframes fadeInAI {
-        0% { opacity: 0; transform: translateY(-30px); }
-        100% { opacity: 1; transform: translateY(0); }
+    .gemini-card::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 50%);
+        pointer-events: none;
     }
-    @keyframes aiGlow {
-        0% { filter: drop-shadow(0 0 8px #ffd20088); }
-        100% { filter: drop-shadow(0 0 18px #ffd200cc); }
+    .gemini-card-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 15px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid rgba(0,0,0,0.1);
     }
+    .gemini-card-icon { /* Icon within Gemini cards */
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        background-color: var(--accent-color);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-left: 15px; /* RTL: should be margin-right if text is LTR */
+        color: white;
+        font-weight: bold;
+        font-size: 20px;
+    }
+    .gemini-card-title {
+        margin: 0;
+        font-size: 18px;
+        color: var(--primary-color);
+        font-weight: 600;
+    }
+
+    /* Loading Animation for Gemini responses */
+    .loading-animation {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 20px;
+    }
+    .loading-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background-color: var(--accent-color);
+        margin: 0 5px;
+        animation: loading-dots-animation 1.4s infinite ease-in-out both;
+    }
+    .loading-dot:nth-child(1) { animation-delay: -0.32s; }
+    .loading-dot:nth-child(2) { animation-delay: -0.16s; }
+    @keyframes loading-dots-animation { /* Renamed to avoid conflict with .stSpinner's 'spin' */
+        0%, 80%, 100% { transform: scale(0); }
+        40% { transform: scale(1); }
+    }
+    /* --- END REINTEGRATED STYLES --- */
     </style>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-# --- Animated Logo Display ---
-def get_image_as_base64(path):
-    if not os.path.exists(path):
-        return None
-    with open(path, "rb") as img_file:
-        return base64.b64encode(img_file.read()).decode()
+# --- REMOVED Custom Modern Cards CSS ---
+# --- REMOVED Animated Logo Display ---
+# def get_image_as_base64(path):
+#     if not os.path.exists(path):
+#         return None
+#     with open(path, "rb") as img_file:
+#         return base64.b64encode(img_file.read()).decode()
+#
+# logo_path = "logo (1).png" # Your logo file
+# logo_base64 = get_image_as_base64(logo_path)
+#
+# if logo_base64:
+#     logo_html = f"""
+#     <style>
+#         @keyframes animatedBackground {{
+#             0%   {{ background-color: #add8e6; }} /* Light Blue */
+#             20%  {{ background-color: #ffcccb; }} /* Light Red */
+#             40%  {{ background-color: #90ee90; }} /* Light Green */
+#             60%  {{ background-color: #fffacd; }} /* LemonChiffon (Light Yellow) */
+#             80%  {{ background-color: #ffcccb; }} /* Light Red */
+#             100% {{ background-color: #add8e6; }} /* Light Blue */
+#         }}
+#         @keyframes logoPulse {{
+#             0% {{ transform: scale(1); }}
+#             50% {{ transform: scale(1.05); }}
+#             100% {{ transform: scale(1); }}
+#         }}
+#
+#         .animated-logo-container {{
+#             display: flex;
+#             justify-content: center; /* Center the logo horizontally */
+#             align-items: center;
+#             padding: 10px; /* Add some padding around the logo */
+#             margin-bottom: 20px; /* Space below the logo */
+#             animation: animatedBackground 25s infinite ease-in-out; /* 5s per color step * 5 steps = 25s total */
+#             border-radius: 10px; /* Optional: rounded corners for the background container */
+#             box-shadow: 0 4px 8px rgba(0,0,0,0.1); /* Optional: subtle shadow */
+#         }}
+#
+#         .animated-logo-container img {{
+#             max-height: 100px; /* Adjust max height as needed */
+#             max-width: 100%;   /* Ensure logo is responsive within its container */
+#             object-fit: contain;
+#             animation: logoPulse 2s infinite ease-in-out; /* Apply pulse animation to the image */
+#         }}
+#     </style>
+#     <div class="animated-logo-container">
+#         <img src="data:image/png;base64,{logo_base64}" alt="Company Logo">
+#     </div>
+#     """
+#     st.markdown(logo_html, unsafe_allow_html=True)
+# else:
+#     st.warning(f"لوگو در مسیر '{logo_path}' یافت نشد. لطفاً مسیر فایل را بررسی کنید.")
 
-logo_path = "logo (1).png" # Your logo file
-logo_base64 = get_image_as_base64(logo_path)
-
-if logo_base64:
-    logo_html = f"""
-    <style>
-        @keyframes animatedBackground {{
-            0%   {{ background-color: #add8e6; }} /* Light Blue */
-            20%  {{ background-color: #ffcccb; }} /* Light Red */
-            40%  {{ background-color: #90ee90; }} /* Light Green */
-            60%  {{ background-color: #fffacd; }} /* LemonChiffon (Light Yellow) */
-            80%  {{ background-color: #ffcccb; }} /* Light Red */
-            100% {{ background-color: #add8e6; }} /* Light Blue */
-        }}
-        @keyframes logoPulse {{
-            0% {{ transform: scale(1); }}
-            50% {{ transform: scale(1.05); }}
-            100% {{ transform: scale(1); }}
-        }}
-
-        .animated-logo-container {{
-            display: flex;
-            justify-content: center; /* Center the logo horizontally */
-            align-items: center;
-            padding: 10px; /* Add some padding around the logo */
-            margin-bottom: 20px; /* Space below the logo */
-            animation: animatedBackground 25s infinite ease-in-out; /* 5s per color step * 5 steps = 25s total */
-            border-radius: 10px; /* Optional: rounded corners for the background container */
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1); /* Optional: subtle shadow */
-        }}
-
-        .animated-logo-container img {{
-            max-height: 100px; /* Adjust max height as needed */
-            max-width: 100%;   /* Ensure logo is responsive within its container */
-            object-fit: contain;
-            animation: logoPulse 2s infinite ease-in-out; /* Apply pulse animation to the image */
-        }}
-    </style>
-    <div class="animated-logo-container">
-        <img src="data:image/png;base64,{logo_base64}" alt="Company Logo">
-    </div>
-    """
-    st.markdown(logo_html, unsafe_allow_html=True)
-else:
-    st.warning(f"لوگو در مسیر '{logo_path}' یافت نشد. لطفاً مسیر فایل را بررسی کنید.")
-
-# --- Imports --- (Keep after page_config if they don't cause issues)
+# --- Imports ---
 import pandas as pd
 import ee
 import geemap.foliumap as geemap
@@ -331,18 +526,18 @@ import google.generativeai as genai
 import time # For potential (not recommended) auto-rerun
 
 
-# --- Apply Dynamic CSS based on selected theme ---
+# --- Apply Dynamic CSS based on selected theme --- # This section will be removed
 # This CSS block will use the variables defined in current_theme_colors
-st.markdown(f"""
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700&display=swap');
-        
-        :root {{
-            {"; ".join([f"{key}: {value}" for key, value in current_theme_colors.items()])};
-        }}
-
-        body {{
-            font-family: 'Vazirmatn', sans-serif;
+# st.markdown(f"""
+#     <style>
+#         @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700&display=swap');
+#
+#         :root {{
+#             {"; ".join([f"{key}: {value}" for key, value in current_theme_colors.items()])};
+#         }}
+#
+#         body {{
+#             font-family: 'Vazirmatn', sans-serif;
             background-color: var(--background-color);
             color: var(--text-color);
         }}
@@ -786,14 +981,14 @@ st.markdown(f"""
         .loading-dot:nth-child(1) {{ animation-delay: -0.32s; }}
         .loading-dot:nth-child(2) {{ animation-delay: -0.16s; }}
         
-        @keyframes loading {{
-            0%, 80%, 100% {{ transform: scale(0); }}
-            40% {{ transform: scale(1); }}
-        }}
-
-    </style>
-""", unsafe_allow_html=True)
-
+#         @keyframes loading {{
+#             0%, 80%, 100% {{ transform: scale(0); }}
+#             40% {{ transform: scale(1); }}
+#         }}
+#
+#     </style>
+# """, unsafe_allow_html=True) # This was the end of the removed dynamic theme CSS
+# --- END OF REMOVED DYNAMIC THEME CSS ---
 
 # --- Configuration ---
 APP_TITLE = "سامانه پایش هوشمند نیشکر"
@@ -921,18 +1116,18 @@ def ask_gemini(prompt_text, temperature=0.7, top_p=1.0, top_k=40):
 # Sidebar
 # ==============================================================================
 with st.sidebar:
-    st.markdown("## 🎨 انتخاب تم")
-    selected_theme_name_sidebar = st.selectbox(
-        "تم رنگی برنامه را انتخاب کنید:",
-        options=list(THEMES.keys()),
-        index=list(THEMES.keys()).index(st.session_state.selected_theme_name),
-        key="theme_selector_widget"
-    )
-    if selected_theme_name_sidebar != st.session_state.selected_theme_name:
-        st.session_state.selected_theme_name = selected_theme_name_sidebar
-        st.rerun() # Rerun to apply new theme CSS
+    # st.markdown("## 🎨 انتخاب تم") # Removed theme selection
+    # selected_theme_name_sidebar = st.selectbox(
+    #     "تم رنگی برنامه را انتخاب کنید:",
+    #     options=list(THEMES.keys()),
+    #     index=list(THEMES.keys()).index(st.session_state.selected_theme_name),
+    #     key="theme_selector_widget"
+    # )
+    # if selected_theme_name_sidebar != st.session_state.selected_theme_name:
+    #     st.session_state.selected_theme_name = selected_theme_name_sidebar
+    #     st.rerun() # Rerun to apply new theme CSS
 
-    st.markdown("---")
+    # st.markdown("---") # Removed separator if theme selection was the only thing above it
     st.header("⚙️ تنظیمات نمایش")
 
     if GEMINI_API_KEY == "YOUR_GEMINI_API_KEY_HERE":
@@ -1169,19 +1364,14 @@ tab1, tab2, tab3 = st.tabs(tab_titles)
 
 
 with tab1:
-    # Modern Gradient Card (Tab1)
-    st.markdown(f"""
-    <div class='modern-gradient-card'>
-        <span class='icon'>🌱</span>
-        <div>
-            <div style='font-size:1.25em; font-weight:600;'>وضعیت کلی مزارع</div>
-            <div style='font-size:1.05em;'>تعداد کل مزارع: <b>{len(filtered_farms_df)}</b></div>
-            <div style='font-size:0.98em;'>روز انتخابی: <b>{selected_day}</b></div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.subheader("🌱 وضعیت کلی مزارع")
+    st.markdown(f"تعداد کل مزارع: **{len(filtered_farms_df)}**")
+    st.markdown(f"روز انتخابی: **{selected_day}**")
+    # The modern-gradient-card div was removed. Content is now directly in tab1.
+    # Additional styling for this section can be applied via .section-container or specific classes if needed.
 
     with st.container():
+        # Applying section-container styling for consistent layout
         st.markdown("<div class='section-container'>", unsafe_allow_html=True)
         if selected_farm_name == "همه مزارع":
             st.subheader(f"📋 نمایش کلی مزارع برای روز: {selected_day}")
@@ -1357,7 +1547,7 @@ with tab1:
     st.markdown("</div>", unsafe_allow_html=True)
 
 with tab2:
-    # Glassmorphism Card + Floating Action Button (Tab2)
+    # Glassmorphism Card (Tab2) - FAB removed
     st.markdown(f"""
     <div class='glass-card'>
         <span class='glass-icon'>🗺️</span>
@@ -1366,13 +1556,10 @@ with tab2:
             <div style='font-size:1em;'>شاخص انتخابی: <b>{index_options[selected_index]}</b></div>
             <div style='font-size:0.95em;'>مزرعه: <b>{active_farm_name_display}</b></div>
         </div>
-        <div class='fab-animated' title='عملیات سریع' onclick='alert("به‌زودی!")'>
-            ➕
-        </div>
     </div>
     """, unsafe_allow_html=True)
 
-    vis_params_map = { # Same as before
+    vis_params_map = {
         'NDVI': {'min': 0.0, 'max': 0.9, 'palette': ['#a50026', '#d73027', '#f46d43', '#fdae61', '#fee08b', '#ffffbf', '#d9ef8b', '#a6d96a', '#66bd63', '#1a9850', '#006837']},
         'EVI': {'min': 0.0, 'max': 0.9, 'palette': ['#a50026', '#d73027', '#f46d43', '#fdae61', '#fee08b', '#ffffbf', '#d9ef8b', '#a6d96a', '#66bd63', '#1a9850', '#006837']},
         'NDMI': {'min': -0.5, 'max': 0.8, 'palette': ['#8c510a', '#bf812d', '#dfc27d', '#f6e8c3', '#f5f5f5', '#c7eae5', '#80cdc1', '#35978f', '#01665e']},
@@ -1507,16 +1694,9 @@ with tab2:
     st.markdown("</div>", unsafe_allow_html=True)
 
 with tab3:
-    # AI Fade-in Card (Tab3)
-    st.markdown("""
-    <div class='ai-fadein-card'>
-        <span class='ai-icon'>🤖</span>
-        <div>
-            <div style='font-size:1.18em; font-weight:600;'>تحلیل هوشمند با Gemini</div>
-            <div style='font-size:1em;'>پاسخ‌های هوشمند و گزارش‌های تحلیلی با هوش مصنوعی</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.subheader("🤖 تحلیل هوشمند با Gemini")
+    st.markdown("پاسخ‌های هوشمند و گزارش‌های تحلیلی با هوش مصنوعی")
+    # The ai-fadein-card div was removed. Content is now directly in tab3.
 
     if not gemini_model:
         st.warning("⚠️ قابلیت‌های هوشمند Gemini با وارد کردن صحیح کلید API در کد فعال می‌شوند.")
