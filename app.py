@@ -3,35 +3,27 @@ import pyproj # Added for coordinate transformation
 # import base64 # For encoding logo image - Will be removed if not used elsewhere
 import os # For path joining - Will be removed if not used elsewhere
 
-
-# --- Page Config ---
-st.set_page_config(
-    page_title="سامانه پایش هوشمند نیشکر",
-    page_icon="🌾",
-    layout="wide"
-)
-
-# --- Apply Custom Styles from styles.py ---
-st.markdown("""
+def get_app_style():
+    """Returns the main CSS stylesheet for the application."""
+    return """
     <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
     <style>
-    /* Test comment for indentation */
     /* Modern Color Scheme */
     :root {
         --primary-color: #2C3E50;
         --secondary-color: #3498DB;
-        --accent-color: #E74C3C;
+        --accent-color: #17A2B8; /* Changed from #E74C3C to Teal */
         --success-color: #2ECC71;
         --warning-color: #F1C40F;
         --background-color: #ECF0F1;
         --card-bg-color: rgba(255, 255, 255, 0.95);
         --text-color: #2C3E50;
-        /* Added based on reintegration needs */
-        --info-bg: #e6f7ff;
-        --info-border: #007bff;
-        --success-bg: #f0fff0; /* Consider: color-mix(in srgb, var(--success-color) 15%, transparent); */
+        /* Added/Updated based on reintegration needs */
+        --info-bg: color-mix(in srgb, var(--secondary-color) 10%, #FFFFFF); /* Using secondary-color */
+        --info-border: var(--secondary-color); /* Changed from #007bff */
+        --success-bg: color-mix(in srgb, var(--success-color) 10%, #FFFFFF);
         --success-border: var(--success-color);
-        --warning-bg: #fff3cd; /* Consider: color-mix(in srgb, var(--warning-color) 15%, transparent); */
+        --warning-bg: color-mix(in srgb, var(--warning-color) 15%, #FFFFFF);
         --warning-border: var(--warning-color);
         --header-text-color: var(--primary-color); /* Default header text color */
     }
@@ -55,7 +47,7 @@ st.markdown("""
     div.element-container {
         background: var(--card-bg-color);
         border-radius: 15px;
-        padding: 1rem;
+        padding: 1.5rem; /* Adjusted */
         margin: 0.5rem 0;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         transition: transform 0.3s ease;
@@ -68,7 +60,7 @@ st.markdown("""
     /* Animated Metrics */
     [data-testid="stMetric"] {
         background: var(--card-bg-color);
-        padding: 1rem;
+        padding: 1.5rem; /* Adjusted */
         border-radius: 10px;
         border-left: 4px solid var(--accent-color);
         animation: slideIn 0.5s ease-out;
@@ -126,6 +118,10 @@ st.markdown("""
         background-color: rgba(236, 240, 241, 0.5);
     }
 
+    .dataframe tbody tr:hover td {
+        background-color: color-mix(in srgb, var(--secondary-color) 15%, var(--card-bg-color) 85%);
+    }
+
     /* Animated Loading Spinner */
     .stSpinner {
         border: 4px solid var(--background-color);
@@ -169,15 +165,37 @@ st.markdown("""
     h1 {
         color: var(--header-text-color, var(--primary-color)); /* Fallback to primary-color */
         border-bottom: 2px solid var(--secondary-color);
-        padding-bottom: 0.3em;
-        margin-bottom: 0.7em;
+        padding-bottom: 0.5rem; /* Adjusted */
+        margin-bottom: 1rem; /* Adjusted */
+        font-size: 2.2rem; /* Adjusted */
     }
     h2 {
         color: var(--primary-color);
+        font-size: 1.8rem; /* Adjusted */
+        margin-bottom: 0.75rem; /* Adjusted */
     }
     h3 {
         color: var(--accent-color);
         font-weight: 500;
+        font-size: 1.4rem; /* Adjusted */
+        margin-bottom: 0.5rem; /* Adjusted */
+    }
+
+    p {
+        line-height: 1.6;
+        margin-bottom: 1rem;
+    }
+
+    label, .stTextInput label, .stSelectbox label, .stDateInput label, .stNumberInput label {
+        font-size: 0.95rem;
+        font-weight: 500;
+        color: var(--primary-color);
+        margin-bottom: 0.25rem;
+    }
+
+    .stCaption {
+        font-size: 0.85rem;
+        color: color-mix(in srgb, var(--text-color) 70%, transparent);
     }
 
     /* Tabs */
@@ -185,10 +203,14 @@ st.markdown("""
         gap: 5px;
         direction: rtl;
         border-bottom: 2px solid #e0e0e0; /* Consider var(--background-color) or a lighter gray */
+        padding: 0.25rem; /* Adjusted */
+        border-radius: 8px; /* Adjusted */
+        background-color: color-mix(in srgb, var(--background-color) 50%, var(--card-bg-color) 50%); /* Adjusted */
     }
     .stTabs [data-baseweb="tab"] {
-        height: 55px;
-        padding: 12px 25px;
+        height: auto; /* Adjusted */
+        min-height: 50px; /* Adjusted */
+        padding: 10px 20px; /* Adjusted */
         background-color: #f8f9fa; /* Neutral non-active tab, consider var(--card-bg-color) or lighter var(--background-color) */
         border-radius: 8px 8px 0 0;
         font-family: 'Vazirmatn', sans-serif;
@@ -231,10 +253,15 @@ st.markdown("""
     /* Custom containers for better visual grouping */
     .section-container {
         background-color: var(--card-bg-color);
-        padding: 1.5rem;
+        padding: 2rem; /* Adjusted */
         border-radius: 10px;
         box-shadow: 0 3px 10px rgba(0,0,0,0.07);
-        margin-bottom: 2rem;
+        margin-bottom: 2.5rem; /* Adjusted */
+    }
+
+    /* Main app area padding */
+    section[data-testid="stSidebar"] + section[data-testid="stAppViewContainer"] > div:first-child {
+        padding: 1rem 2rem;
     }
 
     /* Markdown links */
@@ -454,7 +481,17 @@ st.markdown("""
     }
     /* --- END REINTEGRATED STYLES --- */
     </style>
-    """, unsafe_allow_html=True)
+    """
+
+# --- Page Config ---
+st.set_page_config(
+    page_title="سامانه پایش هوشمند نیشکر",
+    page_icon="🌾",
+    layout="wide"
+)
+
+# --- Apply Custom Styles from styles.py ---
+st.markdown(get_app_style(), unsafe_allow_html=True)
 
 # --- REMOVED Custom Modern Cards CSS ---
 # --- REMOVED Animated Logo Display ---
@@ -994,7 +1031,8 @@ with tab1:
         for col_fmt_dsp in cols_to_format_display:
             if col_fmt_dsp in df_display.columns:
                  df_display[col_fmt_dsp] = df_display[col_fmt_dsp].apply(lambda x: f"{float(x):.3f}" if pd.notna(x) and isinstance(x, (int, float)) else ("N/A" if pd.isna(x) else str(x)))
-        st.markdown(f"<div class='dataframe-container'>{df_display.to_html(escape=False, index=True, classes='styled-table')}</div>", unsafe_allow_html=True)
+        # Removed classes='styled-table' to rely on global .dataframe styles
+        st.markdown(f"<div class='dataframe-container'>{df_display.to_html(escape=False, index=True)}</div>", unsafe_allow_html=True)
 
         st.subheader("📊 خلاصه وضعیت مزارع")
         count_positive_summary = sum(1 for s in ranking_df_sorted['وضعیت'] if 'status-positive' in s)
@@ -1096,14 +1134,12 @@ with tab2:
                                                f'<p style="margin:0; background-color:{palette_map_lgd[-1]}; color:black; padding: 2px 5px; border-radius:3px;">تنش زیاد (خشک)</p>'
 
                 if legend_html_content:
-                    legend_title_map = index_options[selected_index].split('(')[0].strip()
-                    legend_html = f'''
-                     <div style="position: fixed; bottom: 50px; left: 10px; width: auto; 
-                                background-color: var(--container-background-color); opacity: 0.85; z-index:1000; padding: 10px; border-radius:8px;
-                                font-family: 'Vazirmatn', sans-serif; font-size: 0.9em; box-shadow: 0 2px 5px rgba(0,0,0,0.2); color: var(--text-color);">
-                       <p style="margin:0 0 8px 0; font-weight:bold; color:var(--primary-color);">راهنمای {legend_title_map}</p>
-                       {legend_html_content}
-                     </div>'''
+                    # Encapsulate legend HTML generation
+                    legend_html = generate_map_legend_html(
+                        index_options=index_options,
+                        selected_index=selected_index,
+                        palette_map_lgd=palette_map_lgd # Pass the actual palette list
+                    )
                     m.get_root().html.add_child(folium.Element(legend_html))
 
                 if active_farm_name_display == "همه مزارع":
@@ -1165,13 +1201,28 @@ with tab2:
                                   title=f"روند زمانی {index_options[selected_index]} برای '{active_farm_name_display}'",
                                   labels={'date': 'تاریخ', selected_index: index_options[selected_index]})
                     fig_chart.update_layout(
-                        font=dict(family="Vazirmatn", color="var(--text-color)"),
-                        xaxis_title="تاریخ", yaxis_title=index_options[selected_index],
-                        plot_bgcolor="var(--container-background-color)", 
-                        paper_bgcolor="var(--container-background-color)",
-                        hovermode="x unified"
+                        font=dict(family="Vazirmatn, sans-serif", color="var(--text-color)"), # Ensured Vazirmatn
+                        xaxis_title="تاریخ",
+                        yaxis_title=index_options[selected_index],
+                        plot_bgcolor="var(--card-bg-color)", # Use card-bg-color
+                        paper_bgcolor="var(--card-bg-color)", # Use card-bg-color
+                        hovermode="x unified",
+                        xaxis=dict(
+                            gridcolor=color_mix(in srgb, "var(--text-color)" if "var(--text-color)".startswith("var") else f"var({("var(--text-color)" if "var(--text-color)".startswith("var") else "--text-color")})", 20%, transparent),
+                            linecolor=color_mix(in srgb, "var(--text-color)" if "var(--text-color)".startswith("var") else f"var({("var(--text-color)" if "var(--text-color)".startswith("var") else "--text-color")})", 40%, transparent),
+                            tickfont=dict(color="var(--text-color)")
+                        ),
+                        yaxis=dict(
+                            gridcolor=color_mix(in srgb, "var(--text-color)" if "var(--text-color)".startswith("var") else f"var({("var(--text-color)" if "var(--text-color)".startswith("var") else "--text-color")})", 20%, transparent),
+                            linecolor=color_mix(in srgb, "var(--text-color)" if "var(--text-color)".startswith("var") else f"var({("var(--text-color)" if "var(--text-color)".startswith("var") else "--text-color")})", 40%, transparent),
+                            tickfont=dict(color="var(--text-color)")
+                        ),
+                        legend=dict(font=dict(color="var(--text-color)"))
                     )
-                    fig_chart.update_traces(line=dict(color="var(--accent-color)", width=2.5), marker=dict(color="var(--primary-color)", size=6))
+                    fig_chart.update_traces(
+                        line=dict(color="var(--accent-color)", width=2.5),
+                        marker=dict(color="var(--primary-color)", size=6)
+                    )
                     st.plotly_chart(fig_chart, use_container_width=True)
                 else: st.info(f"داده‌ای برای نمایش نمودار سری زمانی {selected_index} یافت نشد.")
     else: # Handles "همه مزارع" or if single farm's geometry could not be determined
